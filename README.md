@@ -1,16 +1,22 @@
-```txt
-npm install
-npm run dev
+# Data service
+
+Install dependencies and start the Worker locally:
+
+```sh
+pnpm install
+pnpm dev
 ```
 
+## Deployment
+
 ```txt
-npm run deploy
+pnpm deploy
 ```
 
 [For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
 
-```txt
-npm run cf-typegen
+```sh
+pnpm cf-typegen
 ```
 
 Pass the `CloudflareBindings` as generics when instantiating `Hono`:
