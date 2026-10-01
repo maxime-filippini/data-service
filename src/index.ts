@@ -1,42 +1,54 @@
-import { Effect, Schema } from "effect";
+import { Effect, Result } from "effect";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 
-import { effectValidator } from "./effect-validator";
+import { effectValidator } from "$/effect-validator";
+import { retrieveDailyMarketData } from "$/market-data";
+import { EodhdMarketDataLive } from "$/market-data/eodhd";
+import {
+  MarketDataQuerySchema,
+  type MarketDataRequest,
+} from "$/market-data/schemas";
 
-const app = new Hono<{ Bindings: CloudflareBindings }>();
+type Bindings = {
+  readonly EODHD_API_TOKEN?: string;
+};
 
-// Custom schema types
-const PositiveIntFromString = Schema.NumberFromString.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(1),
+const app = new Hono<{ Bindings: Bindings }>();
+
+/** Run the provider-neutral program using the EODHD production adapter. */
+const runEodhdMarketData = (request: MarketDataRequest, apiToken: unknown) =>
+  retrieveDailyMarketData(request).pipe(
+    Effect.provide(EodhdMarketDataLive(apiToken)),
+    Effect.result,
+    Effect.runPromise,
+  );
+
+app.get(
+  "/market-data",
+  effectValidator("query", MarketDataQuerySchema),
+  async (c) => {
+    const result = await runEodhdMarketData(
+      c.req.valid("query"),
+      c.env.EODHD_API_TOKEN,
+    );
+
+    if (Result.isFailure(result)) {
+      const status = result.failure.kind === "configuration" ? 500 : 502;
+
+      throw new HTTPException(status, {
+        res: c.json(
+          {
+            error: result.failure.message,
+            symbol: result.failure.symbol ?? null,
+          },
+          status,
+        ),
+      });
+    }
+
+    return c.json(result.success);
+  },
 );
-
-// Schemas
-const EchoBody = Schema.Struct({
-  message: Schema.NonEmptyString,
-  priority: Schema.Literals(["low", "normal", "high"]),
-  amount: Schema.Finite.check(Schema.isGreaterThan(0)),
-});
-
-const PaginationQuery = Schema.Struct({
-  page: PositiveIntFromString.pipe(
-    // This is how we provide defaults for the encoded values
-    Schema.withDecodingDefaultTypeKey(Effect.succeed(1)),
-  ),
-  pageSize: PositiveIntFromString.check(Schema.isLessThanOrEqualTo(1)).pipe(
-    Schema.withDecodingDefaultTypeKey(Effect.succeed(20)),
-  ),
-});
-
-// Endpoints
-// We
-
-app.post("/echo", effectValidator("json", EchoBody), (c) => {
-  return c.json(c.req.valid("json"));
-});
-
-app.get("/items", effectValidator("query", PaginationQuery), (c) => {
-  return c.json({ pagination: c.req.valid("query") });
-});
 
 export default app;
