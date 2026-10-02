@@ -25,3 +25,10 @@ Pass the `CloudflareBindings` as generics when instantiating `Hono`:
 // src/index.ts
 const app = new Hono<{ Bindings: CloudflareBindings }>()
 ```
+
+
+## To do
+
+Things that have been postponed but will have to be tackled eventually:
+
+- [ ] Market data cache writes should be done outside of the GET request
