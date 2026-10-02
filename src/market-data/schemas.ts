@@ -1,4 +1,4 @@
-import { Schema, SchemaGetter } from "effect";
+import { Effect, Schema, SchemaGetter } from "effect";
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(?:\.[A-Z0-9][A-Z0-9-]*)?$/u;
@@ -56,11 +56,31 @@ const MarketSymbolsFromStringSchema = Schema.String.pipe(
   }),
 );
 
+const BooleanFromStringSchema = Schema.Literals(["true", "false"]).pipe(
+  Schema.decodeTo(Schema.Boolean, {
+    decode: SchemaGetter.transform((value) => value === "true"),
+    encode: SchemaGetter.transform((value) => (value ? "true" : "false")),
+  }),
+);
+
+const ForceRefreshFromStringSchema = BooleanFromStringSchema.pipe(
+  Schema.withDecodingDefaultTypeKey(Effect.succeed(false), {
+    encodingStrategy: "omit",
+  }),
+);
+
+const ForceRefreshSchema = Schema.Boolean.pipe(
+  Schema.withDecodingDefaultTypeKey(Effect.succeed(false), {
+    encodingStrategy: "omit",
+  }),
+);
+
 /** The query-string representation accepted by the HTTP endpoint. */
 export const MarketDataQuerySchema = Schema.Struct({
   symbols: MarketSymbolsFromStringSchema,
   from: MarketDateSchema,
   to: MarketDateSchema,
+  force: ForceRefreshFromStringSchema,
 }).check(validDateRange);
 
 /** The normalized request accepted by market-data adapters. */
@@ -68,8 +88,8 @@ export const MarketDataRequestSchema = Schema.Struct({
   symbols: MarketSymbolsSchema,
   from: MarketDateSchema,
   to: MarketDateSchema,
+  force: ForceRefreshSchema,
 }).check(validDateRange);
-
 export type MarketDataRequest = typeof MarketDataRequestSchema.Type;
 
 export const EodEntrySchema = Schema.Struct({
@@ -81,7 +101,6 @@ export const EodEntrySchema = Schema.Struct({
   adjusted_close: Schema.Finite,
   volume: Schema.Natural,
 });
-
 export type EodEntry = typeof EodEntrySchema.Type;
 
 export const EodEntriesSchema = Schema.Array(EodEntrySchema);
@@ -91,5 +110,4 @@ export const EodEntriesBySymbolSchema = Schema.Record(
   MarketSymbolSchema,
   EodEntriesSchema,
 );
-
 export type EodEntriesBySymbol = typeof EodEntriesBySymbolSchema.Type;
