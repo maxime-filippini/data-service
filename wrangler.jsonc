@@ -26,6 +26,10 @@
 			"bucket_name": "raw-market-data",
 			"binding": "MARKET_DATA_BUCKET",
 		},
+		{
+			"bucket_name": "processed-market-data",
+			"binding": "PROCESSED_MARKET_DATA_BUCKET",
+		},
 	],
 	"secrets": {
 		"required": [

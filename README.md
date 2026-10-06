@@ -36,6 +36,11 @@ model:
 5. The eventual canonical object has one stable key per symbol:
    `dataset=prices_eod/symbol=<symbol>/data.parquet`.
 
+`raw-market-data` stores immutable validated provider responses, while
+`processed-market-data` stores the replaceable canonical Parquet dataset for
+each symbol. The Worker binds them separately as `MARKET_DATA_BUCKET` and
+`PROCESSED_MARKET_DATA_BUCKET`, respectively.
+
 Only one processing job may be active per symbol. New ingestion runs that
 arrive during processing remain pending for the following merge job.
 
