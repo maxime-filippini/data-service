@@ -1,5 +1,8 @@
 # Data service
 
+Architecture and the Python-processor handoff are documented in
+[MARKET_DATA_ARCHITECTURE.md](MARKET_DATA_ARCHITECTURE.md).
+
 Install dependencies and start the Worker locally:
 
 ```sh
