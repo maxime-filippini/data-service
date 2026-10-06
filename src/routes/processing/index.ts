@@ -99,7 +99,7 @@ const runProcessingProgram = async <A>(
  * "next job" endpoint: a queue will later deliver a specific job ID, so a
  * processor cannot accidentally take work for another symbol.
  */
-export const createProcessingJobsApp = (
+export const createProcessingRoutes = (
   controlPlaneForBindings: ControlPlaneLayer,
 ) => {
   const app = new Hono<AppEnvironment>();

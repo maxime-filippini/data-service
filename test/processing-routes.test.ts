@@ -10,15 +10,15 @@ import {
   type ProcessingJobStatus,
 } from "$/market-data/control-plane";
 import {
-  createProcessingJobsApp,
+  createProcessingRoutes,
   type ProcessingJobBindings,
-} from "$/processing-jobs-http";
+} from "$/routes/processing";
 
 const processorToken = "test-processor-token";
 const authorization = { Authorization: `Bearer ${processorToken}` };
 
 const request = (
-  app: ReturnType<typeof createProcessingJobsApp>,
+  app: ReturnType<typeof createProcessingRoutes>,
   path: string,
   init: RequestInit = {},
 ) =>
@@ -101,7 +101,7 @@ const createApp = (options: { readonly hasWork?: boolean } = {}) => {
   });
 
   return {
-    app: createProcessingJobsApp(() => Layer.succeed(MarketDataControlPlane, controlPlane)),
+    app: createProcessingRoutes(() => Layer.succeed(MarketDataControlPlane, controlPlane)),
     claimed,
     completed,
     failed,

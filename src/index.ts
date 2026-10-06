@@ -7,7 +7,7 @@ import { MarketDataLive, retrieveDailyMarketData } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
 import { R2MarketDataCacheLive } from "$/market-data/r2-cache";
-import { createProcessingJobsApp } from "$/processing-jobs-http";
+import { createProcessingRoutes } from "$/routes/processing";
 import {
   MarketDataQuerySchema,
   type MarketDataRequest,
@@ -21,7 +21,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.route(
   "/processing-jobs",
-  createProcessingJobsApp((bindings) =>
+  createProcessingRoutes((bindings) =>
     D1MarketDataControlPlaneLive(bindings.MARKET_DATA_DB),
   ),
 );
