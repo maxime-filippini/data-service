@@ -2,6 +2,10 @@ import { Effect, Layer, Result } from "effect";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
+import {
+  processingToken,
+  type ProcessingTokenBindings,
+} from "$/auth/processing-token";
 import { effectValidator } from "$/effect-validator";
 import {
   MarketDataControlPlane,
@@ -19,18 +23,16 @@ import {
   CreateProcessingJobSchema,
   FailProcessingJobSchema,
 } from "$/market-data/schemas";
+import { requireBearerToken } from "$/middleware/require-bearer-token";
 
-export type ProcessingJobBindings = CloudflareBindings & {
-  readonly PROCESSING_API_TOKEN?: string;
-};
+export type ProcessingJobBindings = CloudflareBindings &
+  ProcessingTokenBindings;
 
 type AppEnvironment = { Bindings: ProcessingJobBindings };
-type ControlPlaneLayer = (bindings: ProcessingJobBindings) => Layer.Layer<MarketDataControlPlane>;
 
-const unauthorized = () =>
-  new HTTPException(401, {
-    res: Response.json({ error: "Unauthorized" }, { status: 401 }),
-  });
+type ControlPlaneLayer = (
+  bindings: ProcessingJobBindings,
+) => Layer.Layer<MarketDataControlPlane>;
 
 const controlPlaneException = (error: MarketDataControlPlaneError) => {
   const status =
@@ -52,45 +54,15 @@ const controlPlaneException = (error: MarketDataControlPlaneError) => {
   });
 };
 
-const providedBearerToken = (authorization: string | undefined) => {
-  const [scheme, token, ...rest] = authorization?.split(" ") ?? [];
-  return scheme === "Bearer" && token !== undefined && rest.length === 0
-    ? token
-    : undefined;
-};
-
-const tokensMatch = async (provided: string, expected: string) => {
-  const encoder = new TextEncoder();
-  const [providedHash, expectedHash] = await Promise.all([
-    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
-    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]);
-
-  if (typeof crypto.subtle.timingSafeEqual === "function") {
-    return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
-  }
-
-  // Node's Web Crypto implementation used by the lightweight test suite does
-  // not expose Cloudflare's timingSafeEqual extension. Both inputs are fixed
-  // size SHA-256 digests, so this fallback performs no early exit.
-  const actual = new Uint8Array(providedHash);
-  const wanted = new Uint8Array(expectedHash);
-  let difference = 0;
-  for (let index = 0; index < actual.length; index += 1) {
-    difference |= actual[index]! ^ wanted[index]!;
-  }
-  return difference === 0;
-};
-
 const runProcessingProgram = async <A>(
-  program: Effect.Effect<A, MarketDataControlPlaneError, MarketDataControlPlane>,
+  program: Effect.Effect<
+    A,
+    MarketDataControlPlaneError,
+    MarketDataControlPlane
+  >,
   controlPlane: Layer.Layer<MarketDataControlPlane>,
 ) =>
-  program.pipe(
-    Effect.provide(controlPlane),
-    Effect.result,
-    Effect.runPromise,
-  );
+  program.pipe(Effect.provide(controlPlane), Effect.result, Effect.runPromise);
 
 /**
  * Processor-facing API for the frozen job inputs and their state transitions.
@@ -104,44 +76,46 @@ export const createProcessingRoutes = (
 ) => {
   const app = new Hono<AppEnvironment>();
 
-  app.use("*", async (c, next) => {
-    const expected = c.env.PROCESSING_API_TOKEN;
-    const provided = providedBearerToken(c.req.header("Authorization"));
+  // Auth middleware for all sub-routes
+  app.use("*", requireBearerToken<AppEnvironment>(processingToken));
 
-    if (
-      expected === undefined ||
-      provided === undefined ||
-      !(await tokensMatch(provided, expected))
-    ) {
-      throw unauthorized();
-    }
+  // Execute a given Effect based on the control plane
+  const execute = <A>(
+    c: { env: ProcessingJobBindings },
+    program: Effect.Effect<
+      A,
+      MarketDataControlPlaneError,
+      MarketDataControlPlane
+    >,
+  ) => runProcessingProgram(program, controlPlaneForBindings(c.env));
 
-    await next();
-  });
+  app.post(
+    "/",
+    effectValidator("json", CreateProcessingJobSchema),
+    async (c) => {
+      const request = c.req.valid("json");
+      const result = await execute(
+        c,
+        prepareSymbolProcessingJob({
+          ...request,
+          jobId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+        }),
+      );
 
-  const execute = <A>(c: { env: ProcessingJobBindings }, program: Effect.Effect<A, MarketDataControlPlaneError, MarketDataControlPlane>) =>
-    runProcessingProgram(program, controlPlaneForBindings(c.env));
+      if (Result.isFailure(result)) {
+        throw controlPlaneException(result.failure);
+      }
 
-  app.post("/", effectValidator("json", CreateProcessingJobSchema), async (c) => {
-    const request = c.req.valid("json");
-    const result = await execute(
-      c,
-      prepareSymbolProcessingJob({
-        ...request,
-        jobId: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-      }),
-    );
-
-    if (Result.isFailure(result)) {
-      throw controlPlaneException(result.failure);
-    }
-
-    return c.json(result.success, 201);
-  });
+      return c.json(result.success, 201);
+    },
+  );
 
   app.get("/:jobId", async (c) => {
-    const result = await execute(c, readSymbolProcessingJob(c.req.param("jobId")));
+    const result = await execute(
+      c,
+      readSymbolProcessingJob(c.req.param("jobId")),
+    );
 
     if (Result.isFailure(result)) {
       throw controlPlaneException(result.failure);
@@ -154,9 +128,10 @@ export const createProcessingRoutes = (
     const jobId = c.req.param("jobId");
     const result = await execute(
       c,
-      startSymbolProcessingJob({ jobId, startedAt: new Date().toISOString() }).pipe(
-        Effect.andThen(() => readSymbolProcessingJob(jobId)),
-      ),
+      startSymbolProcessingJob({
+        jobId,
+        startedAt: new Date().toISOString(),
+      }).pipe(Effect.andThen(() => readSymbolProcessingJob(jobId))),
     );
 
     if (Result.isFailure(result)) {

@@ -1,1 +1,2 @@
 EODHD_API_TOKEN=replace-with-your-eodhd-api-token
+PROCESSING_API_TOKEN=local-processing-token
