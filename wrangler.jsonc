@@ -3,50 +3,63 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "data-service",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-09-26",
-  "assets": {
-    "binding": "ASSETS",
-    "directory": "./public",
-  },
-  "observability": {
-    "enabled": true,
-  },
-  "upload_source_maps": true,
-  "workers_dev": false,
-  "preview_urls": false,
-  "r2_buckets": [
-    {
-      "bucket_name": "raw-market-data",
-      "binding": "MARKET_DATA_BUCKET",
-    },
-  ],
-  "secrets": {
-    "required": ["EODHD_API_TOKEN"],
-  },
-  /**
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "data-service",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-02",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./public",
+	},
+	"observability": {
+		"enabled": true,
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 0.01,
+		},
+	},
+	"upload_source_maps": true,
+	"workers_dev": false,
+	"preview_urls": false,
+	"r2_buckets": [
+		{
+			"bucket_name": "raw-market-data",
+			"binding": "MARKET_DATA_BUCKET",
+		},
+	],
+	"secrets": {
+		"required": [
+			"EODHD_API_TOKEN"
+		],
+	},
+	"d1_databases": [
+		{
+			"binding": "MARKET_DATA_DB",
+			"database_name": "data-service-market-data",
+			"database_id": "02d3dda4-f7b7-4bd1-a1db-e6e9a738b297",
+		}
+	],
+	/**
    * Smart Placement
    * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
    */
-  // "placement": {  "mode": "smart" }
-  /**
+	// "placement": {  "mode": "smart" }
+	/**
    * Bindings
    * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
    * databases, object storage, AI inference, real-time communication and more.
    * https://developers.cloudflare.com/workers/runtime-apis/bindings/
    */
-  /**
+	/**
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
    */
-  // "vars": {  "MY_VARIABLE": "production_value" }
-  /**
+	// "vars": {  "MY_VARIABLE": "production_value" }
+	/**
    * Service Bindings (communicate between multiple Workers)
    * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
    */
-  // "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
 }
