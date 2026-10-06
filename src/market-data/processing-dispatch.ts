@@ -27,6 +27,12 @@ export async function scheduleProcessing(
       SELECT DISTINCT run.symbol FROM ingestion_runs AS run
       WHERE run.status = 'raw_complete' AND run.symbol > ?
         AND NOT EXISTS (
+          SELECT 1 FROM ingestion_runs AS newer
+          WHERE newer.symbol = run.symbol AND newer.status = 'raw_complete'
+            AND (newer.created_at > run.created_at
+              OR (newer.created_at = run.created_at AND newer.run_id > run.run_id))
+        )
+        AND NOT EXISTS (
           SELECT 1 FROM canonical_run_applications AS application
           WHERE application.symbol = run.symbol AND application.run_id = run.run_id
         )
@@ -38,6 +44,11 @@ export async function scheduleProcessing(
           SELECT 1 FROM processing_jobs AS failed
           JOIN processing_job_runs AS selected ON selected.job_id = failed.job_id
           WHERE failed.symbol = run.symbol AND failed.status = 'failed'
+            AND NOT EXISTS (
+              SELECT 1 FROM processing_jobs AS recovery
+              WHERE recovery.symbol = failed.symbol AND recovery.status = 'completed'
+                AND recovery.mode = 'rebuild' AND recovery.created_at > failed.created_at
+            )
             AND NOT EXISTS (
               SELECT 1 FROM canonical_run_applications AS applied
               WHERE applied.symbol = failed.symbol AND applied.run_id = selected.run_id
@@ -53,7 +64,7 @@ export async function scheduleProcessing(
       const result = await prepareSymbolProcessingJob({
         jobId: crypto.randomUUID(),
         symbol,
-        mode: "merge",
+        mode: "rebuild",
         transformVersion: "v1",
         createdAt,
       }).pipe(Effect.provide(controlPlane), Effect.result, Effect.runPromise);

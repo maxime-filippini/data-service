@@ -5,6 +5,7 @@ import { URL } from "node:url";
 import test from "node:test";
 import { Effect, Layer } from "effect";
 import { MarketDataControlPlane, type ProcessingJob, type ProcessingJobStatus } from "$/market-data/control-plane";
+import { selectedRunsQuery } from "$/market-data/control-plane/d1";
 import { executeProcessingMessage, scheduleProcessing } from "$/market-data/processing-dispatch";
 
 function harness(initial: ProcessingJobStatus = "queued") {
@@ -21,7 +22,7 @@ function harness(initial: ProcessingJobStatus = "queued") {
     readProcessingJob: () => Effect.succeed({ ...job, status }),
     createProcessingJob: (input) => Effect.sync(() => {
       assert.equal(input.transformVersion, "v1");
-      assert.equal(input.mode, "merge");
+      assert.equal(input.mode, "rebuild");
       created.push(input.symbol);
       return { ...job, ...input, status: "queued" as const };
     }),
@@ -72,6 +73,9 @@ test("schedule selects pending symbols, blocks failed inputs, and republishes qu
     (run_id, provider, symbol, requested_from, requested_to, status, created_at)
     VALUES (?, 'eodhd', ?, '2026-10-01', '2026-10-06', 'raw_complete', '2026-10-06')`);
   for (const symbol of ["PENDING", "APPLIED", "ACTIVE", "FAILED"]) run.run(symbol, symbol);
+  sqlite.prepare(`INSERT INTO ingestion_runs
+    (run_id, provider, symbol, requested_from, requested_to, status, created_at)
+    VALUES ('old-applied-symbol', 'eodhd', 'APPLIED', '2026-10-01', '2026-10-05', 'raw_complete', '2026-10-05')`).run();
   for (let index = 0; index < 105; index++) {
     const symbol = `BATCH-${String(index).padStart(3, "0")}`;
     run.run(symbol, symbol);
@@ -94,6 +98,7 @@ test("schedule selects pending symbols, blocks failed inputs, and republishes qu
     createProcessingJob: (input) => Effect.sync(() => {
       state.created.push(input.symbol);
       assert.equal(input.transformVersion, "v1");
+      assert.equal(input.mode, "rebuild");
       sqlite.prepare(`INSERT INTO processing_jobs
         (job_id, symbol, mode, canonical_key, transform_version, status, created_at)
         VALUES (?, ?, ?, ?, ?, 'queued', ?)`).run(input.jobId, input.symbol, input.mode, input.canonicalKey, input.transformVersion, input.createdAt);
@@ -121,6 +126,28 @@ test("schedule selects pending symbols, blocks failed inputs, and republishes qu
     assert.equal(delivered.length, 107);
     assert.equal(new Set(delivered).size, 107);
     assert.ok(delivered.includes("queued"));
+    sqlite.exec(`INSERT INTO processing_jobs
+      (job_id, symbol, mode, canonical_key, transform_version, status, created_at)
+      VALUES ('recovery', 'FAILED', 'rebuild', 'data', 'v1', 'completed', '2026-10-07')`);
+    await scheduleProcessing(database, queue, layer, "2026-10-08");
+    assert.equal(state.created.at(-1), "FAILED");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("rebuild selects only the latest successful snapshot by ingestion creation time", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  try {
+    sqlite.exec(readFileSync(new URL("../migrations/0001_initial_market_data_control_plane.sql", import.meta.url), "utf8"));
+    sqlite.exec(`INSERT INTO ingestion_runs
+      (run_id, provider, symbol, requested_from, requested_to, status, created_at, completed_at)
+      VALUES
+      ('older', 'eodhd', 'AAPL.US', '2000-01-01', '2026-10-04', 'raw_complete', '2026-10-04', '2026-10-06'),
+      ('latest', 'eodhd', 'AAPL.US', '2000-01-01', '2026-10-05', 'raw_complete', '2026-10-05', '2026-10-05'),
+      ('failed', 'eodhd', 'AAPL.US', '2000-01-01', '2026-10-06', 'failed', '2026-10-06', '2026-10-06');`);
+    assert.deepEqual(sqlite.prepare(selectedRunsQuery("rebuild")).all("AAPL.US").map((row) => row.run_id), ["latest"]);
+    assert.deepEqual(sqlite.prepare(selectedRunsQuery("rebuild")).all("UNKNOWN"), []);
   } finally {
     sqlite.close();
   }

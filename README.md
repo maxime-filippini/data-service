@@ -45,7 +45,7 @@ each symbol. The Worker binds them separately as `MARKET_DATA_BUCKET` and
 `PROCESSED_MARKET_DATA_BUCKET`, respectively.
 
 Only one processing job may be active per symbol. New ingestion runs that
-arrive during processing remain pending for the following merge job.
+arrive during processing remain available for the following job.
 
 ## Processing-job API
 
@@ -54,6 +54,9 @@ The Python processor uses a bearer token to access the following API under
 
 - `POST /` freezes eligible runs into a job. Its JSON body is
   `{ symbol, mode, transformVersion }`, where `mode` is `merge` or `rebuild`.
+  `rebuild` selects only the latest completed snapshot by ingestion creation
+  time, with run ID as a deterministic tie breaker. Each snapshot must contain
+  the symbol's full history. `merge` selects all completed runs not yet applied.
 - `GET /:jobId` returns the frozen raw-object selection and canonical target.
 - `POST /:jobId/claim` atomically moves a queued job to `processing`.
 - `POST /:jobId/complete` records `{ outputEtag, completeThrough? }` after
@@ -72,9 +75,9 @@ to the processor.
 
 ## Scheduled processing
 
-The Worker runs daily at **02:00 UTC** (`0 2 * * *`). It creates `merge` jobs
-with transform version `v1` for symbols with unapplied completed ingestion
-runs, then publishes queued job IDs to `market-data-processing`. This also
+The Worker runs daily at **02:00 UTC** (`0 2 * * *`). It creates `rebuild` jobs
+with transform version `v1` for symbols whose latest completed snapshot has
+not been applied, then publishes queued job IDs to `market-data-processing`. This also
 delivers manually created jobs on the next schedule. Scheduling processes
 existing ingestion runs; it does not fetch new provider data.
 
@@ -91,9 +94,23 @@ deliveries. A claimed job is never automatically reclaimed: interrupted
 processing requires reconciliation. Terminal failed jobs are acknowledged
 and logged; symbols with failed, unapplied inputs are excluded from automatic
 job creation. Inspect the canonical R2 object and D1 ETag before submitting a
-manual merge or rebuild. A successful manual job applying those inputs allows
-scheduling to resume. Rebuilds require particular care because they overwrite
+manual merge or rebuild. A successful manual job applying those inputs, or a
+later successful rebuild, allows scheduling to resume. Rebuilds overwrite
 the canonical object.
+
+### Raw snapshot retention policy
+
+Daily full-history snapshots should have a 30-day retention window. Retain
+the latest successful snapshot and any snapshot referenced by a queued or
+processing job until a replacement is available or the job is reconciled.
+The canonical Parquet object is kept independently of this raw retention.
+
+This retention policy is not yet enforced. A bucket-wide age-only lifecycle
+rule cannot protect those exceptions, so do not enable blanket expiration
+until cleanup coordinates with D1 job state. Cleanup must also mark deleted
+raw inputs unavailable so manual merge jobs cannot select them. Gzip storage
+is a separate optimization requiring support in both the raw writer and
+Python reader; existing raw envelopes remain uncompressed for now.
 
 ### Container deployment setup
 

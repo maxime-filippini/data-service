@@ -169,12 +169,13 @@ const failIngestionRun = (
     { runId },
   ).pipe(Effect.asVoid);
 
-const selectedRunsQuery = (mode: ProcessingJobMode) =>
+export const selectedRunsQuery = (mode: ProcessingJobMode) =>
   mode === "rebuild"
     ? `SELECT run_id
        FROM ingestion_runs
        WHERE symbol = ? AND status = 'raw_complete'
-       ORDER BY completed_at, run_id`
+       ORDER BY created_at DESC, run_id DESC
+       LIMIT 1`
     : `SELECT run_id
        FROM ingestion_runs AS run
        WHERE run.symbol = ?

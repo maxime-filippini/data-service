@@ -110,7 +110,10 @@ POST /processing-jobs
 Modes:
 
 - `merge`: select completed runs not yet applied to the canonical dataset.
-- `rebuild`: select every completed run for the symbol.
+- `rebuild`: select the latest completed full-history snapshot for the symbol,
+  ordered by ingestion creation time and then run ID descending. Daily
+  scheduled processing uses this mode. Superseded snapshots do not trigger
+  another job once the latest snapshot has been applied.
 
 Only one `queued` or `processing` job may exist for a symbol. This protects a
 symbol's single canonical object from concurrent writers.
