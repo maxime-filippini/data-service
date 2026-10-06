@@ -1,7 +1,7 @@
 # Data service
 
 Architecture and the Python-processor handoff are documented in
-[MARKET_DATA_ARCHITECTURE.md](MARKET_DATA_ARCHITECTURE.md).
+[MARKET_DATA_ARCHITECTURE.md](docs/MARKET_DATA_ARCHITECTURE.md).
 
 Install dependencies and start the Worker locally:
 
@@ -34,7 +34,7 @@ model:
    ID.
 3. D1 records the run and the raw object's key, ETag, observed range, and row
    count.
-4. A processing job freezes the exact runs a future Python processor must
+4. A processing job freezes the exact runs the Python processor must
    merge or use for a rebuild.
 5. The eventual canonical object has one stable key per symbol:
    `dataset=prices_eod/symbol=<symbol>/data.parquet`.
@@ -67,8 +67,71 @@ pnpm exec wrangler secret put PROCESSING_API_TOKEN
 ```
 
 The processor must send `Authorization: Bearer <token>`. There is
-intentionally no "next job" endpoint yet: a future queue will deliver a
-specific job ID to the processor.
+intentionally no "next job" endpoint: the queue delivers a specific job ID
+to the processor.
+
+## Scheduled processing
+
+The Worker runs daily at **02:00 UTC** (`0 2 * * *`). It creates `merge` jobs
+with transform version `v1` for symbols with unapplied completed ingestion
+runs, then publishes queued job IDs to `market-data-processing`. This also
+delivers manually created jobs on the next schedule. Scheduling processes
+existing ingestion runs; it does not fetch new provider data.
+
+D1 remains the source of queued work. If queue publication fails, the next
+schedule republishes it. At-least-once delivery is safe for completed jobs:
+the consumer checks state before execution and the processor atomically claims
+the job. A single consumer and container instance execute one job at a time.
+The container listens on port 8080 and stays awake during execution, then
+sleeps after five minutes of inactivity.
+
+Delivery failures retry three times with a five-minute delay, then move to
+`market-data-processing-dlq`. Inspect that queue and Worker logs for failed
+deliveries. A claimed job is never automatically reclaimed: interrupted
+processing requires reconciliation. Terminal failed jobs are acknowledged
+and logged; symbols with failed, unapplied inputs are excluded from automatic
+job creation. Inspect the canonical R2 object and D1 ETag before submitting a
+manual merge or rebuild. A successful manual job applying those inputs allows
+scheduling to resume. Rebuilds require particular care because they overwrite
+the canonical object.
+
+### Container deployment setup
+
+Keep the processor repository checked out as `../data-service-processor`.
+Wrangler builds its Dockerfile with that directory as the build context; CI
+must also check out that repository beside this one at the intended revision.
+Docker must be running for container builds, which target `linux/amd64`.
+
+Create both queues before the first deployment:
+
+```sh
+pnpm exec wrangler queues create market-data-processing
+pnpm exec wrangler queues create market-data-processing-dlq
+```
+
+Configure these additional Worker secrets (Wrangler passes them into the
+container at runtime):
+
+```sh
+pnpm exec wrangler secret put PROCESSOR_API_TOKEN
+pnpm exec wrangler secret put PROCESSING_API_URL
+pnpm exec wrangler secret put R2_ENDPOINT_URL
+pnpm exec wrangler secret put R2_ACCESS_KEY_ID
+pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
+```
+
+`PROCESSING_API_URL` must be the deployed Worker base URL reachable by the
+container, including any prefix before `/processing-jobs`. The container uses
+the Worker's existing `PROCESSING_API_TOKEN` for callbacks. Use a separate
+`PROCESSOR_API_TOKEN` to authenticate execution. R2 credentials need read access
+to `raw-market-data` and read/write access to `processed-market-data`.
+No credentials are baked into the image.
+
+Deploy with `pnpm deploy` after applying D1 migrations and configuring secrets.
+For local development, add these values to ignored `.dev.vars`, use a Worker
+URL reachable from Docker, and run `pnpm dev --test-scheduled`. Trigger the
+local schedule through `/cdn-cgi/handler/scheduled`. Local queue simulation
+does not validate the processor's remote R2 access or callback routing.
 
 ## Deployment
 
@@ -96,6 +159,5 @@ Things that have been postponed but will have to be tackled eventually:
 
 - [ ] Market data cache writes should be done outside of the GET request
 - [ ] Trigger run-based ingestion from a schedule rather than an HTTP read
-- [ ] Publish processing-job IDs to the external Python processor
 - [ ] Replace the temporary validated-response envelope with the provider's
       exact response bytes when provider adapters expose them

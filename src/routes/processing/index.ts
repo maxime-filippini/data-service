@@ -68,7 +68,7 @@ const runProcessingProgram = async <A>(
  * Processor-facing API for the frozen job inputs and their state transitions.
  *
  * A caller must possess PROCESSING_API_TOKEN. The API intentionally has no
- * "next job" endpoint: a queue will later deliver a specific job ID, so a
+ * "next job" endpoint: the scheduled queue delivers a specific job ID, so a
  * processor cannot accidentally take work for another symbol.
  */
 export const createProcessingRoutes = (

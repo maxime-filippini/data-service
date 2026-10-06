@@ -11,6 +11,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@cloudflare/containers": "^0.3.7",
 		"effect": "4.0.0-rc.118",
 		"hono": "^4.13.12"
 	},
