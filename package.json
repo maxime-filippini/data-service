@@ -5,6 +5,8 @@
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy --minify",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
+		"db:migrate:local": "wrangler d1 migrations apply data-service-market-data --local",
+		"db:migrate:remote": "wrangler d1 migrations apply data-service-market-data --remote",
 		"test": "node --import tsx --test test/*.test.*",
 		"typecheck": "tsc --noEmit"
 	},
