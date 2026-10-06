@@ -44,6 +44,29 @@ each symbol. The Worker binds them separately as `MARKET_DATA_BUCKET` and
 Only one processing job may be active per symbol. New ingestion runs that
 arrive during processing remain pending for the following merge job.
 
+## Processing-job API
+
+The Python processor uses a bearer token to access the following API under
+`/processing-jobs`:
+
+- `POST /` freezes eligible runs into a job. Its JSON body is
+  `{ symbol, mode, transformVersion }`, where `mode` is `merge` or `rebuild`.
+- `GET /:jobId` returns the frozen raw-object selection and canonical target.
+- `POST /:jobId/claim` atomically moves a queued job to `processing`.
+- `POST /:jobId/complete` records `{ outputEtag, completeThrough? }` after
+  the canonical Parquet object has been written.
+- `POST /:jobId/fail` records `{ message }` and releases the symbol lock.
+
+Set the token before deploying this API:
+
+```sh
+pnpm exec wrangler secret put PROCESSING_API_TOKEN
+```
+
+The processor must send `Authorization: Bearer <token>`. There is
+intentionally no "next job" endpoint yet: a future queue will deliver a
+specific job ID to the processor.
+
 ## Deployment
 
 ```txt

@@ -4,8 +4,10 @@ import { HTTPException } from "hono/http-exception";
 
 import { effectValidator } from "$/effect-validator";
 import { MarketDataLive, retrieveDailyMarketData } from "$/market-data";
+import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
 import { R2MarketDataCacheLive } from "$/market-data/r2-cache";
+import { createProcessingJobsApp } from "$/processing-jobs-http";
 import {
   MarketDataQuerySchema,
   type MarketDataRequest,
@@ -16,6 +18,13 @@ type Bindings = CloudflareBindings & {
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+app.route(
+  "/processing-jobs",
+  createProcessingJobsApp((bindings) =>
+    D1MarketDataControlPlaneLive(bindings.MARKET_DATA_DB),
+  ),
+);
 
 /** Run the provider-neutral program using the EODHD production adapter. */
 const runEodhdMarketData = (
