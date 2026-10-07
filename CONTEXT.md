@@ -33,5 +33,6 @@ canonical dataset.
 
 ## Rebuild
 
-Processing mode that recreates the canonical dataset from every completed
-ingestion run for the symbol.
+Processing mode that recreates the canonical dataset from the latest completed
+full-history snapshot for the symbol, ordered by ingestion creation time and
+then run ID. It ignores the existing canonical dataset.

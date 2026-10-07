@@ -3,6 +3,9 @@
 This document is the handoff for the Python processor. It describes the
 current control-plane contract and the intended end-to-end data flow.
 
+For the proposed delivery sequence and acceptance criteria, see
+[NEXT_STEPS_SPEC.md](NEXT_STEPS_SPEC.md).
+
 ## Purpose
 
 The system separates immutable provider inputs from the mutable,
@@ -18,7 +21,7 @@ transformation and Parquet production.
 
 ## Ubiquitous language
 
-The concise definitions are in [CONTEXT.md](CONTEXT.md). In particular,
+The concise definitions are in [CONTEXT.md](../CONTEXT.md). In particular,
 do not conflate an **ingestion run** with a **processing job**:
 
 - An ingestion run obtains raw data for one symbol and date range.
@@ -29,7 +32,7 @@ do not conflate an **ingestion run** with a **processing job**:
 
 | Part | Responsibilities | Does not do |
 | --- | --- | --- |
-| Worker | Create and record ingestion runs, store raw objects, create/freeze processing jobs, expose processing-job state transitions, and later publish job IDs to a queue. | Transform rows into Parquet or run expensive calculations. |
+| Worker | Create and record ingestion runs, store raw objects, create/freeze processing jobs, expose processing-job state transitions, publish job IDs to a queue, and invoke the container on delivery. | Transform rows into Parquet or run expensive calculations. |
 | D1 control plane | Record run/job state, immutable input membership, canonical-dataset revision metadata, and applied-run history. | Store market-data payloads or Parquet files. |
 | Raw R2 bucket | Retain immutable, validated provider responses. | Serve the canonical calculation dataset. |
 | Python processor | Claim a job, read its frozen raw inputs, normalize and merge/rebuild data, write canonical Parquet, then complete or fail the job. | Discover work by listing R2 or decide which ingestion runs belong to a job. |
@@ -120,9 +123,10 @@ symbol's single canonical object from concurrent writers.
 
 ### 3. Claim and process
 
-The processor receives a specific **processing job ID**. At present this is a
-manual handoff. Later, job creation should publish `{ "jobId": "..." }` to a
-queue; the queue consumer runs the same processor command.
+The processor receives a specific **processing job ID**. The daily schedule
+creates eligible rebuild jobs and publishes queued IDs as `{ "jobId": "..." }`.
+The Worker queue consumer invokes the private Python container execution
+endpoint. Operators can also invoke the processor CLI manually with a job ID.
 
 ```txt
 queued --claim--> processing --complete--> completed
@@ -174,7 +178,7 @@ contains the raw object keys and ETags the processor must consume.
 
 ## Python processor contract
 
-The first processor should be a one-shot command:
+The sibling `data-service-processor` implements a one-shot command:
 
 ```txt
 processor --job-id <processing-job-id>
@@ -191,7 +195,9 @@ Its algorithm is:
    For `merge`, read the canonical Parquet input when present and incorporate
    the frozen new raw inputs.
 6. Write the complete replacement Parquet file to the canonical key in
-   `processed-market-data`.
+   `processed-market-data`. Merge writes are conditional on the expected base
+   ETag (or object absence for an initial merge); rebuild writes replace the
+   object without a base ETag condition.
 7. Call `complete` with the resulting R2 ETag. If any step after claim fails,
    call `fail` with an operational error message.
 
@@ -210,10 +216,11 @@ derive job membership from bucket listings.
 | --- | --- |
 | Raw and processed R2 buckets | Provisioned. |
 | D1 control-plane schema | Defined in `migrations/0001_initial_market_data_control_plane.sql`; apply it before using the API. |
-| Processing-job HTTP routes | Implemented in the Worker branch; deploy with `PROCESSING_API_TOKEN` configured. |
+| Processing-job HTTP routes | Implemented on `develop`; deployment needs `PROCESSING_API_TOKEN`. |
 | Scheduled ingestion / ingestion HTTP route | Not implemented. |
-| Python processor | Not implemented. |
-| Queue publication and consumption | Not implemented. |
+| Python processor | Implemented in the sibling `data-service-processor` repository, with CLI and authenticated synchronous HTTP execution. |
+| Queue publication and consumption | Implemented: daily schedule publishes queued IDs; Worker consumer invokes the private container. |
+| Direct provider JSON API | `GET /market-data/eodhd` fetches validated EODHD data without R2 access or ingestion side effects. The legacy HTTP cache has been removed. |
 | Claim lease / recovery | Not implemented. |
 
 ## Local end-to-end test shape
@@ -225,4 +232,6 @@ derive job membership from bucket listings.
 4. Run the Python command with the returned job ID.
 5. Assert the canonical Parquet object exists and the job is `completed`.
 
-This is the first integration test to build in the Python processor project.
+The Python repository has simulated Worker/R2 integration tests with actual
+Parquet serialization. This live cross-repository test remains a deployment
+verification step; local simulated R2 is not the processor's S3 storage.

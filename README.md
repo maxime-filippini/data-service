@@ -3,6 +3,9 @@
 Architecture and the Python-processor handoff are documented in
 [MARKET_DATA_ARCHITECTURE.md](docs/MARKET_DATA_ARCHITECTURE.md).
 
+The proposed implementation sequence and acceptance criteria are in
+[NEXT_STEPS_SPEC.md](docs/NEXT_STEPS_SPEC.md).
+
 Install dependencies and start the Worker locally:
 
 ```sh
@@ -24,10 +27,28 @@ it explicitly when deploying a schema change:
 pnpm db:migrate:remote
 ```
 
+## Direct provider JSON API
+
+`GET /market-data/eodhd` retrieves validated daily prices directly from EODHD:
+
+```sh
+curl 'http://localhost:8787/market-data/eodhd?symbols=AAPL.US,MSFT.US&from=2024-01-01&to=2024-01-31'
+```
+
+The response is JSON keyed by symbol, with an array of EOD entries for each.
+`symbols` accepts up to 20 unique comma-separated symbols; `from` and `to` are
+inclusive calendar dates. The Worker uses its `EODHD_API_TOKEN` secret.
+Every request fetches the full requested range from the provider. It does not
+read or write R2, create ingestion runs, or update canonical datasets.
+
+The legacy cache route `/market-data/market-data` has been removed. The `force`
+parameter is no longer part of the request contract. Invalid queries return
+`400`, missing provider configuration returns `500`, and upstream request or
+validation failures return `502` with a sanitized error.
+
 ## Market-data flow
 
-The current HTTP cache remains available while ingestion moves to a run-based
-model:
+The separate run-based ingestion and processing model is:
 
 1. An ingestion run fetches one symbol and date range.
 2. The validated response is stored as one immutable R2 object under its run
@@ -174,7 +195,6 @@ const app = new Hono<{ Bindings: CloudflareBindings }>()
 
 Things that have been postponed but will have to be tackled eventually:
 
-- [ ] Market data cache writes should be done outside of the GET request
 - [ ] Trigger run-based ingestion from a schedule rather than an HTTP read
 - [ ] Replace the temporary validated-response envelope with the provider's
       exact response bytes when provider adapters expose them
