@@ -1,121 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  makeEodEntry,
-  makeMarketDataTestHarness,
-} from "./support/market-data-mocks";
+import { makeEodEntry, makeMarketDataTestHarness } from "./support/market-data-mocks";
 
-test("a range after cached coverage fetches the entire requested range", async () => {
-  const harness = makeMarketDataTestHarness({
-    coverage: [{ from: "2024-01-01", to: "2024-01-05" }],
-    cachedEntries: [],
-    providerEntries: [
-      makeEodEntry("2024-01-10"),
-      makeEodEntry("2024-01-11"),
-      makeEodEntry("2024-01-12"),
-    ],
-  });
-
-  const result = await harness.retrieve({
-    symbols: ["AAPL.US"],
-    from: "2024-01-10",
-    to: "2024-01-12",
-    force: false,
-  });
-
-  assert.deepEqual(
-    {
-      requestedRanges: harness.sourceRequests.map(({ range }) => range),
-      returnedDates: result["AAPL.US"].map(({ date }) => date),
-      storedCoverage: harness.storeRequests.flatMap(({ coverage }) => coverage),
-    },
-    {
-      requestedRanges: [{ from: "2024-01-10", to: "2024-01-12" }],
-      returnedDates: ["2024-01-10", "2024-01-11", "2024-01-12"],
-      storedCoverage: [{ from: "2024-01-10", to: "2024-01-12" }],
-    },
-  );
+test("every request fetches the full range for each symbol", async () => {
+  const entries = [makeEodEntry("2024-01-02"), makeEodEntry("2024-01-03")];
+  const harness = makeMarketDataTestHarness({ providerEntries: entries });
+  const request = { symbols: ["AAPL.US", "MSFT.US"], from: "2024-01-01", to: "2024-01-03" } as const;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assert.deepEqual(await harness.retrieve(request), { "AAPL.US": entries, "MSFT.US": entries });
+  }
+  assert.deepEqual(harness.sourceRequests, [
+    { symbol: "AAPL.US", range: { from: request.from, to: request.to } },
+    { symbol: "MSFT.US", range: { from: request.from, to: request.to } },
+    { symbol: "AAPL.US", range: { from: request.from, to: request.to } },
+    { symbol: "MSFT.US", range: { from: request.from, to: request.to } },
+  ]);
 });
 
-test("partial coverage fetches only the gaps around the cached range", async () => {
-  const harness = makeMarketDataTestHarness({
-    coverage: [{ from: "2024-01-03", to: "2024-01-05" }],
-    cachedEntries: [
-      makeEodEntry("2024-01-03"),
-      makeEodEntry("2024-01-04"),
-      makeEodEntry("2024-01-05"),
-    ],
-    providerEntries: [
-      makeEodEntry("2024-01-01"),
-      makeEodEntry("2024-01-02"),
-      makeEodEntry("2024-01-06"),
-      makeEodEntry("2024-01-07"),
-    ],
-  });
-
-  const result = await harness.retrieve({
-    symbols: ["AAPL.US"],
-    from: "2024-01-01",
-    to: "2024-01-07",
-    force: false,
-  });
-
-  assert.deepEqual(
-    {
-      requestedRanges: harness.sourceRequests.map(({ range }) => range),
-      returnedDates: result["AAPL.US"].map(({ date }) => date),
-      storedCoverage: harness.storeRequests.flatMap(({ coverage }) => coverage),
-    },
-    {
-      requestedRanges: [
-        { from: "2024-01-01", to: "2024-01-02" },
-        { from: "2024-01-06", to: "2024-01-07" },
-      ],
-      returnedDates: [
-        "2024-01-01",
-        "2024-01-02",
-        "2024-01-03",
-        "2024-01-04",
-        "2024-01-05",
-        "2024-01-06",
-        "2024-01-07",
-      ],
-      storedCoverage: [
-        { from: "2024-01-01", to: "2024-01-02" },
-        { from: "2024-01-06", to: "2024-01-07" },
-      ],
-    },
-  );
-});
-
-test("complete coverage returns cached entries without calling the provider", async () => {
-  const cachedEntries = [
-    makeEodEntry("2024-01-01"),
-    makeEodEntry("2024-01-02"),
-    makeEodEntry("2024-01-03"),
-  ];
-  const harness = makeMarketDataTestHarness({
-    coverage: [{ from: "2024-01-01", to: "2024-01-03" }],
-    cachedEntries,
-    providerEntries: [],
-  });
-
-  const result = await harness.retrieve({
-    symbols: ["AAPL.US"],
-    from: "2024-01-01",
-    to: "2024-01-03",
-    force: false,
-  });
-
-  assert.deepEqual(
-    {
-      requestedRanges: harness.sourceRequests.map(({ range }) => range),
-      returnedDates: result["AAPL.US"].map(({ date }) => date),
-    },
-    {
-      requestedRanges: [],
-      returnedDates: ["2024-01-01", "2024-01-02", "2024-01-03"],
-    },
-  );
+test("an empty provider response remains an empty JSON array", async () => {
+  const harness = makeMarketDataTestHarness({ providerEntries: [] });
+  assert.deepEqual(await harness.retrieve({
+    symbols: ["AAPL.US"], from: "2024-01-01", to: "2024-01-01",
+  }), { "AAPL.US": [] });
 });

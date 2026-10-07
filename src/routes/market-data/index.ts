@@ -1,7 +1,6 @@
 import { effectValidator } from "$/effect-validator";
 import { MarketDataLive, retrieveDailyMarketData } from "$/market-data";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
-import { R2MarketDataCacheLive } from "$/market-data/r2-cache";
 import {
   MarketDataQuerySchema,
   MarketDataRequest,
@@ -10,7 +9,7 @@ import { Effect, Layer, Result } from "effect";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
-type MarketDataBindings = CloudflareBindings & {};
+type MarketDataBindings = Pick<CloudflareBindings, "EODHD_API_TOKEN">;
 
 type AppEnvironment = { Bindings: MarketDataBindings };
 
@@ -18,17 +17,11 @@ type AppEnvironment = { Bindings: MarketDataBindings };
 const runEodhdMarketData = (
   request: MarketDataRequest,
   apiToken: unknown,
-  bucket: R2Bucket,
 ) =>
   retrieveDailyMarketData(request).pipe(
     Effect.provide(
       MarketDataLive.pipe(
-        Layer.provide(
-          Layer.merge(
-            EodhdMarketDataSourceLive(apiToken),
-            R2MarketDataCacheLive(bucket),
-          ),
-        ),
+        Layer.provide(EodhdMarketDataSourceLive(apiToken)),
       ),
     ),
     Effect.result,
@@ -39,13 +32,12 @@ export const createMarketDataRoutes = () => {
   const app = new Hono<AppEnvironment>();
 
   app.get(
-    "/market-data",
+    "/eodhd",
     effectValidator("query", MarketDataQuerySchema),
     async (c) => {
       const result = await runEodhdMarketData(
         c.req.valid("query"),
         c.env.EODHD_API_TOKEN,
-        c.env.MARKET_DATA_BUCKET,
       );
 
       if (Result.isFailure(result)) {

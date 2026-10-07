@@ -1,11 +1,9 @@
 import { Effect, Layer } from "effect";
 
 import {
-  MarketDataCache,
   MarketDataLive,
   MarketDataSource,
   retrieveDailyMarketData,
-  type StoreMarketData,
 } from "$/market-data";
 import type { DateRange } from "$/market-data/coverage";
 import type {
@@ -14,8 +12,6 @@ import type {
 } from "$/market-data/schemas";
 
 interface MarketDataTestHarnessOptions {
-  readonly coverage: readonly DateRange[];
-  readonly cachedEntries: readonly EodEntry[];
   readonly providerEntries: readonly EodEntry[];
 }
 
@@ -40,14 +36,13 @@ export const makeEodEntry = (date: string): EodEntry => ({
 });
 
 /**
- * Runs the public MarketData program with controllable source and cache
- * boundaries. Recorded requests make cache hit/miss decisions visible.
+ * Runs the public MarketData program with a controllable provider.
+ * Recorded requests expose which symbols and ranges were fetched.
  */
 export const makeMarketDataTestHarness = (
   options: MarketDataTestHarnessOptions,
 ) => {
   const sourceRequests: SourceRequest[] = [];
-  const storeRequests: StoreMarketData[] = [];
 
   const source = MarketDataSource.of({
     provider: "test-provider",
@@ -58,25 +53,11 @@ export const makeMarketDataTestHarness = (
       }),
   });
 
-  const cache = MarketDataCache.of({
-    readCoverage: () => Effect.succeed(options.coverage),
-    readEntries: (_key, range) =>
-      Effect.succeed(entriesWithin(options.cachedEntries, range)),
-    store: (input) =>
-      Effect.sync(() => {
-        storeRequests.push(input);
-      }),
-  });
-
-  const dependencies = Layer.merge(
-    Layer.succeed(MarketDataSource, source),
-    Layer.succeed(MarketDataCache, cache),
-  );
+  const dependencies = Layer.succeed(MarketDataSource, source);
   const marketData = MarketDataLive.pipe(Layer.provide(dependencies));
 
   return {
     sourceRequests,
-    storeRequests,
     retrieve: (request: MarketDataRequest) =>
       retrieveDailyMarketData(request).pipe(
         Effect.provide(marketData),
