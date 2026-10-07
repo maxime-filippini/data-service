@@ -110,4 +110,26 @@ export const EodEntriesBySymbolSchema = Schema.Record(
   MarketSymbolSchema,
   EodEntriesSchema,
 );
+
+/** A request to freeze available raw runs into one processing attempt. */
+export const CreateProcessingJobSchema = Schema.Struct({
+  symbol: MarketSymbolSchema,
+  mode: Schema.Literals(["merge", "rebuild"]),
+  transformVersion: Schema.NonEmptyString,
+});
+export type CreateProcessingJobRequest = typeof CreateProcessingJobSchema.Type;
+
+/** The processor's report after it writes the canonical Parquet object. */
+export const CompleteProcessingJobSchema = Schema.Struct({
+  outputEtag: Schema.NonEmptyString,
+  completeThrough: Schema.optionalKey(MarketDateSchema),
+});
+export type CompleteProcessingJobRequest =
+  typeof CompleteProcessingJobSchema.Type;
+
+/** The processor's terminal failure report. */
+export const FailProcessingJobSchema = Schema.Struct({
+  message: Schema.NonEmptyString,
+});
+export type FailProcessingJobRequest = typeof FailProcessingJobSchema.Type;
 export type EodEntriesBySymbol = typeof EodEntriesBySymbolSchema.Type;

@@ -1,15 +1,11 @@
-import { Effect, Layer, Result } from "effect";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
 
-import { effectValidator } from "$/effect-validator";
-import { MarketDataLive, retrieveDailyMarketData } from "$/market-data";
-import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
-import { R2MarketDataCacheLive } from "$/market-data/r2-cache";
-import {
-  MarketDataQuerySchema,
-  type MarketDataRequest,
-} from "$/market-data/schemas";
+import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
+import { createProcessingRoutes } from "$/routes/processing";
+import { createMarketDataRoutes } from "./routes/market-data";
+import { executeProcessingMessage, scheduleProcessing } from "$/market-data/processing-dispatch";
+
+export { MarketDataProcessor } from "./processor-container";
 
 type Bindings = CloudflareBindings & {
   readonly EODHD_API_TOKEN?: string;
@@ -17,53 +13,38 @@ type Bindings = CloudflareBindings & {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-/** Run the provider-neutral program using the EODHD production adapter. */
-const runEodhdMarketData = (
-  request: MarketDataRequest,
-  apiToken: unknown,
-  bucket: R2Bucket,
-) =>
-  retrieveDailyMarketData(request).pipe(
-    Effect.provide(
-      MarketDataLive.pipe(
-        Layer.provide(
-          Layer.merge(
-            EodhdMarketDataSourceLive(apiToken),
-            R2MarketDataCacheLive(bucket),
-          ),
-        ),
-      ),
-    ),
-    Effect.result,
-    Effect.runPromise,
-  );
-
-app.get(
-  "/market-data",
-  effectValidator("query", MarketDataQuerySchema),
-  async (c) => {
-    const result = await runEodhdMarketData(
-      c.req.valid("query"),
-      c.env.EODHD_API_TOKEN,
-      c.env.MARKET_DATA_BUCKET,
-    );
-
-    if (Result.isFailure(result)) {
-      const status = result.failure.kind === "configuration" ? 500 : 502;
-
-      throw new HTTPException(status, {
-        res: c.json(
-          {
-            error: result.failure.message,
-            symbol: result.failure.symbol ?? null,
-          },
-          status,
-        ),
-      });
-    }
-
-    return c.json(result.success);
-  },
+app.route(
+  "/processing-jobs",
+  createProcessingRoutes((bindings) =>
+    D1MarketDataControlPlaneLive(bindings.MARKET_DATA_DB),
+  ),
 );
 
-export default app;
+app.route("/market-data", createMarketDataRoutes());
+
+export default {
+  fetch: app.fetch,
+  async scheduled(controller, env) {
+    await scheduleProcessing(
+      env.MARKET_DATA_DB,
+      env.PROCESSING_QUEUE,
+      D1MarketDataControlPlaneLive(env.MARKET_DATA_DB),
+      new Date(controller.scheduledTime).toISOString(),
+    );
+  },
+  async queue(batch, env) {
+    const controlPlane = D1MarketDataControlPlaneLive(env.MARKET_DATA_DB);
+    for (const message of batch.messages) {
+      try {
+        await executeProcessingMessage(
+          message.body, controlPlane,
+          env.MARKET_DATA_PROCESSOR.getByName("processor"), env.PROCESSOR_API_TOKEN,
+        );
+        message.ack();
+      } catch {
+        console.error(JSON.stringify({ event: "processing_delivery_retry", messageId: message.id }));
+        message.retry();
+      }
+    }
+  },
+} satisfies ExportedHandler<CloudflareBindings>;

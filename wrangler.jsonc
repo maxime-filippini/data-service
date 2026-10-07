@@ -21,6 +21,29 @@
 	"upload_source_maps": true,
 	"workers_dev": false,
 	"preview_urls": false,
+	"triggers": { "crons": ["0 2 * * *"] },
+	"containers": [{
+		"class_name": "MarketDataProcessor",
+		"image": "../data-service-processor/Dockerfile",
+		"image_build_context": "../data-service-processor",
+		"max_instances": 1,
+		"instance_type": "basic",
+	}],
+	"durable_objects": {
+		"bindings": [{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" }],
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["MarketDataProcessor"] }],
+	"queues": {
+		"producers": [{ "binding": "PROCESSING_QUEUE", "queue": "market-data-processing" }],
+		"consumers": [{
+			"queue": "market-data-processing",
+			"max_batch_size": 1,
+			"max_concurrency": 1,
+			"max_retries": 3,
+			"retry_delay": 300,
+			"dead_letter_queue": "market-data-processing-dlq",
+		}],
+	},
 	"r2_buckets": [
 		{
 			"bucket_name": "raw-market-data",
@@ -33,7 +56,13 @@
 	],
 	"secrets": {
 		"required": [
-			"EODHD_API_TOKEN"
+			"EODHD_API_TOKEN",
+			"PROCESSING_API_TOKEN",
+			"PROCESSOR_API_TOKEN",
+			"PROCESSING_API_URL",
+			"R2_ENDPOINT_URL",
+			"R2_ACCESS_KEY_ID",
+			"R2_SECRET_ACCESS_KEY"
 		],
 	},
 	"d1_databases": [
