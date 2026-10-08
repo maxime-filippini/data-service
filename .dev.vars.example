@@ -1,5 +1,6 @@
 EODHD_API_TOKEN=replace-with-your-eodhd-api-token
 PROCESSING_API_TOKEN=local-processing-token
+MANAGEMENT_API_TOKEN=local-management-token
 PROCESSOR_API_TOKEN=local-container-token
 PROCESSING_API_URL=http://host.docker.internal:8787
 R2_ENDPOINT_URL=https://example.invalid

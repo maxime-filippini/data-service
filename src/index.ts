@@ -2,6 +2,8 @@ import { Hono } from "hono";
 
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { createProcessingRoutes } from "$/routes/processing";
+import { createSymbolRoutes } from "$/routes/symbols";
+import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createMarketDataRoutes } from "./routes/market-data";
 import { executeProcessingMessage, scheduleProcessing } from "$/market-data/processing-dispatch";
 
@@ -21,6 +23,7 @@ app.route(
 );
 
 app.route("/market-data", createMarketDataRoutes());
+app.route("/symbols", createSymbolRoutes((bindings) => D1SymbolRegistryLive(bindings.MARKET_DATA_DB)));
 
 export default {
   fetch: app.fetch,

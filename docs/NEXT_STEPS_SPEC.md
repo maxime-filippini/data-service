@@ -91,8 +91,8 @@ Add a new D1 migration for `tracked_symbols`:
 
 | Field | Contract |
 | --- | --- |
-| `symbol` | Primary key; provider-qualified, path-safe symbol such as `AAPL.US`. |
-| `provider` | Only `eodhd` supported initially. |
+| `symbol` | Part of the composite primary key `(symbol, provider)`; path-safe symbol with optional exchange suffix, such as `AAPL` or `AAPL.US`, validated by the shared `MarketSymbolSchema`. |
+| `provider` | Other part of the composite primary key; nonempty identifier independent of available ingestion adapters. |
 | `enabled` | Integer constrained to 0/1. |
 | `backfill_start_date` | Valid inclusive ISO calendar date defining snapshot history. |
 | `created_at`, `updated_at` | Server-generated UTC timestamps; preserve creation time on updates. |
@@ -100,14 +100,18 @@ Add a new D1 migration for `tracked_symbols`:
 
 Use a dedicated `MANAGEMENT_API_TOKEN` with the existing bearer middleware.
 The processing token must not authorize registry changes or ingestion actions.
-For existing symbols, reject provider changes: canonical keys and applied
-history are currently symbol-based.
+Each symbol/provider pair has independent configuration. Registering another
+provider for the same symbol creates a separate entry; operators can disable
+one pair and enable another. Several pairs may be enabled for the same symbol.
+Canonical keys and applied history remain symbol-based. Provider selection and
+publication semantics must be defined before wiring multi-provider registrations
+into ingestion and processing; this registry slice does not change processing.
 
 | Proposed route | Behavior |
 | --- | --- |
-| `POST /symbols` | Full configuration `{ symbol, provider, enabled, backfillStartDate }`; idempotent upsert. `201` on insert, `200` on update; return stored configuration. |
-| `GET /symbols` | Order by symbol with optional enabled filter, default limit 50, maximum 100, and opaque next cursor. |
-| `POST /symbols/:symbol/disable` | Idempotent disable; `200` with configuration, `404` if unknown. Re-enable through `POST /symbols`. |
+| `POST /symbols` | Full configuration `{ symbol, provider, enabled, backfillStartDate }`; idempotent upsert per pair. `201` on insert, `200` on update; return stored configuration. |
+| `GET /symbols` | Order by symbol, then provider, with optional enabled filter, default limit 50, maximum 100, and opaque next cursor containing both identity fields. |
+| `POST /symbols/:symbol/providers/:provider/disable` | Idempotent disable for one pair; `200` with configuration, `404` if unknown. Re-enable through `POST /symbols` for the same pair. |
 
 Example registration:
 
@@ -121,14 +125,20 @@ Example registration:
 ```
 
 Registration changes policy only; it does not fetch or create processing work.
-Reject invalid/future dates, unsupported providers, invalid symbols, and unknown
-JSON fields with `400`. Use `401` for missing/incorrect credentials and `409`
-for attempts to change an existing provider. Changing the history start affects
+Reject invalid/future dates, empty provider identifiers, invalid symbols, and unknown
+JSON fields with `400`. Use `401` for missing/incorrect credentials.
+Changing a pair's history start affects
 future snapshots, never existing run manifests.
 
-Acceptance: repeated registration creates one row; disable/re-enable preserves
+Provider execution support belongs to ingestion adapter selection, not registry
+validation. EODHD is the first implemented adapter; adding another adapter must
+not require changing registry logic or its D1 schema.
+
+Acceptance: repeated registration creates one row per pair; a symbol can have
+several providers; disable/re-enable affects only its target pair and preserves
 execution history; management/processing credentials are not interchangeable;
-paging covers the registry without omissions in an unchanged registry.
+paging covers the registry without omissions, including page boundaries between
+providers of the same symbol, in an unchanged registry.
 
 ### 3. Expose manual snapshot ingestion and inspection
 
@@ -136,7 +146,7 @@ Add management-authenticated routes invoking the existing ingestion program
 with EODHD, raw R2, and D1 live adapters:
 
 ```http
-POST /symbols/AAPL.US/ingestion-runs
+POST /symbols/AAPL.US/providers/eodhd/ingestion-runs
 Idempotency-Key: <operator-generated-key>
 Content-Type: application/json
 
@@ -156,7 +166,7 @@ requested range, status, and object metadata. Return `404` for unknown symbol,
 failure, and `500` for configuration/database failure. Add management-protected
 `GET /ingestion-runs/:runId` so a timeout can be resolved by inspecting state.
 
-Persist an idempotency key scoped to symbol, alongside the frozen request,
+Persist an idempotency key scoped to the symbol/provider pair, alongside the frozen request,
 before fetching. An identical repeat returns the terminal run without fetching
 again; an in-progress repeat returns `409` with run ID. Reusing a key for
 different intent returns `409`. A failed attempt needs a new key/run ID to
