@@ -4,9 +4,6 @@ import polars as pl
 
 from .models import Envelope, Manifest
 
-RAW_BUCKET = "raw-market-data"
-PROCESSED_BUCKET = "processed-market-data"
-
 # Parquet schema per dataset. Add an entry (and an entry model) for new datasets.
 SCHEMAS = {
     "prices_eod": {
@@ -25,10 +22,10 @@ def _quoted(etag):
     return '"' + etag.strip('"') + '"'
 
 
-def read_envelope(s3, manifest: Manifest) -> Envelope:
+def read_envelope(s3, manifest: Manifest, raw_bucket: str) -> Envelope:
     """Read exactly the raw object version named in the manifest."""
     raw = manifest.input
-    result = s3.get_object(Bucket=RAW_BUCKET, Key=raw.key, IfMatch=_quoted(raw.etag))
+    result = s3.get_object(Bucket=raw_bucket, Key=raw.key, IfMatch=_quoted(raw.etag))
     body = result["Body"]
     try:
         envelope = Envelope.model_validate_json(body.read())
@@ -64,13 +61,13 @@ def build_frame(manifest: Manifest, envelope: Envelope) -> pl.DataFrame:
     )
 
 
-def process(s3, manifest: Manifest) -> str:
+def process(s3, manifest: Manifest, *, raw_bucket: str, processed_bucket: str) -> str:
     """Rebuild the canonical Parquet object and return its ETag."""
-    frame = build_frame(manifest, read_envelope(s3, manifest))
+    frame = build_frame(manifest, read_envelope(s3, manifest, raw_bucket))
     output = io.BytesIO()
     frame.write_parquet(output)
     result = s3.put_object(
-        Bucket=PROCESSED_BUCKET,
+        Bucket=processed_bucket,
         Key=manifest.output_key,
         Body=output.getvalue(),
         ContentType="application/vnd.apache.parquet",

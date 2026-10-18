@@ -8,6 +8,8 @@ ENVIRONMENT = {
     "R2_ENDPOINT_URL": "https://account.r2.cloudflarestorage.com",
     "R2_ACCESS_KEY_ID": "access-key",
     "R2_SECRET_ACCESS_KEY": "secret-key",
+    "RAW_BUCKET": "raw-market-data-dev",
+    "PROCESSED_BUCKET": "processed-market-data-dev",
 }
 
 
@@ -49,6 +51,8 @@ def test_missing_setting_rejected_before_creating_a_client(
         ("R2_ENDPOINT_URL", "ftp://example.test"),
         ("R2_ACCESS_KEY_ID", ""),
         ("R2_SECRET_ACCESS_KEY", ""),
+        ("RAW_BUCKET", ""),
+        ("PROCESSED_BUCKET", ""),
     ],
 )
 def test_invalid_values_rejected(environment, monkeypatch, name, value):

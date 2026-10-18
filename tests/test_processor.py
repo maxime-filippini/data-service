@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from data_service_processor import app as app_module
+from data_service_processor import runtime
 from data_service_processor.models import Manifest
 from data_service_processor.processor import SCHEMAS, process
 
@@ -66,9 +67,12 @@ class Storage:
         return {"ETag": '"output-etag"'}
 
 
+BUCKETS = {"raw_bucket": "raw-market-data", "processed_bucket": "processed-market-data"}
+
+
 def test_rebuilds_sorted_parquet_from_the_named_raw_object():
     storage = Storage()
-    etag = process(storage, Manifest.model_validate(manifest_json()))
+    etag = process(storage, Manifest.model_validate(manifest_json()), **BUCKETS)
 
     assert etag == "output-etag"
     assert storage.reads == [
@@ -84,7 +88,7 @@ def test_rebuilds_sorted_parquet_from_the_named_raw_object():
 
 def test_later_rows_win_on_duplicate_dates():
     storage = Storage([entry(10), entry(11)])
-    process(storage, Manifest.model_validate(manifest_json()))
+    process(storage, Manifest.model_validate(manifest_json()), **BUCKETS)
     frame = pl.read_parquet(io.BytesIO(storage.writes[0]["Body"]))
     assert frame["close"].to_list() == [11]
 
@@ -103,27 +107,42 @@ def test_mismatched_or_invalid_raw_data_is_never_written(change):
     manifest, storage = manifest_json(), Storage()
     change(manifest, storage)
     with pytest.raises(ValueError):
-        process(storage, Manifest.model_validate(manifest))
+        process(storage, Manifest.model_validate(manifest), **BUCKETS)
     assert storage.writes == []
 
 
-def test_http_endpoint_returns_etag_or_error_detail(monkeypatch):
+def test_http_endpoint_returns_etag_or_error_detail(monkeypatch, tmp_path):
     storage = Storage()
 
     class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
         def __enter__(self):
             return storage
 
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(app_module, "s3_client", FakeClient)
+    monkeypatch.chdir(tmp_path)
+    for name, value in {
+        "R2_ENDPOINT_URL": "https://account.r2.cloudflarestorage.com",
+        "R2_ACCESS_KEY_ID": "access-key",
+        "R2_SECRET_ACCESS_KEY": "secret-key",
+        "RAW_BUCKET": "raw-market-data-dev",
+        "PROCESSED_BUCKET": "processed-market-data-dev",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(runtime, "s3_client", FakeClient)
     with TestClient(app_module.app) as client:
         assert client.get("/health").status_code == 200
 
         ok = client.post("/jobs", json=manifest_json())
         assert ok.status_code == 200
         assert ok.json() == {"outputEtag": "output-etag"}
+        # Buckets come from the environment.
+        assert storage.reads[-1]["Bucket"] == "raw-market-data-dev"
+        assert storage.writes[-1]["Bucket"] == "processed-market-data-dev"
 
         storage.envelope["symbol"] = "MSFT.US"
         failed = client.post("/jobs", json=manifest_json())
@@ -133,3 +152,9 @@ def test_http_endpoint_returns_etag_or_error_detail(monkeypatch):
         )
 
         assert client.post("/jobs", json={"jobId": "x"}).status_code == 422
+
+        # Missing configuration fails the job instead of using default buckets.
+        monkeypatch.delenv("RAW_BUCKET")
+        unconfigured = client.post("/jobs", json=manifest_json())
+        assert unconfigured.status_code == 500
+        assert unconfigured.json()["detail"].startswith("ValidationError")
