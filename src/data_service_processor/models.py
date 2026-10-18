@@ -13,29 +13,23 @@ class DateRange(Contract):
     end: date = Field(alias="to")
 
 
-class RawObject(Contract):
+class RawInput(Contract):
+    run_id: str = Field(alias="runId", min_length=1)
+    provider: Literal["eodhd"]
+    requested_range: DateRange = Field(alias="requestedRange")
     key: str = Field(min_length=1)
     etag: str = Field(min_length=1)
     row_count: int = Field(alias="rowCount", ge=0)
 
 
-class Run(Contract):
-    run_id: str = Field(alias="runId")
-    provider: Literal["eodhd"]
-    requested_range: DateRange = Field(alias="requestedRange")
-    precedence: int
-    objects: list[RawObject] = Field(min_length=1)
+class Manifest(Contract):
+    """One job sent by the Worker: rebuild `output_key` from one raw object."""
 
-
-class Job(Contract):
-    job_id: str = Field(alias="jobId")
-    symbol: str
-    mode: Literal["merge", "rebuild"]
-    canonical_key: str = Field(alias="canonicalKey")
-    expected_base_etag: str | None = Field(default=None, alias="expectedBaseEtag")
-    transform_version: Literal["v1"] = Field(alias="transformVersion")
-    status: Literal["queued", "processing", "completed", "failed"]
-    runs: list[Run] = Field(min_length=1)
+    job_id: str = Field(alias="jobId", min_length=1)
+    dataset: Literal["prices_eod"]
+    symbol: str = Field(min_length=1)
+    output_key: str = Field(alias="outputKey", min_length=1)
+    input: RawInput
 
 
 class Entry(Contract):
@@ -51,6 +45,7 @@ class Entry(Contract):
 class Envelope(Contract):
     version: Literal[1]
     run_id: str = Field(alias="runId")
+    dataset: Literal["prices_eod"]
     provider: Literal["eodhd"]
     symbol: str
     requested_range: DateRange = Field(alias="requestedRange")

@@ -1,16 +1,13 @@
 from contextlib import contextmanager
 
 import boto3
-import httpx
 from botocore.config import Config
 
-from .client import ControlPlane
-from .processor import Processor
 from .settings import ProcessorSettings
 
 
 @contextmanager
-def processor_runtime(settings: ProcessorSettings | None = None):
+def s3_client(settings: ProcessorSettings | None = None):
     settings = settings if settings is not None else ProcessorSettings()  # pyright: ignore[reportCallIssue]
     s3 = boto3.client(
         "s3",
@@ -23,14 +20,6 @@ def processor_runtime(settings: ProcessorSettings | None = None):
         ),
     )
     try:
-        with httpx.Client(
-            base_url=str(settings.processing_api_url).rstrip("/") + "/",
-            headers={
-                "Authorization": "Bearer "
-                + settings.processing_api_token.get_secret_value()
-            },
-            timeout=30,
-        ) as client:
-            yield Processor(ControlPlane(client), s3)
+        yield s3
     finally:
         s3.close()

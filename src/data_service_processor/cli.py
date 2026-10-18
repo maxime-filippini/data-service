@@ -1,18 +1,17 @@
 import argparse
 import json
+from pathlib import Path
 
-from .runtime import processor_runtime
+from .models import Manifest
+from .processor import process
+from .runtime import s3_client
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Execute a frozen market-data job")
-    parser.add_argument("--job-id", required=True)
+    """Run one job manifest locally, e.g. to debug a failed job."""
+    parser = argparse.ArgumentParser(description="Process one job manifest")
+    parser.add_argument("manifest", type=Path, help="Path to a job manifest JSON file")
     args = parser.parse_args()
-    try:
-        with processor_runtime() as processor:
-            result = processor.execute(args.job_id)
-    except Exception as error:  # noqa: BLE001 -- CLI must exit cleanly on all operational failures.
-        parser.exit(
-            1, f"Processing failed ({type(error).__name__}); inspect job state\n"
-        )
-    print(json.dumps(result))
+    manifest = Manifest.model_validate_json(args.manifest.read_text())
+    with s3_client() as s3:
+        print(json.dumps({"outputEtag": process(s3, manifest)}))

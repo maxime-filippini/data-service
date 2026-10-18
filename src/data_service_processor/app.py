@@ -1,31 +1,13 @@
-import secrets
-from typing import Annotated
+import logging
 
-import httpx
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import ValidationError
+from fastapi import FastAPI, HTTPException
 
-from .runtime import processor_runtime
-from .settings import HttpSettings
+from .models import Manifest
+from .processor import process
+from .runtime import s3_client
 
+logger = logging.getLogger(__name__)
 app = FastAPI()
-bearer = HTTPBearer(auto_error=False)
-
-
-def authorize(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-):
-    try:
-        token = HttpSettings().processor_api_token.get_secret_value()  # pyright: ignore[reportCallIssue]
-    except ValidationError as error:
-        raise HTTPException(
-            503, "Processor authentication is not configured"
-        ) from error
-    if credentials is None or not secrets.compare_digest(
-        credentials.credentials, token
-    ):
-        raise HTTPException(401, "Unauthorized", headers={"WWW-Authenticate": "Bearer"})
 
 
 @app.get("/health")
@@ -33,15 +15,16 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/processing-jobs/{job_id}/execute", dependencies=[Depends(authorize)])
-def execute(job_id: str):
+@app.post("/jobs")
+def run_job(manifest: Manifest):
+    """Process one job synchronously. The Worker records the outcome in D1.
+
+    The container is only reachable through the Worker, so there is no auth.
+    """
     try:
-        with processor_runtime() as processor:
-            return processor.execute(job_id)
-    except httpx.HTTPStatusError as error:
-        status = error.response.status_code
-        raise HTTPException(
-            status if status in {404, 409} else 502, "Control-plane request failed"
-        ) from error
+        with s3_client() as s3:
+            output_etag = process(s3, manifest)
     except Exception as error:
-        raise HTTPException(500, "Processing failed; inspect the job state") from error
+        logger.exception("Job %s failed", manifest.job_id)
+        raise HTTPException(500, f"{type(error).__name__}: {error}"[:500]) from error
+    return {"outputEtag": output_etag}

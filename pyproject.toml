@@ -8,7 +8,6 @@ requires-python = ">=3.13"
 dependencies = [
     "boto3>=1.43.108",
     "fastapi>=0.142.2",
-    "httpx>=0.28.1",
     "polars>=2.0.0",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
@@ -23,4 +22,4 @@ build-backend = "uv_build"
 processor = "data_service_processor.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=9.1.1", "ruff>=0.16.10"]
+dev = ["httpx>=0.28.1", "pytest>=9.1.1", "ruff>=0.16.10"]
