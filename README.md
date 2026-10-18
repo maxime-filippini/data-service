@@ -1,265 +1,77 @@
 # Data service
 
-Architecture and the Python-processor handoff are documented in
-[MARKET_DATA_ARCHITECTURE.md](docs/MARKET_DATA_ARCHITECTURE.md).
+Personal market-data service on Cloudflare Workers. It downloads data for a
+universe of symbols, builds one Parquet file per symbol in R2, and exposes a
+small API so other apps can manage the universe. Apps read the Parquet files
+from R2 directly:
 
-The proposed implementation sequence and acceptance criteria are in
-[NEXT_STEPS_SPEC.md](docs/NEXT_STEPS_SPEC.md).
+```txt
+processed-market-data/dataset=prices_eod/symbol=AAPL.US/data.parquet
+```
 
-Install dependencies and start the Worker locally:
+How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The Python
+processor lives in
+[data-service-processor](https://github.com/maxime-filippini/data-service-processor),
+which must be checked out next to this repo (`../data-service-processor`).
+
+## Setup
 
 ```sh
 pnpm install
+cp .dev.vars.example .dev.vars   # then fill in real values
+pnpm db:migrate:local
 pnpm dev
 ```
 
-Apply the D1 control-plane schema before starting the Worker for the first
-time:
+Remote resources: the `data-service-market-data` D1 database, the
+`raw-market-data` and `processed-market-data` buckets, and the
+`market-data-processing` and `market-data-processing-dlq` queues. Secrets:
 
 ```sh
-pnpm db:migrate:local
-```
-
-The remote database is named `data-service-market-data`. Apply migrations to
-it explicitly when deploying a schema change:
-
-```sh
-pnpm db:migrate:remote
-```
-
-## Direct provider JSON API
-
-`GET /market-data/eodhd` retrieves validated daily prices directly from EODHD:
-
-```sh
-curl 'http://localhost:8787/market-data/eodhd?symbols=AAPL.US,MSFT.US&from=2024-01-01&to=2024-01-31'
-```
-
-The response is JSON keyed by symbol, with an array of EOD entries for each.
-`symbols` accepts up to 20 unique comma-separated symbols; `from` and `to` are
-inclusive calendar dates. The Worker uses its `EODHD_API_TOKEN` secret.
-Every request fetches the full requested range from the provider. It does not
-read or write R2, create ingestion runs, or update canonical datasets.
-
-The legacy cache route `/market-data/market-data` has been removed. The `force`
-parameter is no longer part of the request contract. Invalid queries return
-`400`, missing provider configuration returns `500`, and upstream request or
-validation failures return `502` with a sanitized error.
-
-## Market-data flow
-
-The separate run-based ingestion and processing model is:
-
-1. An ingestion run fetches one symbol and date range.
-2. The validated response is stored as one immutable R2 object under its run
-   ID.
-3. D1 records the run and the raw object's key, ETag, observed range, and row
-   count.
-4. A processing job freezes the exact runs the Python processor must
-   merge or use for a rebuild.
-5. The eventual canonical object has one stable key per symbol:
-   `dataset=prices_eod/symbol=<symbol>/data.parquet`.
-
-`raw-market-data` stores immutable validated provider responses, while
-`processed-market-data` stores the replaceable canonical Parquet dataset for
-each symbol. The Worker binds them separately as `MARKET_DATA_BUCKET` and
-`PROCESSED_MARKET_DATA_BUCKET`, respectively.
-
-Only one processing job may be active per symbol. New ingestion runs that
-arrive during processing remain available for the following job.
-
-## Symbol management API
-
-Apply migration `0002_tracked_symbols.sql` with the migration commands above.
-Configure a separate operator token:
-
-```sh
+pnpm exec wrangler secret put EODHD_API_TOKEN
 pnpm exec wrangler secret put MANAGEMENT_API_TOKEN
+pnpm exec wrangler secret put R2_ENDPOINT_URL        # https://<account-id>.r2.cloudflarestorage.com
+pnpm exec wrangler secret put R2_ACCESS_KEY_ID       # used by the processor container
+pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
+pnpm db:migrate:remote
+pnpm run deploy                                      # needs Docker to build the container
 ```
 
-For local development, copy `.dev.vars.example` to `.dev.vars` and replace the
-placeholder tokens. Use distinct management, processing, and container tokens.
-All `/symbols` routes require `Authorization: Bearer <management-token>`;
-`PROCESSING_API_TOKEN` does not grant management access, and the management
-token does not grant access to `/processing-jobs`.
+## Managing symbols
 
-Register or re-enable a symbol with its full configuration:
+All routes need `Authorization: Bearer $MANAGEMENT_API_TOKEN`.
+
+Register or update a symbol. Re-registering a disabled symbol enables it:
 
 ```sh
-curl -X POST 'http://localhost:8787/symbols' \
+curl -X POST "$URL/symbols" \
   -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"symbol":"AAPL.US","provider":"eodhd","enabled":true,"backfillStartDate":"2016-01-01"}'
+  -d '{"dataset":"prices_eod","symbol":"AAPL.US","provider":"eodhd","backfillStartDate":"2016-01-01"}'
 ```
 
-`POST /symbols` returns the stored configuration with `201` on insertion and
-`200` on updates or identical repeats of the same `(symbol, provider)` pair.
-The composite D1 primary key permits several providers for the same symbol,
-each with independent enablement, history start, and timestamps. Symbols must be uppercase,
-path-safe, with an optional exchange suffix, such as `AAPL`, `AAPL.US`, or `BRK-B.US`. The registry
-accepts any nonempty provider identifier without a provider allowlist. Ingestion
-adapters determine which providers can actually fetch data; currently only the
-EODHD adapter exists. The inclusive history start must be a valid `YYYY-MM-DD` date
-no later than the current UTC date. All four fields are required; unknown JSON
-fields are rejected. Invalid requests return `400`. Registering a different
-provider creates another entry rather than replacing the original entry.
+`enabled` is optional and defaults to `true`. Returns `201` when the symbol is
+new and `200` on update. Symbols are uppercase with an optional exchange suffix
+(`AAPL`, `AAPL.US`, `BRK-B.US`). The provider must be able to supply the
+dataset.
 
-`POST /symbols/:symbol/providers/:provider/disable` returns `200` with the
-disabled configuration, or `404` for an unknown pair. For example,
-`POST /symbols/AAPL.US/providers/eodhd/disable` disables only that provider.
-URL-encode provider identifiers in the path. Repeated disables preserve `disabledAt`;
-re-enabling through registration clears it. Responses include `createdAt`,
-`updatedAt`, and nullable `disabledAt`, all generated by the server in UTC.
-Creation time is preserved per pair, and identical registration leaves timestamps
-unchanged. Changing a disabled pair's history start preserves its disable
-time.
-
-`GET /symbols?enabled=true&limit=50` lists configurations in symbol, then provider order.
-Every pair counts as a separate entry.
-The enabled filter is optional and accepts `true` or `false`; limit defaults
-to 50 and accepts integers from 1 through 100. The response is
-`{ "symbols": [...], "nextCursor": "..." }`, with `nextCursor: null` on the
-last page. Pass the returned cursor as the `cursor` query parameter, keeping
-the same enabled filter. Cursors are opaque and versioned; malformed cursors
-or filter changes return `400`. Pagination covers an unchanged registry;
-concurrent configuration changes do not provide snapshot isolation.
-
-Missing or incorrect credentials return `401`. Database failures return
-sanitized `500` responses. Registry changes only store ingestion policy:
-registration does not fetch data or create work. Disabling preserves all run,
-job, and canonical history. Scheduled ingestion will consume this policy in a
-later slice; the current schedule still processes existing ingestion runs.
-Processing jobs and canonical datasets still use symbol-only identity. Provider
-selection and publication behavior for multiple registrations remain to be
-defined before connecting this registry to ingestion and processing.
-
-## Processing-job API
-
-The Python processor uses a bearer token to access the following API under
-`/processing-jobs`:
-
-- `POST /` freezes eligible runs into a job. Its JSON body is
-  `{ symbol, mode, transformVersion }`, where `mode` is `merge` or `rebuild`.
-  `rebuild` selects only the latest completed snapshot by ingestion creation
-  time, with run ID as a deterministic tie breaker. Each snapshot must contain
-  the symbol's full history. `merge` selects all completed runs not yet applied.
-- `GET /:jobId` returns the frozen raw-object selection and canonical target.
-- `POST /:jobId/claim` atomically moves a queued job to `processing`.
-- `POST /:jobId/complete` records `{ outputEtag, completeThrough? }` after
-  the canonical Parquet object has been written.
-- `POST /:jobId/fail` records `{ message }` and releases the symbol lock.
-
-Set the token before deploying this API:
+List symbols, optionally filtered:
 
 ```sh
-pnpm exec wrangler secret put PROCESSING_API_TOKEN
+curl "$URL/symbols?dataset=prices_eod&enabled=true" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
-The processor must send `Authorization: Bearer <token>`. There is
-intentionally no "next job" endpoint: the queue delivers a specific job ID
-to the processor.
-
-## Scheduled processing
-
-The Worker runs daily at **02:00 UTC** (`0 2 * * *`). It creates `rebuild` jobs
-with transform version `v1` for symbols whose latest completed snapshot has
-not been applied, then publishes queued job IDs to `market-data-processing`. This also
-delivers manually created jobs on the next schedule. Scheduling processes
-existing ingestion runs; it does not fetch new provider data.
-
-D1 remains the source of queued work. If queue publication fails, the next
-schedule republishes it. At-least-once delivery is safe for completed jobs:
-the consumer checks state before execution and the processor atomically claims
-the job. A single consumer and container instance execute one job at a time.
-The container listens on port 8080 and stays awake during execution, then
-sleeps after five minutes of inactivity.
-
-Delivery failures retry three times with a five-minute delay, then move to
-`market-data-processing-dlq`. Inspect that queue and Worker logs for failed
-deliveries. A claimed job is never automatically reclaimed: interrupted
-processing requires reconciliation. Terminal failed jobs are acknowledged
-and logged; symbols with failed, unapplied inputs are excluded from automatic
-job creation. Inspect the canonical R2 object and D1 ETag before submitting a
-manual merge or rebuild. A successful manual job applying those inputs, or a
-later successful rebuild, allows scheduling to resume. Rebuilds overwrite
-the canonical object.
-
-### Raw snapshot retention policy
-
-Daily full-history snapshots should have a 30-day retention window. Retain
-the latest successful snapshot and any snapshot referenced by a queued or
-processing job until a replacement is available or the job is reconciled.
-The canonical Parquet object is kept independently of this raw retention.
-
-This retention policy is not yet enforced. A bucket-wide age-only lifecycle
-rule cannot protect those exceptions, so do not enable blanket expiration
-until cleanup coordinates with D1 job state. Cleanup must also mark deleted
-raw inputs unavailable so manual merge jobs cannot select them. Gzip storage
-is a separate optimization requiring support in both the raw writer and
-Python reader; existing raw envelopes remain uncompressed for now.
-
-### Container deployment setup
-
-Keep the processor repository checked out as `../data-service-processor`.
-Wrangler builds its Dockerfile with that directory as the build context; CI
-must also check out that repository beside this one at the intended revision.
-Docker must be running for container builds, which target `linux/amd64`.
-
-Create both queues before the first deployment:
+Stop scheduled downloads for a symbol. Its history and Parquet file are kept:
 
 ```sh
-pnpm exec wrangler queues create market-data-processing
-pnpm exec wrangler queues create market-data-processing-dlq
+curl -X POST "$URL/symbols/prices_eod/AAPL.US/disable" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
-Configure these additional Worker secrets (Wrangler passes them into the
-container at runtime):
+Errors: `400` invalid input, `401` bad token, `404` unknown symbol, `500` database error.
+
+## Checks
 
 ```sh
-pnpm exec wrangler secret put PROCESSOR_API_TOKEN
-pnpm exec wrangler secret put PROCESSING_API_URL
-pnpm exec wrangler secret put R2_ENDPOINT_URL
-pnpm exec wrangler secret put R2_ACCESS_KEY_ID
-pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
+pnpm test
+pnpm typecheck
 ```
-
-`PROCESSING_API_URL` must be the deployed Worker base URL reachable by the
-container, including any prefix before `/processing-jobs`. The container uses
-the Worker's existing `PROCESSING_API_TOKEN` for callbacks. Use a separate
-`PROCESSOR_API_TOKEN` to authenticate execution. R2 credentials need read access
-to `raw-market-data` and read/write access to `processed-market-data`.
-No credentials are baked into the image.
-
-Deploy with `pnpm deploy` after applying D1 migrations and configuring secrets.
-For local development, add these values to ignored `.dev.vars`, use a Worker
-URL reachable from Docker, and run `pnpm dev --test-scheduled`. Trigger the
-local schedule through `/cdn-cgi/handler/scheduled`. Local queue simulation
-does not validate the processor's remote R2 access or callback routing.
-
-## Deployment
-
-```txt
-pnpm deploy
-```
-
-[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
-
-```sh
-pnpm cf-typegen
-```
-
-Pass the `CloudflareBindings` as generics when instantiating `Hono`:
-
-```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
-```
-
-
-## To do
-
-Things that have been postponed but will have to be tackled eventually:
-
-- [ ] Trigger run-based ingestion from a schedule rather than an HTTP read
-- [ ] Replace the temporary validated-response envelope with the provider's
-      exact response bytes when provider adapters expose them
