@@ -12,6 +12,8 @@ export class MarketDataProcessor extends Container<CloudflareBindings> {
     R2_ENDPOINT_URL: this.env.R2_ENDPOINT_URL,
     R2_ACCESS_KEY_ID: this.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: this.env.R2_SECRET_ACCESS_KEY,
+    RAW_BUCKET: this.env.RAW_BUCKET_NAME,
+    PROCESSED_BUCKET: this.env.PROCESSED_BUCKET_NAME,
   };
 
   override async fetch(request: Request): Promise<Response> {

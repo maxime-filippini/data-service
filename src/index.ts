@@ -13,8 +13,6 @@ import { createSymbolRoutes } from "$/routes/symbols";
 
 export { MarketDataProcessor } from "./processor-container";
 
-const INGESTION_QUEUE = "market-data-ingestion";
-
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
 app.route("/symbols", createSymbolRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
@@ -76,7 +74,7 @@ export default {
   },
 
   async queue(batch, env) {
-    if (batch.queue === INGESTION_QUEUE) {
+    if (batch.queue === env.INGESTION_QUEUE_NAME) {
       await ingest(batch as MessageBatch<IngestionMessage>, env);
       return;
     }

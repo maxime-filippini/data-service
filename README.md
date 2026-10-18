@@ -38,6 +38,35 @@ pnpm db:migrate:remote
 pnpm run deploy                                      # needs Docker to build the container
 ```
 
+## Dev environment
+
+A separate deployment for end-to-end testing of any branch:
+`https://data-service-dev.maxime-filippini.workers.dev`. It has its own
+database (`data-service-market-data-dev`), buckets (`raw-market-data-dev`,
+`processed-market-data-dev`), queues (`*-dev`) and secrets, and no cron.
+
+```sh
+pnpm db:migrate:dev     # after adding a migration
+pnpm deploy:dev         # builds the container from ../data-service-processor
+```
+
+The container image is built from whatever is checked out in
+`../data-service-processor`, so check out the matching branch there before
+deploying either environment.
+
+One-time secrets (use an R2 API token scoped to the two dev buckets):
+
+```sh
+for name in EODHD_API_TOKEN MANAGEMENT_API_TOKEN R2_ENDPOINT_URL R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+  pnpm exec wrangler secret put "$name" --env dev
+done
+```
+
+Workflow: develop and run unit tests with `pnpm dev`, test end to end on dev,
+and deploy production (`pnpm run deploy`) only from `develop` after merging.
+`pnpm dev` can't run the full pipeline: the container reads real R2 while the
+local Worker writes to simulated buckets.
+
 ## Managing symbols
 
 The API is served at `https://data-service.maxime-filippini.workers.dev`
