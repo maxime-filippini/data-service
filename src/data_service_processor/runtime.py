@@ -3,12 +3,30 @@ from contextlib import contextmanager
 import boto3
 from botocore.config import Config
 
+from .models import Manifest
+from .processor import process
 from .settings import ProcessorSettings
+
+
+def load_settings() -> ProcessorSettings:
+    return ProcessorSettings()  # pyright: ignore[reportCallIssue]
+
+
+def run(manifest: Manifest) -> str:
+    """Process one manifest with settings from the environment."""
+    settings = load_settings()
+    with s3_client(settings) as s3:
+        return process(
+            s3,
+            manifest,
+            raw_bucket=settings.raw_bucket,
+            processed_bucket=settings.processed_bucket,
+        )
 
 
 @contextmanager
 def s3_client(settings: ProcessorSettings | None = None):
-    settings = settings if settings is not None else ProcessorSettings()  # pyright: ignore[reportCallIssue]
+    settings = settings if settings is not None else load_settings()
     s3 = boto3.client(
         "s3",
         endpoint_url=str(settings.r2_endpoint_url),

@@ -2,9 +2,8 @@ import logging
 
 from fastapi import FastAPI, HTTPException
 
+from . import runtime
 from .models import Manifest
-from .processor import process
-from .runtime import s3_client
 
 logger = logging.getLogger(__name__)
 app = FastAPI()
@@ -22,8 +21,7 @@ def run_job(manifest: Manifest):
     The container is only reachable through the Worker, so there is no auth.
     """
     try:
-        with s3_client() as s3:
-            output_etag = process(s3, manifest)
+        output_etag = runtime.run(manifest)
     except Exception as error:
         logger.exception("Job %s failed", manifest.job_id)
         raise HTTPException(500, f"{type(error).__name__}: {error}"[:500]) from error

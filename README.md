@@ -58,14 +58,19 @@ Set these variables in the environment or a local `.env` file:
 | `R2_ENDPOINT_URL` | `https://<account-id>.r2.cloudflarestorage.com` |
 | `R2_ACCESS_KEY_ID` | R2 S3 access key |
 | `R2_SECRET_ACCESS_KEY` | R2 S3 secret key |
+| `RAW_BUCKET` | Bucket holding raw downloads, e.g. `raw-market-data` |
+| `PROCESSED_BUCKET` | Bucket for Parquet output, e.g. `processed-market-data` |
 
-The credentials need read access to `raw-market-data` and write access to
-`processed-market-data`.
+The Worker sets the bucket names per environment (production or dev). They
+have no defaults, so a misconfigured deployment fails instead of touching
+production data. The credentials need read access to the raw bucket and write
+access to the processed bucket.
 
 ## Run locally
 
 ```sh
 uv sync
+uv run pytest                           # on CPUs without AVX: uv run --with 'polars[rtcompat]' pytest
 uv run processor manifest.json          # one manifest, prints {"outputEtag": …}
 uv run uvicorn data_service_processor.app:app --port 8080
 ```

@@ -3,8 +3,7 @@ import json
 from pathlib import Path
 
 from .models import Manifest
-from .processor import process
-from .runtime import s3_client
+from .runtime import run
 
 
 def main():
@@ -13,5 +12,4 @@ def main():
     parser.add_argument("manifest", type=Path, help="Path to a job manifest JSON file")
     args = parser.parse_args()
     manifest = Manifest.model_validate_json(args.manifest.read_text())
-    with s3_client() as s3:
-        print(json.dumps({"outputEtag": process(s3, manifest)}))
+    print(json.dumps({"outputEtag": run(manifest)}))
