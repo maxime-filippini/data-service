@@ -26,8 +26,8 @@
 	},
 	"containers": [{
 		"class_name": "MarketDataProcessor",
-		"image": "../data-service-processor/Dockerfile",
-		"image_build_context": "../data-service-processor",
+		// Published by data-service-processor CI. Keep in sync with env.dev.
+		"image": "registry.cloudflare.com/7161f73e7a5a97a5d2fe7ad26e7e28f9/data-service-processor:f11cfbc73c678dd550754bc1d77fdf7fedf6faf5",
 		"max_instances": 1,
 		"instance_type": "basic",
 	}],
@@ -76,8 +76,8 @@
 			"database_id": "02d3dda4-f7b7-4bd1-a1db-e6e9a738b297",
 		},
 	],
-	// Dev environment: `pnpm deploy:dev`. Separate Worker, database, buckets and
-	// queues. Bindings are not inherited from the top level, so they repeat here.
+	// Dev environment: CI deploys it from develop, feat/* and fix/*. Separate
+	// Worker, database, buckets and queues. Bindings are not inherited from the top level, so they repeat here.
 	"env": {
 		"dev": {
 			"triggers": { "crons": [] },
@@ -88,8 +88,7 @@
 			},
 			"containers": [{
 				"class_name": "MarketDataProcessor",
-				"image": "../data-service-processor/Dockerfile",
-				"image_build_context": "../data-service-processor",
+				"image": "registry.cloudflare.com/7161f73e7a5a97a5d2fe7ad26e7e28f9/data-service-processor:f11cfbc73c678dd550754bc1d77fdf7fedf6faf5",
 				"max_instances": 1,
 				"instance_type": "basic",
 			}],
