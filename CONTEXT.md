@@ -1,38 +1,29 @@
-# Market-data glossary
+# Glossary
+
+## Dataset
+
+A kind of data with its own Parquet schema, such as `prices_eod` (daily
+prices). Future datasets (for example interest-rate series from FRED) get
+their own name and schema.
+
+## Tracked symbol
+
+One `(dataset, symbol)` pair in the download universe, with the provider that
+supplies it and the date its history starts. Disabling stops scheduled
+downloads but keeps history and the Parquet object.
 
 ## Ingestion run
 
-One attempt to obtain raw market data for one symbol and requested date range.
-It is not the unit of Python processing.
-
-## Raw object
-
-The immutable validated provider response produced by an ingestion run. A raw
-object is an auditable input and may be used in more than one processing job.
+One download of a symbol's full history from its provider. The validated
+response is stored once as an immutable raw object in R2.
 
 ## Processing job
 
-A request to produce or update one symbol's canonical dataset from a frozen
-selection of completed ingestion runs. A processing job is the unit assigned
-to a processor.
-
-## Claim
-
-The atomic transition by which a processor takes ownership of a queued
-processing job. A claimed job is processing.
+A rebuild of one symbol's canonical Parquet object from one completed
+ingestion run. Only one job per symbol can be queued or processing at a time.
 
 ## Canonical dataset
 
-The current replaceable, calculation-ready dataset for one symbol. It is
-stored as Parquet and has a stable object key.
-
-## Merge
-
-Processing mode that applies ingestion runs not yet represented in the
-canonical dataset.
-
-## Rebuild
-
-Processing mode that recreates the canonical dataset from the latest completed
-full-history snapshot for the symbol, ordered by ingestion creation time and
-then run ID. It ignores the existing canonical dataset.
+The current Parquet object for a `(dataset, symbol)` pair, at the stable key
+`dataset=<dataset>/symbol=<symbol>/data.parquet` in the processed bucket.
+Client apps read it directly from R2.

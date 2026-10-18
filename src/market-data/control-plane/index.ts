@@ -1,132 +1,80 @@
 import { Context, Effect, Schema } from "effect";
 
-import type { DateRange } from "$/market-data/coverage";
+import type { Dataset, DateRange, Provider } from "$/market-data/schemas";
 
-export type IngestionRunStatus = "fetching" | "raw_complete" | "failed";
-export type ProcessingJobMode = "merge" | "rebuild";
-export type ProcessingJobStatus =
-  | "queued"
-  | "processing"
-  | "completed"
-  | "failed";
-
-export interface IngestionRun {
-  readonly runId: string;
-  readonly provider: string;
-  readonly symbol: string;
-  readonly requestedRange: DateRange;
-  readonly status: IngestionRunStatus;
-  readonly createdAt: string;
-  readonly completedAt?: string;
-  readonly error?: string;
-}
-
-export interface IngestionRunObject {
+export interface RawObject {
   readonly key: string;
   readonly etag: string;
-  readonly observedRange?: DateRange;
   readonly rowCount: number;
+  readonly observedRange?: DateRange;
 }
 
 export interface StartIngestionRun {
   readonly runId: string;
-  readonly provider: string;
+  readonly dataset: Dataset;
   readonly symbol: string;
+  readonly provider: Provider;
   readonly requestedRange: DateRange;
   readonly createdAt: string;
 }
 
 export interface CompleteIngestionRun {
   readonly runId: string;
-  readonly object: IngestionRunObject;
+  readonly object: RawObject;
   readonly completedAt: string;
 }
 
-export interface CreateProcessingJob {
+/** Everything the processor needs to rebuild one canonical object. */
+export interface ProcessingManifest {
   readonly jobId: string;
+  readonly dataset: Dataset;
   readonly symbol: string;
-  readonly mode: ProcessingJobMode;
-  readonly canonicalKey: string;
-  readonly transformVersion: string;
-  readonly createdAt: string;
+  readonly outputKey: string;
+  readonly input: {
+    readonly runId: string;
+    readonly provider: Provider;
+    readonly requestedRange: DateRange;
+    readonly key: string;
+    readonly etag: string;
+    readonly rowCount: number;
+  };
 }
 
-export interface ProcessingJobRun {
-  readonly runId: string;
-  readonly provider: string;
-  readonly requestedRange: DateRange;
-  readonly precedence: number;
-  readonly completedAt: string;
-  readonly objects: readonly IngestionRunObject[];
-}
-
-export interface ProcessingJob {
-  readonly jobId: string;
-  readonly symbol: string;
-  readonly mode: ProcessingJobMode;
-  readonly canonicalKey: string;
-  readonly expectedBaseEtag?: string;
-  readonly transformVersion: string;
-  readonly status: ProcessingJobStatus;
-  readonly createdAt: string;
-  readonly runs: readonly ProcessingJobRun[];
-}
-
-export interface CompleteProcessingJob {
-  readonly jobId: string;
-  readonly outputEtag: string;
-  readonly completeThrough?: string;
-  readonly completedAt: string;
-}
-
-export class MarketDataControlPlaneError extends Schema.TaggedError<MarketDataControlPlaneError>()(
-  "MarketDataControlPlaneError",
+export class ControlPlaneError extends Schema.TaggedError<ControlPlaneError>()(
+  "ControlPlaneError",
   {
-    kind: Schema.Literals(["database", "conflict", "not_found", "no_work"]),
     message: Schema.String,
     runId: Schema.optionalKey(Schema.String),
     jobId: Schema.optionalKey(Schema.String),
-    symbol: Schema.optionalKey(Schema.String),
   },
 ) {}
 
+type Op<A = void> = Effect.Effect<A, ControlPlaneError>;
+
 /**
- * Mutable control-plane state for raw ingestion and canonical processing.
+ * D1-backed run and job state.
  *
- * A processing job freezes its run membership when it is created. New runs
- * arriving afterwards remain pending for the next job.
+ * Every job rebuilds a canonical object from the latest completed run, so
+ * rerunning a job is always safe.
  */
 export class MarketDataControlPlane extends Context.Service<
   MarketDataControlPlane,
   {
-    readonly startIngestionRun: (
-      input: StartIngestionRun,
-    ) => Effect.Effect<void, MarketDataControlPlaneError>;
-    readonly completeIngestionRun: (
-      input: CompleteIngestionRun,
-    ) => Effect.Effect<void, MarketDataControlPlaneError>;
-    readonly failIngestionRun: (
-      runId: string,
-      message: string,
-      completedAt: string,
-    ) => Effect.Effect<void, MarketDataControlPlaneError>;
-    readonly createProcessingJob: (
-      input: CreateProcessingJob,
-    ) => Effect.Effect<ProcessingJob, MarketDataControlPlaneError>;
-    readonly readProcessingJob: (
-      jobId: string,
-    ) => Effect.Effect<ProcessingJob, MarketDataControlPlaneError>;
-    readonly claimProcessingJob: (
-      jobId: string,
-      startedAt: string,
-    ) => Effect.Effect<void, MarketDataControlPlaneError>;
-    readonly completeProcessingJob: (
-      input: CompleteProcessingJob,
-    ) => Effect.Effect<void, MarketDataControlPlaneError>;
-    readonly failProcessingJob: (
-      jobId: string,
-      message: string,
-      completedAt: string,
-    ) => Effect.Effect<void, MarketDataControlPlaneError>;
+    readonly startIngestionRun: (input: StartIngestionRun) => Op;
+    readonly completeIngestionRun: (input: CompleteIngestionRun) => Op;
+    readonly failIngestionRun: (runId: string, message: string, at: string) => Op;
+
+    /** Queue a job for every symbol whose latest completed run has never been processed. */
+    readonly createPendingJobs: (createdAt: string) => Op<number>;
+    /** Fail jobs stuck in `processing` since before the cutoff, releasing their lock. */
+    readonly failStaleJobs: (startedBefore: string, at: string) => Op<number>;
+    readonly listQueuedJobIds: () => Op<readonly string[]>;
+
+    /** Atomically move a queued job to `processing`; undefined if it was not queued. */
+    readonly claimJob: (jobId: string, startedAt: string) => Op<ProcessingManifest | undefined>;
+    readonly completeJob: (jobId: string, outputEtag: string, at: string) => Op;
+    readonly failJob: (jobId: string, message: string, at: string) => Op;
+    /** Return a claimed job to the queue after a delivery failure. */
+    readonly releaseJob: (jobId: string) => Op;
   }
 >()("data-service/MarketDataControlPlane") {}

@@ -1,34 +1,43 @@
 import { Context, Effect, Schema } from "effect";
-import { MarketDateSchema, MarketSymbolSchema } from "$/market-data/schemas";
+
+import {
+  type Dataset,
+  DatasetSchema,
+  datasetProviders,
+  MarketDateSchema,
+  MarketSymbolSchema,
+  ProviderSchema,
+} from "$/market-data/schemas";
 
 export const RegisterSymbolSchema = Schema.Struct({
+  dataset: DatasetSchema,
   symbol: MarketSymbolSchema,
-  provider: Schema.NonEmptyString,
-  enabled: Schema.Boolean,
+  provider: ProviderSchema,
   backfillStartDate: MarketDateSchema,
-}).check(Schema.makeFilter((input) =>
-  input.backfillStartDate <= new Date().toISOString().slice(0, 10)
-    ? true
-    : { path: ["backfillStartDate"], issue: "The start date must not be in the future" },
-));
+  enabled: Schema.optionalKey(Schema.Boolean),
+}).check(
+  Schema.makeFilter((input) =>
+    datasetProviders[input.dataset].includes(input.provider)
+      ? true
+      : { path: ["provider"], issue: `Provider cannot supply dataset ${input.dataset}` },
+  ),
+  Schema.makeFilter((input) =>
+    input.backfillStartDate <= new Date().toISOString().slice(0, 10)
+      ? true
+      : { path: ["backfillStartDate"], issue: "The start date must not be in the future" },
+  ),
+);
 
-export type SymbolConfiguration = typeof RegisterSymbolSchema.Type;
+export type RegisterSymbol = typeof RegisterSymbolSchema.Type;
 
-export interface TrackedSymbol extends SymbolConfiguration {
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly disabledAt: string | null;
-}
-
-export interface ListSymbols {
-  readonly enabled?: boolean;
-  readonly limit: number;
-  readonly after?: SymbolIdentity;
-}
-
-export interface SymbolIdentity {
+export interface TrackedSymbol {
+  readonly dataset: Dataset;
   readonly symbol: string;
   readonly provider: string;
+  readonly enabled: boolean;
+  readonly backfillStartDate: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export class SymbolRegistryError extends Schema.TaggedError<SymbolRegistryError>()(
@@ -36,15 +45,25 @@ export class SymbolRegistryError extends Schema.TaggedError<SymbolRegistryError>
   {
     kind: Schema.Literals(["database", "not_found"]),
     message: Schema.String,
-    symbol: Schema.optionalKey(Schema.String),
   },
 ) {}
 
-/** Policy only: registry changes never fetch data or alter execution history. */
-export class SymbolRegistry extends Context.Service<SymbolRegistry, {
-  readonly register: (input: SymbolConfiguration, now: string) => Effect.Effect<
-    { readonly symbol: TrackedSymbol; readonly created: boolean }, SymbolRegistryError
-  >;
-  readonly list: (input: ListSymbols) => Effect.Effect<readonly TrackedSymbol[], SymbolRegistryError>;
-  readonly disable: (identity: SymbolIdentity, now: string) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
-}>()("data-service/SymbolRegistry") {}
+/** The download universe. Changes here never fetch data or delete history. */
+export class SymbolRegistry extends Context.Service<
+  SymbolRegistry,
+  {
+    readonly register: (
+      input: RegisterSymbol,
+      now: string,
+    ) => Effect.Effect<{ readonly symbol: TrackedSymbol; readonly created: boolean }, SymbolRegistryError>;
+    readonly list: (filter: {
+      readonly dataset?: Dataset;
+      readonly enabled?: boolean;
+    }) => Effect.Effect<readonly TrackedSymbol[], SymbolRegistryError>;
+    readonly disable: (
+      dataset: Dataset,
+      symbol: string,
+      now: string,
+    ) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
+  }
+>()("data-service/SymbolRegistry") {}

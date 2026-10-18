@@ -1,159 +1,67 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
 import { Effect, Layer } from "effect";
 
-import {
-  MarketDataError,
-  MarketDataSource,
-} from "$/market-data";
-import {
-  MarketDataControlPlane,
-  type CompleteIngestionRun,
-  type StartIngestionRun,
-} from "$/market-data/control-plane";
-import {
-  ingestDailyMarketData,
-  RawMarketDataStore,
-  type StoreRawMarketData,
-} from "$/market-data/ingestion";
-import { canonicalMarketDataKey } from "$/market-data/processing";
+import { MarketDataError, MarketDataSource } from "$/market-data";
+import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
+import { ingestMarketData, RawMarketDataStore, type StoreRawMarketData } from "$/market-data/ingestion";
 import { rawMarketDataKey } from "$/market-data/r2-raw-store";
+import { makeTestDatabase } from "./support/d1";
 
-import { makeEodEntry } from "./support/market-data-mocks";
+const entry = (date: string) => ({ date, open: 1, close: 1, high: 1, low: 1, adjusted_close: 1, volume: 1 });
 
-const unused = () => Effect.die("unused test service method");
-
-test("an ingestion run stores one range-sized raw object and completes", async () => {
-  const started: StartIngestionRun[] = [];
+const setup = (retrieve: () => Effect.Effect<readonly { date: string }[], MarketDataError>) => {
+  const { sqlite, db } = makeTestDatabase();
   const stored: StoreRawMarketData[] = [];
-  const completed: CompleteIngestionRun[] = [];
-
-  const source = MarketDataSource.of({
-    provider: "test-provider",
-    retrieveDaily: () =>
-      Effect.succeed([
-        makeEodEntry("2024-01-02"),
-        makeEodEntry("2024-01-03"),
-      ]),
-  });
-  const rawStore = RawMarketDataStore.of({
-    store: (input) =>
-      Effect.sync(() => {
-        stored.push(input);
-        return {
-          key: rawMarketDataKey(input),
-          etag: "raw-etag",
-          observedRange: { from: "2024-01-02", to: "2024-01-03" },
-          rowCount: input.entries.length,
-        };
+  const layer = Layer.mergeAll(
+    D1MarketDataControlPlaneLive(db),
+    Layer.succeed(MarketDataSource, MarketDataSource.of({ provider: "eodhd", retrieveDaily: retrieve })),
+    Layer.succeed(
+      RawMarketDataStore,
+      RawMarketDataStore.of({
+        store: (input) =>
+          Effect.sync(() => {
+            stored.push(input);
+            return { key: rawMarketDataKey(input), etag: "raw-etag", rowCount: input.entries.length };
+          }),
       }),
-  });
-  const controlPlane = MarketDataControlPlane.of({
-    startIngestionRun: (input) =>
-      Effect.sync(() => {
-        started.push(input);
-      }),
-    completeIngestionRun: (input) =>
-      Effect.sync(() => {
-        completed.push(input);
-      }),
-    failIngestionRun: () => Effect.void,
-    createProcessingJob: unused,
-    readProcessingJob: unused,
-    claimProcessingJob: unused,
-    completeProcessingJob: unused,
-    failProcessingJob: unused,
-  });
-  const dependencies = Layer.merge(
-    Layer.succeed(MarketDataSource, source),
-    Layer.merge(
-      Layer.succeed(RawMarketDataStore, rawStore),
-      Layer.succeed(MarketDataControlPlane, controlPlane),
     ),
   );
-
-  const result = await ingestDailyMarketData({
-    runId: "run-backfill-aapl",
-    symbol: "AAPL.US",
-    range: { from: "2024-01-01", to: "2024-01-31" },
-    createdAt: "2024-02-01T00:00:00.000Z",
-  }).pipe(Effect.provide(dependencies), Effect.runPromise);
-
-  assert.equal(result.runId, "run-backfill-aapl");
-  assert.deepEqual(started, [
-    {
-      runId: "run-backfill-aapl",
-      provider: "test-provider",
+  const ingest = () =>
+    ingestMarketData({
+      runId: "run-1",
+      dataset: "prices_eod",
       symbol: "AAPL.US",
-      requestedRange: { from: "2024-01-01", to: "2024-01-31" },
-      createdAt: "2024-02-01T00:00:00.000Z",
-    },
-  ]);
+      range: { from: "2024-01-01", to: "2024-01-31" },
+      createdAt: "2026-10-06T02:00:00Z",
+    }).pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
+  const runRow = () =>
+    ({ ...(sqlite.prepare("SELECT status, object_key, row_count, error FROM ingestion_runs").get() as object) });
+  return { stored, ingest, runRow };
+};
+
+test("a successful download stores one raw object and completes the run", async () => {
+  const { stored, ingest, runRow } = setup(() => Effect.succeed([entry("2024-01-02"), entry("2024-01-03")]));
+  const result = await ingest();
+
+  assert.equal(result._tag, "Success");
   assert.equal(stored.length, 1);
-  assert.equal(stored[0]?.entries.length, 2);
-  assert.deepEqual(completed[0]?.object, {
-    key: "provider=test-provider/symbol=AAPL.US/run=run-backfill-aapl/response.json",
-    etag: "raw-etag",
-    observedRange: { from: "2024-01-02", to: "2024-01-03" },
-    rowCount: 2,
+  assert.equal(stored[0]?.dataset, "prices_eod");
+  assert.deepEqual(runRow(), {
+    status: "completed",
+    object_key: "dataset=prices_eod/symbol=AAPL.US/run=run-1.json",
+    row_count: 2,
+    error: null,
   });
 });
 
-test("a failed provider request marks the ingestion run as failed", async () => {
-  const failures: Array<{ runId: string; message: string }> = [];
-  const source = MarketDataSource.of({
-    provider: "test-provider",
-    retrieveDaily: () =>
-      Effect.fail(
-        new MarketDataError({
-          kind: "request",
-          message: "Provider unavailable",
-          symbol: "AAPL.US",
-        }),
-      ),
-  });
-  const controlPlane = MarketDataControlPlane.of({
-    startIngestionRun: () => Effect.void,
-    completeIngestionRun: unused,
-    failIngestionRun: (runId, message) =>
-      Effect.sync(() => {
-        failures.push({ runId, message });
-      }),
-    createProcessingJob: unused,
-    readProcessingJob: unused,
-    claimProcessingJob: unused,
-    completeProcessingJob: unused,
-    failProcessingJob: unused,
-  });
-  const dependencies = Layer.merge(
-    Layer.succeed(MarketDataSource, source),
-    Layer.merge(
-      Layer.succeed(
-        RawMarketDataStore,
-        RawMarketDataStore.of({ store: unused }),
-      ),
-      Layer.succeed(MarketDataControlPlane, controlPlane),
-    ),
+test("a provider failure marks the run failed", async () => {
+  const { stored, ingest, runRow } = setup(() =>
+    Effect.fail(new MarketDataError({ kind: "request", message: "The EODHD request failed" })),
   );
+  const result = await ingest();
 
-  await assert.rejects(
-    ingestDailyMarketData({
-      runId: "run-failed",
-      symbol: "AAPL.US",
-      range: { from: "2024-01-01", to: "2024-01-01" },
-      createdAt: "2024-01-02T00:00:00.000Z",
-    }).pipe(Effect.provide(dependencies), Effect.runPromise),
-  );
-
-  assert.deepEqual(failures, [
-    { runId: "run-failed", message: "Provider unavailable" },
-  ]);
-});
-
-test("the canonical object key is stable per symbol", () => {
-  assert.equal(
-    canonicalMarketDataKey("AAPL.US"),
-    "dataset=prices_eod/symbol=AAPL.US/data.parquet",
-  );
+  assert.equal(result._tag, "Failure");
+  assert.equal(stored.length, 0);
+  assert.deepEqual(runRow(), { status: "failed", object_key: null, row_count: null, error: "The EODHD request failed" });
 });

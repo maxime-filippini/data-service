@@ -1,93 +1,76 @@
 import { Context, Effect } from "effect";
 
-import { MarketDataError, MarketDataSource } from "$/market-data";
-import {
-  MarketDataControlPlane,
-  type IngestionRunObject,
-} from "$/market-data/control-plane";
-import type { DateRange } from "$/market-data/coverage";
-import type { EodEntry } from "$/market-data/schemas";
+import { type DatedEntry, MarketDataError, MarketDataSource } from "$/market-data";
+import { MarketDataControlPlane, type RawObject } from "$/market-data/control-plane";
+import type { Dataset, DateRange, Provider } from "$/market-data/schemas";
 
 export interface StoreRawMarketData {
   readonly runId: string;
-  readonly provider: string;
+  readonly dataset: Dataset;
+  readonly provider: Provider;
   readonly symbol: string;
   readonly requestedRange: DateRange;
-  readonly entries: readonly EodEntry[];
+  readonly entries: readonly DatedEntry[];
   readonly receivedAt: string;
 }
 
 export class RawMarketDataStore extends Context.Service<
   RawMarketDataStore,
   {
-    readonly store: (
-      input: StoreRawMarketData,
-    ) => Effect.Effect<IngestionRunObject, MarketDataError>;
+    readonly store: (input: StoreRawMarketData) => Effect.Effect<RawObject, MarketDataError>;
   }
 >()("data-service/RawMarketDataStore") {}
 
-export interface IngestDailyMarketData {
+export interface IngestMarketData {
   readonly runId: string;
+  readonly dataset: Dataset;
   readonly symbol: string;
   readonly range: DateRange;
   readonly createdAt: string;
 }
 
-/**
- * Fetch one symbol range and persist it as one immutable ingestion run.
- *
- * The caller supplies the run ID and timestamp so scheduling and retries can
- * retain the same identity instead of accidentally creating duplicate runs.
- */
-export const ingestDailyMarketData = Effect.fn("MarketData.ingestDaily")(
-  function* (input: IngestDailyMarketData) {
-    const source = yield* MarketDataSource;
-    const rawStore = yield* RawMarketDataStore;
-    const controlPlane = yield* MarketDataControlPlane;
+/** Download one symbol's range and record it as one immutable ingestion run. */
+export const ingestMarketData = Effect.fn("MarketData.ingest")(function* (
+  input: IngestMarketData,
+) {
+  const source = yield* MarketDataSource;
+  const rawStore = yield* RawMarketDataStore;
+  const controlPlane = yield* MarketDataControlPlane;
 
-    yield* controlPlane.startIngestionRun({
+  yield* controlPlane.startIngestionRun({
+    runId: input.runId,
+    dataset: input.dataset,
+    symbol: input.symbol,
+    provider: source.provider,
+    requestedRange: input.range,
+    createdAt: input.createdAt,
+  });
+
+  return yield* Effect.gen(function* () {
+    const entries = yield* source.retrieveDaily(input.symbol, input.range);
+    const receivedAt = new Date().toISOString();
+    const object = yield* rawStore.store({
       runId: input.runId,
+      dataset: input.dataset,
       provider: source.provider,
       symbol: input.symbol,
       requestedRange: input.range,
-      createdAt: input.createdAt,
+      entries,
+      receivedAt,
     });
 
-    return yield* Effect.gen(function* () {
-      const entries = yield* source.retrieveDaily(input.symbol, input.range);
-      const receivedAt = new Date().toISOString();
-      const object = yield* rawStore.store({
-        runId: input.runId,
-        provider: source.provider,
-        symbol: input.symbol,
-        requestedRange: input.range,
-        entries,
-        receivedAt,
-      });
+    yield* controlPlane.completeIngestionRun({
+      runId: input.runId,
+      object,
+      completedAt: receivedAt,
+    });
 
-      yield* controlPlane.completeIngestionRun({
-        runId: input.runId,
-        object,
-        completedAt: receivedAt,
-      });
-
-      return {
-        runId: input.runId,
-        provider: source.provider,
-        symbol: input.symbol,
-        requestedRange: input.range,
-        object,
-      } as const;
-    }).pipe(
-      Effect.tapError((error) =>
-        controlPlane
-          .failIngestionRun(
-            input.runId,
-            error.message,
-            new Date().toISOString(),
-          )
-          .pipe(Effect.ignore),
-      ),
-    );
-  },
-);
+    return { runId: input.runId, object } as const;
+  }).pipe(
+    Effect.tapError((error) =>
+      controlPlane
+        .failIngestionRun(input.runId, error.message, new Date().toISOString())
+        .pipe(Effect.ignore),
+    ),
+  );
+});
