@@ -7,15 +7,12 @@ import {
 } from "effect/http";
 
 import { MarketDataError, MarketDataSource } from "$/market-data";
-import { type DateRange } from "$/market-data/coverage";
-import { EodEntriesSchema } from "$/market-data/schemas";
+import { type DateRange, EodEntriesSchema } from "$/market-data/schemas";
 
 const ROOT_URL = "https://eodhd.com/api/eod";
 
 const ApiTokenSchema = Schema.Trim.check(Schema.isNonEmpty());
 
-// These decoders are functions that take an input and return
-// Effect<T, Schema.SchemaError, never>
 const decodeApiToken = Schema.decodeUnknownEffect(ApiTokenSchema);
 
 const validateApiToken = (input: unknown) =>
@@ -29,7 +26,6 @@ const validateApiToken = (input: unknown) =>
     ),
   );
 
-// The Eodhd service implementation will need an HTTP client and an API token
 interface EodhdDependencies {
   readonly client: HttpClient.HttpClient;
   readonly token: string;

@@ -1,81 +1,96 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
-import {
-  type CompleteProcessingJob,
-  MarketDataControlPlane,
-  type ProcessingJobMode,
-} from "$/market-data/control-plane";
+import { MarketDataControlPlane } from "$/market-data/control-plane";
 
-export const canonicalMarketDataKey = (symbol: string) =>
-  `dataset=prices_eod/symbol=${symbol}/data.parquet`;
-
-export interface PrepareSymbolProcessingJob {
+export interface ProcessingMessage {
   readonly jobId: string;
-  readonly symbol: string;
-  readonly mode: ProcessingJobMode;
-  readonly transformVersion: string;
-  readonly createdAt: string;
 }
 
-/** Freeze the exact ingestion runs a Python processing attempt must consume. */
-export const prepareSymbolProcessingJob = Effect.fn(
-  "MarketData.prepareSymbolProcessingJob",
-)(function* (input: PrepareSymbolProcessingJob) {
-  const controlPlane = yield* MarketDataControlPlane;
+/** A job still `processing` after this long is assumed dead and failed. */
+export const STALE_JOB_MS = 60 * 60 * 1000;
 
-  return yield* controlPlane.createProcessingJob({
-    jobId: input.jobId,
-    symbol: input.symbol,
-    mode: input.mode,
-    canonicalKey: canonicalMarketDataKey(input.symbol),
-    transformVersion: input.transformVersion,
-    createdAt: input.createdAt,
-  });
+const QUEUE_BATCH_SIZE = 100;
+
+export class ProcessorUnavailable extends Schema.TaggedError<ProcessorUnavailable>()(
+  "ProcessorUnavailable",
+  { jobId: Schema.String },
+) {}
+
+/**
+ * Daily housekeeping: fail stuck jobs, queue jobs for new runs, and (re)send
+ * every queued job. D1 is the source of truth, so lost messages are resent.
+ */
+export const scheduleProcessing = Effect.fn("MarketData.scheduleProcessing")(function* (
+  queue: Pick<Queue<ProcessingMessage>, "sendBatch">,
+  now: Date,
+) {
+  const controlPlane = yield* MarketDataControlPlane;
+  const at = now.toISOString();
+
+  yield* controlPlane.failStaleJobs(new Date(now.getTime() - STALE_JOB_MS).toISOString(), at);
+  yield* controlPlane.createPendingJobs(at);
+
+  const jobIds = yield* controlPlane.listQueuedJobIds();
+  for (let index = 0; index < jobIds.length; index += QUEUE_BATCH_SIZE) {
+    const batch = jobIds.slice(index, index + QUEUE_BATCH_SIZE);
+    yield* Effect.promise(() => queue.sendBatch(batch.map((jobId) => ({ body: { jobId } }))));
+  }
 });
 
-/** Resolve the complete, immutable run selection for a processor. */
-export const readSymbolProcessingJob = Effect.fn(
-  "MarketData.readSymbolProcessingJob",
-)(function* (jobId: string) {
+const errorDetail = async (response: Response) => {
+  const text = await response.text().catch(() => "");
+  try {
+    const detail = (JSON.parse(text) as { detail?: unknown }).detail;
+    if (typeof detail === "string") return detail;
+  } catch {
+    // Not JSON; fall back to the raw text.
+  }
+  return text;
+};
+
+/**
+ * Claim a job, hand its manifest to the processor container and record the
+ * outcome. Fails with ProcessorUnavailable (job requeued) if the container
+ * could not be reached, so the queue message should be retried.
+ */
+export const processJob = Effect.fn("MarketData.processJob")(function* (
+  jobId: string,
+  processor: Pick<Fetcher, "fetch">,
+) {
   const controlPlane = yield* MarketDataControlPlane;
-  return yield* controlPlane.readProcessingJob(jobId);
-});
+  const manifest = yield* controlPlane.claimJob(jobId, new Date().toISOString());
+  if (manifest === undefined) {
+    // Already processed, failed, or being processed by another delivery.
+    return "skipped" as const;
+  }
 
-export interface StartSymbolProcessingJob {
-  readonly jobId: string;
-  readonly startedAt: string;
-}
+  const response = yield* Effect.tryPromise({
+    try: () =>
+      processor.fetch("http://processor/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manifest),
+      }),
+    catch: () => new ProcessorUnavailable({ jobId }),
+  }).pipe(Effect.tapError(() => controlPlane.releaseJob(jobId)));
 
-/** Claim a queued job before the processor reads or writes canonical data. */
-export const startSymbolProcessingJob = Effect.fn(
-  "MarketData.startSymbolProcessingJob",
-)(function* (input: StartSymbolProcessingJob) {
-  const controlPlane = yield* MarketDataControlPlane;
-  return yield* controlPlane.claimProcessingJob(input.jobId, input.startedAt);
-});
+  const at = new Date().toISOString();
+  if (response.ok) {
+    const body = yield* Effect.promise(() => response.json().catch(() => ({})));
+    const outputEtag = (body as { outputEtag?: unknown }).outputEtag;
+    if (typeof outputEtag === "string" && outputEtag.length > 0) {
+      yield* controlPlane.completeJob(jobId, outputEtag, at);
+      return "completed" as const;
+    }
+    yield* controlPlane.failJob(jobId, "Processor response had no outputEtag", at);
+    return "failed" as const;
+  }
 
-/** Record a successful canonical Parquet write and release the symbol lock. */
-export const completeSymbolProcessingJob = Effect.fn(
-  "MarketData.completeSymbolProcessingJob",
-)(function* (input: CompleteProcessingJob) {
-  const controlPlane = yield* MarketDataControlPlane;
-  return yield* controlPlane.completeProcessingJob(input);
-});
-
-export interface FailSymbolProcessingJob {
-  readonly jobId: string;
-  readonly message: string;
-  readonly completedAt: string;
-}
-
-/** Release the symbol lock after a processor failure, preserving the error. */
-export const failSymbolProcessingJob = Effect.fn(
-  "MarketData.failSymbolProcessingJob",
-)(function* (input: FailSymbolProcessingJob) {
-  const controlPlane = yield* MarketDataControlPlane;
-  return yield* controlPlane.failProcessingJob(
-    input.jobId,
-    input.message,
-    input.completedAt,
+  const detail = yield* Effect.promise(() => errorDetail(response));
+  yield* controlPlane.failJob(
+    jobId,
+    `Processor returned ${response.status}${detail ? `: ${detail.slice(0, 500)}` : ""}`,
+    at,
   );
+  return "failed" as const;
 });
