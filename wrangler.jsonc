@@ -17,6 +17,13 @@
 	"workers_dev": true,
 	"preview_urls": false,
 	"triggers": { "crons": ["0 2 * * *"] },
+	// Bucket names for the processor container (bindings don't expose them),
+	// and the ingestion queue name so the consumer can tell its queues apart.
+	"vars": {
+		"RAW_BUCKET_NAME": "raw-market-data",
+		"PROCESSED_BUCKET_NAME": "processed-market-data",
+		"INGESTION_QUEUE_NAME": "market-data-ingestion",
+	},
 	"containers": [{
 		"class_name": "MarketDataProcessor",
 		"image": "../data-service-processor/Dockerfile",
@@ -69,4 +76,67 @@
 			"database_id": "02d3dda4-f7b7-4bd1-a1db-e6e9a738b297",
 		},
 	],
+	// Dev environment: `pnpm deploy:dev`. Separate Worker, database, buckets and
+	// queues. Bindings are not inherited from the top level, so they repeat here.
+	"env": {
+		"dev": {
+			"triggers": { "crons": [] },
+			"vars": {
+				"RAW_BUCKET_NAME": "raw-market-data-dev",
+				"PROCESSED_BUCKET_NAME": "processed-market-data-dev",
+				"INGESTION_QUEUE_NAME": "market-data-ingestion-dev",
+			},
+			"containers": [{
+				"class_name": "MarketDataProcessor",
+				"image": "../data-service-processor/Dockerfile",
+				"image_build_context": "../data-service-processor",
+				"max_instances": 1,
+				"instance_type": "basic",
+			}],
+			"durable_objects": {
+				"bindings": [{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" }],
+			},
+			"queues": {
+				"producers": [
+					{ "binding": "INGESTION_QUEUE", "queue": "market-data-ingestion-dev" },
+					{ "binding": "PROCESSING_QUEUE", "queue": "market-data-processing-dev" },
+				],
+				"consumers": [{
+					"queue": "market-data-ingestion-dev",
+					"max_batch_size": 5,
+					"max_concurrency": 2,
+					"max_retries": 3,
+					"retry_delay": 60,
+					"dead_letter_queue": "market-data-ingestion-dev-dlq",
+				}, {
+					"queue": "market-data-processing-dev",
+					"max_batch_size": 1,
+					"max_concurrency": 1,
+					"max_retries": 3,
+					"retry_delay": 300,
+					"dead_letter_queue": "market-data-processing-dev-dlq",
+				}],
+			},
+			"r2_buckets": [
+				{ "bucket_name": "raw-market-data-dev", "binding": "MARKET_DATA_BUCKET" },
+				{ "bucket_name": "processed-market-data-dev", "binding": "PROCESSED_MARKET_DATA_BUCKET" },
+			],
+			"secrets": {
+				"required": [
+					"EODHD_API_TOKEN",
+					"MANAGEMENT_API_TOKEN",
+					"R2_ENDPOINT_URL",
+					"R2_ACCESS_KEY_ID",
+					"R2_SECRET_ACCESS_KEY",
+				],
+			},
+			"d1_databases": [
+				{
+					"binding": "MARKET_DATA_DB",
+					"database_name": "data-service-market-data-dev",
+					"database_id": "7b4372d2-9175-408b-b2d2-3dea4de80359",
+				},
+			],
+		},
+	},
 }
