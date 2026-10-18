@@ -6,7 +6,7 @@ other apps manage the universe. Apps read the Parquet files from R2 directly;
 the API never serves market data.
 
 ```txt
-tracked_symbols ─(daily cron / manual refresh)→ provider API
+POST /ingestions → ingestion Queue → Worker consumer → provider API
    → raw R2 object + ingestion run (D1)
    → processing job (D1) → Queue → Worker consumer → Python container
    → canonical Parquet in R2 → job completed (D1)
@@ -18,7 +18,7 @@ Glossary: [CONTEXT.md](../CONTEXT.md).
 
 | Part | Role |
 | --- | --- |
-| Worker | Management API, provider downloads, raw storage, all D1 state, queue consumer that drives the container. |
+| Worker | Management API, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the container. |
 | D1 | Universe (`tracked_symbols`), `ingestion_runs`, `processing_jobs`. No market data. |
 | `raw-market-data` (R2) | Immutable validated provider responses, one per run. |
 | Python container ([data-service-processor](https://github.com/maxime-filippini/data-service-processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
@@ -59,6 +59,25 @@ Adding a dataset (for example FRED rates):
 2. Write a `MarketDataSource` adapter that validates the provider's rows.
 3. Add the entry model and Parquet schema in the processor.
 
+## Ingestion model
+
+`POST /ingestions` checks that every entry is registered, then sends one
+message per symbol to the `market-data-ingestion` queue. The message fixes the
+snapshot's end date (the previous UTC day), so a retry downloads the same
+range.
+
+The consumer looks up the symbol's provider and start date, downloads, stores
+the raw object and completes the run. It then creates the processing job for
+that run and sends it to the processing queue straight away. If the symbol
+already has an active job, the new run waits for the daily cron.
+
+- **One download at a time per symbol.** Starting a run is skipped if the
+  symbol already has a `fetching` run; a partial unique index backs this up.
+  A `fetching` run older than 30 minutes is assumed dead and failed first.
+- **Retries.** Each delivery gets a fresh run ID. Network, storage and
+  database errors retry the message (3 times, then the DLQ). Bad configuration,
+  invalid provider data and unregistered symbols do not.
+
 ## Processing model
 
 Each ingestion run is a full-history snapshot, from the symbol's
@@ -75,7 +94,8 @@ queued ──claim──> processing ──container 2xx──> completed
                       └──stuck > 1h (cron)───> failed
 ```
 
-- **Creating jobs.** The cron queues a job for each symbol whose latest
+- **Creating jobs.** The ingestion consumer queues a job right after each
+  run. As a fallback, the cron queues a job for each symbol whose latest
   completed run has no job yet, unless the symbol already has an active job.
   A unique index enforces one active job per symbol.
 - **Failures.** A failed job is not retried for the same run. The next download
@@ -95,18 +115,14 @@ All routes need `Authorization: Bearer <MANAGEMENT_API_TOKEN>`. See the
 
 ## Not implemented yet
 
-1. **Scheduled ingestion.** The cron should download a full snapshot for every
-   enabled symbol before creating jobs. `ingestMarketData` exists but nothing
-   calls it yet. Use the cron's `scheduledTime` for the end date, add a
-   uniqueness guard per symbol and day, and bound concurrency.
-2. **Manual refresh.** `POST /symbols/:dataset/:symbol/refresh`: run one
-   ingestion now and queue its job, so an app can add a symbol and get data
-   without waiting for the cron.
-3. **Inspection.** A management endpoint showing each symbol's latest run, job
+1. **Scheduled ingestion.** The cron should call `requestIngestions` for every
+   enabled symbol, using its `scheduledTime` for the end date. Consider a guard
+   against downloading the same symbol and end date twice.
+2. **Inspection.** A management endpoint showing each symbol's latest run, job
    status and error.
-4. **Raw retention.** Delete raw objects older than N days, except the latest
+3. **Raw retention.** Delete raw objects older than N days, except the latest
    completed run per symbol.
-5. **Second dataset** (FRED rates), as described above.
+4. **Second dataset** (FRED rates), as described above.
 
 Deliberately left out: delta/merge processing, multiple providers for the same
 `(dataset, symbol)`, and leases with fencing. Add them only if full rebuilds

@@ -27,9 +27,13 @@ export interface IngestMarketData {
   readonly symbol: string;
   readonly range: DateRange;
   readonly createdAt: string;
+  readonly staleBefore: string;
 }
 
-/** Download one symbol's range and record it as one immutable ingestion run. */
+/**
+ * Download one symbol's range and record it as one immutable ingestion run.
+ * Skips the download if the symbol already has a run in progress.
+ */
 export const ingestMarketData = Effect.fn("MarketData.ingest")(function* (
   input: IngestMarketData,
 ) {
@@ -37,14 +41,16 @@ export const ingestMarketData = Effect.fn("MarketData.ingest")(function* (
   const rawStore = yield* RawMarketDataStore;
   const controlPlane = yield* MarketDataControlPlane;
 
-  yield* controlPlane.startIngestionRun({
+  const started = yield* controlPlane.startIngestionRun({
     runId: input.runId,
     dataset: input.dataset,
     symbol: input.symbol,
     provider: source.provider,
     requestedRange: input.range,
     createdAt: input.createdAt,
+    staleBefore: input.staleBefore,
   });
+  if (!started) return { status: "skipped" } as const;
 
   return yield* Effect.gen(function* () {
     const entries = yield* source.retrieveDaily(input.symbol, input.range);
@@ -65,7 +71,7 @@ export const ingestMarketData = Effect.fn("MarketData.ingest")(function* (
       completedAt: receivedAt,
     });
 
-    return { runId: input.runId, object } as const;
+    return { status: "completed", runId: input.runId, object } as const;
   }).pipe(
     Effect.tapError((error) =>
       controlPlane

@@ -32,7 +32,7 @@ const query = <A>(
 
 // The latest completed run per (dataset, symbol) that no job has used yet.
 // A failed job is not retried for the same run; the next download gets a new job.
-const CREATE_PENDING_JOBS = `
+const pendingJobsInsert = (extraCondition = "") => `
   INSERT INTO processing_jobs (job_id, dataset, symbol, run_id, status, created_at)
   SELECT lower(hex(randomblob(16))), run.dataset, run.symbol, run.run_id, 'queued', ?
   FROM ingestion_runs AS run
@@ -50,7 +50,11 @@ const CREATE_PENDING_JOBS = `
       WHERE active.dataset = run.dataset AND active.symbol = run.symbol
         AND active.status IN ('queued', 'processing')
     )
+    ${extraCondition}
   ON CONFLICT DO NOTHING`;
+
+const CREATE_PENDING_JOBS = pendingJobsInsert();
+const CREATE_JOB_FOR_RUN = `${pendingJobsInsert("AND run.run_id = ?")} RETURNING job_id`;
 
 const toManifest = (row: ClaimedJobRow): ProcessingManifest => ({
   jobId: row.job_id,
@@ -76,25 +80,39 @@ export const D1MarketDataControlPlaneLive = (
       startIngestionRun: (input) =>
         query(
           () =>
-            db
-              .prepare(
-                `INSERT INTO ingestion_runs (run_id, dataset, symbol, provider,
-                   requested_from, requested_to, status, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, 'fetching', ?)`,
-              )
-              .bind(
-                input.runId,
-                input.dataset,
-                input.symbol,
-                input.provider,
-                input.requestedRange.from,
-                input.requestedRange.to,
-                input.createdAt,
-              )
-              .run(),
+            db.batch([
+              db
+                .prepare(
+                  `UPDATE ingestion_runs
+                   SET status = 'failed', completed_at = ?, error = 'Timed out while fetching'
+                   WHERE dataset = ? AND symbol = ? AND status = 'fetching' AND created_at < ?`,
+                )
+                .bind(input.createdAt, input.dataset, input.symbol, input.staleBefore),
+              db
+                .prepare(
+                  `INSERT INTO ingestion_runs (run_id, dataset, symbol, provider,
+                     requested_from, requested_to, status, created_at)
+                   SELECT ?, ?, ?, ?, ?, ?, 'fetching', ?
+                   WHERE NOT EXISTS (
+                     SELECT 1 FROM ingestion_runs
+                     WHERE dataset = ? AND symbol = ? AND status = 'fetching'
+                   )`,
+                )
+                .bind(
+                  input.runId,
+                  input.dataset,
+                  input.symbol,
+                  input.provider,
+                  input.requestedRange.from,
+                  input.requestedRange.to,
+                  input.createdAt,
+                  input.dataset,
+                  input.symbol,
+                ),
+            ]),
           "Could not create the ingestion run",
           { runId: input.runId },
-        ).pipe(Effect.asVoid),
+        ).pipe(Effect.map(([, insert]) => insert!.meta.changes === 1)),
 
       completeIngestionRun: ({ runId, object, completedAt }) =>
         query(
@@ -139,6 +157,13 @@ export const D1MarketDataControlPlaneLive = (
           () => db.prepare(CREATE_PENDING_JOBS).bind(createdAt).run(),
           "Could not create processing jobs",
         ).pipe(Effect.map((result) => result.meta.changes)),
+
+      createJobForRun: (runId, createdAt) =>
+        query(
+          () => db.prepare(CREATE_JOB_FOR_RUN).bind(createdAt, runId).first<{ job_id: string }>(),
+          "Could not create the processing job",
+          { runId },
+        ).pipe(Effect.map((row) => row?.job_id)),
 
       failStaleJobs: (startedBefore, at) =>
         query(

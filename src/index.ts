@@ -1,16 +1,69 @@
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { Hono } from "hono";
 
+import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
+import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
+import { type IngestionMessage, isRetryable, runIngestion } from "$/market-data/ingestion-queue";
 import { processJob, scheduleProcessing } from "$/market-data/processing";
+import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
+import { createIngestionRoutes } from "$/routes/ingestions";
 import { createSymbolRoutes } from "$/routes/symbols";
 
 export { MarketDataProcessor } from "./processor-container";
 
+const INGESTION_QUEUE = "market-data-ingestion";
+
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
 app.route("/symbols", createSymbolRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
+app.route("/ingestions", createIngestionRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
+
+/** The download adapter for a tracked symbol's provider. */
+const sourceFor = (env: CloudflareBindings) => (provider: string) =>
+  provider === "eodhd"
+    ? EodhdMarketDataSourceLive(env.EODHD_API_TOKEN)
+    : Layer.effect(
+        MarketDataSource,
+        Effect.fail(new MarketDataError({ kind: "configuration", message: `Unknown provider ${provider}` })),
+      );
+
+const ingest = async (batch: MessageBatch<IngestionMessage>, env: CloudflareBindings) => {
+  const layer = Layer.mergeAll(
+    D1SymbolRegistryLive(env.MARKET_DATA_DB),
+    D1MarketDataControlPlaneLive(env.MARKET_DATA_DB),
+    R2RawMarketDataStoreLive(env.MARKET_DATA_BUCKET),
+  );
+  const dependencies = { sourceFor: sourceFor(env), processingQueue: env.PROCESSING_QUEUE };
+
+  for (const message of batch.messages) {
+    const { dataset, symbol } = message.body;
+    const result = await runIngestion(message.body, dependencies).pipe(
+      Effect.provide(layer),
+      Effect.result,
+      Effect.runPromise,
+    );
+    if (result._tag === "Success") {
+      console.log(JSON.stringify({ event: "ingestion", dataset, symbol, ...result.success }));
+      message.ack();
+    } else {
+      const retry = isRetryable(result.failure);
+      console.error(
+        JSON.stringify({
+          event: "ingestion_failed",
+          dataset,
+          symbol,
+          error: result.failure._tag,
+          message: result.failure.message,
+          retry,
+        }),
+      );
+      if (retry) message.retry();
+      else message.ack();
+    }
+  }
+};
 
 export default {
   fetch: app.fetch,
@@ -23,6 +76,11 @@ export default {
   },
 
   async queue(batch, env) {
+    if (batch.queue === INGESTION_QUEUE) {
+      await ingest(batch as MessageBatch<IngestionMessage>, env);
+      return;
+    }
+
     const controlPlane = D1MarketDataControlPlaneLive(env.MARKET_DATA_DB);
     const processor = env.MARKET_DATA_PROCESSOR.getByName("processor");
 

@@ -41,6 +41,7 @@ test("an ingestion run moves from fetching to completed with its raw object", as
       provider: "eodhd",
       requestedRange: { from: "2024-01-01", to: "2024-01-31" },
       createdAt: "2026-10-06T02:00:00Z",
+      staleBefore: "2026-10-06T01:30:00Z",
     }),
   );
   await run(

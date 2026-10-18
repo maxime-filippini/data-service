@@ -14,7 +14,7 @@
 		},
 	},
 	"upload_source_maps": true,
-	"workers_dev": false,
+	"workers_dev": true,
 	"preview_urls": false,
 	"triggers": { "crons": ["0 2 * * *"] },
 	"containers": [{
@@ -29,8 +29,18 @@
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["MarketDataProcessor"] }],
 	"queues": {
-		"producers": [{ "binding": "PROCESSING_QUEUE", "queue": "market-data-processing" }],
+		"producers": [
+			{ "binding": "INGESTION_QUEUE", "queue": "market-data-ingestion" },
+			{ "binding": "PROCESSING_QUEUE", "queue": "market-data-processing" },
+		],
 		"consumers": [{
+			"queue": "market-data-ingestion",
+			"max_batch_size": 5,
+			"max_concurrency": 2,
+			"max_retries": 3,
+			"retry_delay": 60,
+			"dead_letter_queue": "market-data-ingestion-dlq",
+		}, {
 			"queue": "market-data-processing",
 			"max_batch_size": 1,
 			"max_concurrency": 1,
