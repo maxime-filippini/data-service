@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "data-service",
+      "path": "."
+    },
+    {
+      "name": "data-service-processor",
+      "path": "../data-service-processor"
+    }
+  ]
+}
