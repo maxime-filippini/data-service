@@ -34,6 +34,7 @@ const setup = (retrieve: () => Effect.Effect<readonly { date: string }[], Market
       symbol: "AAPL.US",
       range: { from: "2024-01-01", to: "2024-01-31" },
       createdAt: "2026-10-06T02:00:00Z",
+      staleBefore: "2026-10-06T01:30:00Z",
     }).pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
   const runRow = () =>
     ({ ...(sqlite.prepare("SELECT status, object_key, row_count, error FROM ingestion_runs").get() as object) });

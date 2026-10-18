@@ -84,6 +84,22 @@ export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry
             .all<SymbolRow>(),
         ).pipe(Effect.map((result) => result.results.map(fromRow))),
 
+      get: (dataset, symbol) =>
+        query(() =>
+          db
+            .prepare(`SELECT * FROM tracked_symbols WHERE dataset = ? AND symbol = ?`)
+            .bind(dataset, symbol)
+            .first<SymbolRow>(),
+        ).pipe(
+          Effect.flatMap((row) =>
+            row === null
+              ? Effect.fail(
+                  new SymbolRegistryError({ kind: "not_found", message: "The symbol is not registered" }),
+                )
+              : Effect.succeed(fromRow(row)),
+          ),
+        ),
+
       disable: (dataset, symbol, now) =>
         query(() =>
           db

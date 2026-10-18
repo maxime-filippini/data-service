@@ -16,6 +16,8 @@ export interface StartIngestionRun {
   readonly provider: Provider;
   readonly requestedRange: DateRange;
   readonly createdAt: string;
+  /** A `fetching` run for the same symbol created before this is assumed dead and failed. */
+  readonly staleBefore: string;
 }
 
 export interface CompleteIngestionRun {
@@ -60,12 +62,18 @@ type Op<A = void> = Effect.Effect<A, ControlPlaneError>;
 export class MarketDataControlPlane extends Context.Service<
   MarketDataControlPlane,
   {
-    readonly startIngestionRun: (input: StartIngestionRun) => Op;
+    /** Record a new `fetching` run; false if the symbol already has one in progress. */
+    readonly startIngestionRun: (input: StartIngestionRun) => Op<boolean>;
     readonly completeIngestionRun: (input: CompleteIngestionRun) => Op;
     readonly failIngestionRun: (runId: string, message: string, at: string) => Op;
 
     /** Queue a job for every symbol whose latest completed run has never been processed. */
     readonly createPendingJobs: (createdAt: string) => Op<number>;
+    /**
+     * Queue a job for one run if it is still the symbol's latest completed run
+     * and the symbol has no active job. Returns the new job ID, if any.
+     */
+    readonly createJobForRun: (runId: string, createdAt: string) => Op<string | undefined>;
     /** Fail jobs stuck in `processing` since before the cutoff, releasing their lock. */
     readonly failStaleJobs: (startedBefore: string, at: string) => Op<number>;
     readonly listQueuedJobIds: () => Op<readonly string[]>;

@@ -60,6 +60,7 @@ export class SymbolRegistry extends Context.Service<
       readonly dataset?: Dataset;
       readonly enabled?: boolean;
     }) => Effect.Effect<readonly TrackedSymbol[], SymbolRegistryError>;
+    readonly get: (dataset: Dataset, symbol: string) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
     readonly disable: (
       dataset: Dataset,
       symbol: string,
