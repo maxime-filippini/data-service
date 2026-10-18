@@ -25,7 +25,8 @@ pnpm dev
 
 Remote resources: the `data-service-market-data` D1 database, the
 `raw-market-data` and `processed-market-data` buckets, and the
-`market-data-processing` and `market-data-processing-dlq` queues. Secrets:
+`market-data-ingestion`, `market-data-ingestion-dlq`, `market-data-processing`
+and `market-data-processing-dlq` queues. Secrets:
 
 ```sh
 pnpm exec wrangler secret put EODHD_API_TOKEN
@@ -39,7 +40,8 @@ pnpm run deploy                                      # needs Docker to build the
 
 ## Managing symbols
 
-All routes need `Authorization: Bearer $MANAGEMENT_API_TOKEN`.
+The API is served at `https://data-service.maxime-filippini.workers.dev`
+(`$URL` below). All routes need `Authorization: Bearer $MANAGEMENT_API_TOKEN`.
 
 Register or update a symbol. Re-registering a disabled symbol enables it:
 
@@ -68,6 +70,28 @@ curl -X POST "$URL/symbols/prices_eod/AAPL.US/disable" -H "Authorization: Bearer
 ```
 
 Errors: `400` invalid input, `401` bad token, `404` unknown symbol, `500` database error.
+
+## Running ingestions
+
+Download the full history of registered symbols now and rebuild their Parquet
+files:
+
+```sh
+curl -X POST "$URL/ingestions" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"entries":[{"dataset":"prices_eod","symbol":"AAPL.US"},{"dataset":"prices_eod","symbol":"MSFT.US"}]}'
+```
+
+Returns `202` with the queued entries and the date range each will download
+(from the symbol's `backfillStartDate` to the previous UTC day). Up to 500
+entries per request; duplicates are ignored. Disabled symbols can still be
+ingested manually. If any entry is not registered, or its history starts after
+the previous day, the request returns `400` with the `rejected` entries and
+queues nothing.
+
+Each entry downloads in the background, then its Parquet rebuild is queued
+straight away. A symbol that already has a download in progress is skipped.
 
 ## Checks
 
