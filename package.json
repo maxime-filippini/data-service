@@ -10,7 +10,9 @@
 		"db:migrate:remote": "wrangler d1 migrations apply data-service-market-data --remote",
 		"db:migrate:dev": "wrangler d1 migrations apply data-service-market-data-dev --remote --env dev",
 		"test": "node --import tsx --test test/*.test.*",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"processor:test": "uv run --directory containers/processor pytest",
+		"processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests"
 	},
 	"dependencies": {
 		"@cloudflare/containers": "^0.3.7",

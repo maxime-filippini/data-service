@@ -1,6 +1,6 @@
 # Market data processor
 
-Python half of [data-service](https://github.com/maxime-filippini/data-service).
+Python container for the data-service Worker ([README](../../README.md)).
 It turns one raw provider download into the canonical Parquet object for a
 symbol. The Worker owns all job state in D1; this service only reads R2,
 writes R2 and returns the result.
@@ -75,15 +75,18 @@ uv run processor manifest.json          # one manifest, prints {"outputEtag": â€
 uv run uvicorn data_service_processor.app:app --port 8080
 ```
 
-The data-service Worker builds the container from this directory
-(`../data-service-processor` relative to the Worker repo). Cloudflare requires
-a `linux/amd64` image:
+`wrangler deploy` builds the image from this directory (see `wrangler.jsonc`
+at the repo root), so a processor change ships with the Worker deploy that
+contains it. Cloudflare requires a `linux/amd64` image:
 
 ```sh
 docker build --platform linux/amd64 -t market-data-processor .
 ```
 
 ## Verification
+
+From the repo root, `pnpm processor:test` and `pnpm processor:lint` run the
+same checks as CI. From this directory:
 
 ```sh
 uv run pytest
