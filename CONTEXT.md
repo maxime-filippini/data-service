@@ -38,3 +38,26 @@ ingestion run. Only one job per symbol can be queued or processing at a time.
 The current Parquet object for a `(dataset, symbol)` pair, at the stable key
 `dataset=<dataset>/symbol=<symbol>/data.parquet` in the processed bucket.
 Client apps read it directly from R2.
+
+## Calculation type
+
+A kind of calculation, such as `ex_ante_vol`. Each one is a Python module in
+the engine container with its own params and output columns. See
+[the calculation engine spec](docs/calculation-engine.md).
+
+## Portfolio
+
+A name and a list of `(symbol, weight)`. Every symbol must be tracked in
+`prices_eod`. A portfolio only holds its current holdings.
+
+## Calculation
+
+A saved calculation type with its params, the portfolios it runs over, a cron
+expression and an enabled flag. Its results are one Parquet file at
+`calculation=<id>/data.parquet` in the processed bucket.
+
+## Calculation run
+
+One run of a calculation for one as-of date, started by its cron or by hand.
+The type runs once per portfolio, and the run saves the params and holdings it
+used.

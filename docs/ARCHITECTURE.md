@@ -172,6 +172,9 @@ range requests.
 2. **Raw retention.** Delete raw objects older than N days, except the latest
    completed run per symbol.
 3. **Second dataset** (FRED rates), as described above.
+4. **Calculation engine.** Scheduled and on-demand calculations over
+   portfolios, in their own Python container. See
+   [calculation-engine.md](calculation-engine.md).
 
 Deliberately left out: delta/merge processing, multiple providers for the same
 `(dataset, symbol)`, and leases with fencing. Add them only if full rebuilds
