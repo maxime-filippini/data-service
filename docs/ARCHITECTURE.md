@@ -7,7 +7,8 @@ the management API never serves market data. Only the dashboard does, so its
 users can browse the files.
 
 ```txt
-POST /ingestions → ingestion Queue → Worker consumer → provider API
+hourly cron → Workflow (daily run) ─┐
+POST /ingestions ───────────────────┴→ ingestion Queue → Worker consumer → provider API
    → raw R2 object + ingestion run (D1)
    → processing job (D1) → Queue → Worker consumer → Python container
    → canonical Parquet in R2 → job completed (D1)
@@ -19,9 +20,10 @@ Glossary: [CONTEXT.md](../CONTEXT.md).
 
 | Part | Role |
 | --- | --- |
-| Worker | Management API, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the container. |
-| Dashboard ([`dashboard/`](../dashboard)) | Read-only Svelte app for runs, symbols and the Parquet data, served by the Worker behind Cloudflare Access. |
-| D1 | Universe (`tracked_symbols`), `ingestion_runs`, `processing_jobs`. No market data. |
+| Worker | Management API, hourly cron, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the container. |
+| `ScheduledDownloadWorkflow` | One Workflow instance per run of the daily schedule. Queues a download for every enabled symbol and records the outcome. |
+| Dashboard ([`dashboard/`](../dashboard)) | Svelte app for runs, symbols, the schedule and the Parquet data, served by the Worker behind Cloudflare Access. It can edit the registry and the schedule and start downloads. |
+| D1 | Universe (`tracked_symbols`), `download_schedule`, `schedule_runs`, `ingestion_runs`, `processing_jobs`. No market data. |
 | `raw-market-data` (R2) | Immutable validated provider responses, one per run. |
 | Python container ([`containers/processor`](../containers/processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
 | `processed-market-data` (R2) | One Parquet object per `(dataset, symbol)`. This is what apps read. |
@@ -60,6 +62,26 @@ Adding a dataset (for example FRED rates):
 1. Add it to `DatasetSchema`/`ProviderSchema` and `datasetProviders`.
 2. Write a `MarketDataSource` adapter that validates the provider's rows.
 3. Add the entry model and Parquet schema in the processor.
+
+## Daily schedule
+
+One schedule downloads every enabled symbol once a day. `download_schedule`
+holds its UTC hour and a paused flag (it starts paused). Both the management
+API (`/schedule`) and the dashboard can change them.
+
+- **Trigger.** The cron fires at the top of every hour. Once the schedule's
+  hour has passed and today has no scheduled run, it records the run in
+  `schedule_runs` (`schedule-<date>`) and starts a Workflow instance with the
+  same ID. A missed hour is caught up on the next tick. A partial unique index
+  allows one scheduled run per UTC day; a duplicate Workflow ID is refused too.
+- **Workflow.** Lists the enabled symbols whose history has started, sends
+  them to the ingestion queue in batches of 100 (one step per batch), then
+  records how many it queued. Downloads run up to the day before the run, as
+  with manual ingestions. A failure is recorded on the run.
+- **Manual runs.** "Run now" (`POST /schedule/runs`) starts the same Workflow
+  as a `manual-<date>-<id>` run. It doesn't use up the day's scheduled run.
+- **Failures.** If the Workflow can't start, the cron forgets the run and the
+  next tick retries. A run still `running` after an hour is marked failed.
 
 ## Ingestion model
 
@@ -118,12 +140,19 @@ All routes need `Authorization: Bearer <MANAGEMENT_API_TOKEN>`. See the
 ## Dashboard
 
 A Svelte app in `dashboard/`, built into the Worker's static assets and served
-at `/dashboard/`, with a read-only API at `/dashboard/api/*` (`/me`, `/runs`,
-`/symbols`, `/datasets/:dataset/:symbol`). The Worker runs before the assets (`run_worker_first`), so every
-dashboard request, including its files, needs a Cloudflare Access user whose
-email is in `DASHBOARD_ALLOWED_EMAILS`. The API reads D1 through the
-`PipelineStatus` service; it never changes state. The management token is never
-sent to the browser.
+at `/dashboard/`, with an API at `/dashboard/api/*`. The Worker runs before the
+assets (`run_worker_first`), so every dashboard request, including its files,
+needs a Cloudflare Access user whose email is in `DASHBOARD_ALLOWED_EMAILS`.
+The management token is never sent to the browser.
+
+- **Reads:** `/me`, `/runs`, `/symbols` (status views from `PipelineStatus`),
+  `/datasets/:dataset/:symbol` (Parquet files) and `/options` (datasets and
+  their providers, for the registry form).
+- **Changes:** `/registry`, `/ingestions` and `/schedule` mount the same route
+  modules as the management API's `/symbols`, `/ingestions` and `/schedule`,
+  with Access in place of the token. Browsers send the Access cookie on
+  cross-site requests too, so every non-GET request must come from the
+  dashboard's own origin (`Origin` or `Sec-Fetch-Site`), or it gets `403`.
 
 The dataset explorer fetches a symbol's whole canonical Parquet file from
 `/dashboard/api/datasets/:dataset/:symbol`. The Worker streams it from the
@@ -138,14 +167,11 @@ range requests.
 
 ## Not implemented yet
 
-1. **Scheduled ingestion.** The cron should call `requestIngestions` for every
-   enabled symbol, using its `scheduledTime` for the end date. Consider a guard
-   against downloading the same symbol and end date twice.
-2. **Inspection.** A management endpoint showing each symbol's latest run, job
+1. **Inspection.** A management endpoint showing each symbol's latest run, job
    status and error.
-3. **Raw retention.** Delete raw objects older than N days, except the latest
+2. **Raw retention.** Delete raw objects older than N days, except the latest
    completed run per symbol.
-4. **Second dataset** (FRED rates), as described above.
+3. **Second dataset** (FRED rates), as described above.
 
 Deliberately left out: delta/merge processing, multiple providers for the same
 `(dataset, symbol)`, and leases with fencing. Add them only if full rebuilds
