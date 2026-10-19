@@ -21,7 +21,7 @@ Glossary: [CONTEXT.md](../CONTEXT.md).
 | Worker | Management API, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the container. |
 | D1 | Universe (`tracked_symbols`), `ingestion_runs`, `processing_jobs`. No market data. |
 | `raw-market-data` (R2) | Immutable validated provider responses, one per run. |
-| Python container ([data-service-processor](https://github.com/maxime-filippini/data-service-processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
+| Python container ([`containers/processor`](../containers/processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
 | `processed-market-data` (R2) | One Parquet object per `(dataset, symbol)`. This is what apps read. |
 
 ## Storage layout

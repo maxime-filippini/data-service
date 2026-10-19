@@ -9,10 +9,13 @@ from R2 directly:
 processed-market-data/dataset=prices_eod/symbol=AAPL.US/data.parquet
 ```
 
-How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The Python
-processor lives in
-[data-service-processor](https://github.com/maxime-filippini/data-service-processor),
-which must be checked out next to this repo (`../data-service-processor`).
+How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+| Path | What |
+| --- | --- |
+| `src/` | The Worker (TypeScript) |
+| `containers/processor/` | The Python processor container ([README](containers/processor/README.md)) |
+| `migrations/` | D1 migrations |
 
 ## Setup
 
@@ -34,9 +37,32 @@ pnpm exec wrangler secret put MANAGEMENT_API_TOKEN
 pnpm exec wrangler secret put R2_ENDPOINT_URL        # https://<account-id>.r2.cloudflarestorage.com
 pnpm exec wrangler secret put R2_ACCESS_KEY_ID       # used by the processor container
 pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
-pnpm db:migrate:remote
-pnpm run deploy                                      # needs Docker to build the container
 ```
+
+## Deploying
+
+GitHub Actions (`.github/workflows/deploy.yml`) checks the Worker and the
+processor on every push and pull request, then applies D1 migrations and
+deploys:
+
+| Branch | Target |
+| --- | --- |
+| `main` | production (`data-service`) |
+| `develop`, `feat/*`, `fix/*` | dev environment (`data-service-dev`) |
+
+Each deploy builds the processor image from `containers/processor` and ships it
+with the Worker, so both always come from the same commit. Wrangler only rolls
+out containers when the image changes.
+
+So the flow is: push a `feat/*` or `fix/*` branch and test it on dev, merge it
+into `develop`, then merge `develop` into `main` to release. All branches share
+the dev environment, so the latest push wins. A migration applied to dev from a
+branch stays applied even if the branch is abandoned. To deploy any other
+branch to dev, run the workflow manually from the Actions tab.
+
+The workflow needs a `CLOUDFLARE_API_TOKEN` repository secret. To deploy by
+hand instead, run `pnpm db:migrate:remote && pnpm run deploy` with Docker
+running.
 
 ## Dev environment
 
@@ -45,14 +71,13 @@ A separate deployment for end-to-end testing of any branch:
 database (`data-service-market-data-dev`), buckets (`raw-market-data-dev`,
 `processed-market-data-dev`), queues (`*-dev`) and secrets, and no cron.
 
-```sh
-pnpm db:migrate:dev     # after adding a migration
-pnpm deploy:dev         # builds the container from ../data-service-processor
-```
+CI deploys it (see [Deploying](#deploying)). To deploy by hand, with Docker
+running:
 
-The container image is built from whatever is checked out in
-`../data-service-processor`, so check out the matching branch there before
-deploying either environment.
+```sh
+pnpm db:migrate:dev
+pnpm deploy:dev
+```
 
 One-time secrets (use an R2 API token scoped to the two dev buckets):
 
@@ -62,8 +87,8 @@ for name in EODHD_API_TOKEN MANAGEMENT_API_TOKEN R2_ENDPOINT_URL R2_ACCESS_KEY_I
 done
 ```
 
-Workflow: develop and run unit tests with `pnpm dev`, test end to end on dev,
-and deploy production (`pnpm run deploy`) only from `develop` after merging.
+Workflow: develop and run unit tests with `pnpm dev`, then push the branch and
+test end to end on dev.
 `pnpm dev` can't run the full pipeline: the container reads real R2 while the
 local Worker writes to simulated buckets.
 
@@ -127,4 +152,6 @@ straight away. A symbol that already has a download in progress is skipped.
 ```sh
 pnpm test
 pnpm typecheck
+pnpm processor:test     # needs uv
+pnpm processor:lint
 ```

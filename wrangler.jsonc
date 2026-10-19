@@ -26,8 +26,8 @@
 	},
 	"containers": [{
 		"class_name": "MarketDataProcessor",
-		"image": "../data-service-processor/Dockerfile",
-		"image_build_context": "../data-service-processor",
+		"image": "./containers/processor/Dockerfile",
+		"image_build_context": "./containers/processor",
 		"max_instances": 1,
 		"instance_type": "basic",
 	}],
@@ -76,8 +76,9 @@
 			"database_id": "02d3dda4-f7b7-4bd1-a1db-e6e9a738b297",
 		},
 	],
-	// Dev environment: `pnpm deploy:dev`. Separate Worker, database, buckets and
-	// queues. Bindings are not inherited from the top level, so they repeat here.
+	// Dev environment: CI deploys it from develop, feat/* and fix/*. Separate
+	// Worker, database, buckets and queues. Bindings are not inherited from the
+	// top level, so they repeat here.
 	"env": {
 		"dev": {
 			"triggers": { "crons": [] },
@@ -88,8 +89,8 @@
 			},
 			"containers": [{
 				"class_name": "MarketDataProcessor",
-				"image": "../data-service-processor/Dockerfile",
-				"image_build_context": "../data-service-processor",
+				"image": "./containers/processor/Dockerfile",
+				"image_build_context": "./containers/processor",
 				"max_instances": 1,
 				"instance_type": "basic",
 			}],
