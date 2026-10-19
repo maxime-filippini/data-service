@@ -15,7 +15,8 @@
     initial?: RegisterInput | undefined;
     /** `dataset/symbol` keys already registered, so adding never overwrites one. */
     existing: ReadonlySet<string>;
-    onsaved: (saved: RegisterInput) => void;
+    /** Called with the symbols saved. `done` is false when some failed and the form stays open. */
+    onsaved: (symbols: string[], done: boolean) => void;
     oncancel: () => void;
   } = $props();
 
@@ -39,22 +40,60 @@
   });
 
   const today = new Date().toISOString().slice(0, 10);
+  const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9][A-Z0-9-]*)?$/;
+  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+
+  /** Symbols typed into the add form, uppercased and without duplicates. */
+  const parseSymbols = (text: string) => [...new Set(text.toUpperCase().split(/[\s,;]+/).filter(Boolean))];
+  const typed = $derived(editing ? [] : parseSymbols(form.symbol));
+  let progress = $state(0);
+
+  const submitEdit = async () => {
+    try {
+      await registerSymbol(form);
+      onsaved([form.symbol], true);
+    } catch (cause) {
+      error = describe(cause);
+    }
+  };
+
+  const submitAdd = async () => {
+    const invalid = typed.filter((symbol) => !SYMBOL_PATTERN.test(symbol));
+    if (invalid.length > 0) {
+      error = `Not a valid symbol: ${invalid.join(", ")}. Use letters, digits and dashes, with an optional exchange suffix such as .US.`;
+      return;
+    }
+    const taken = typed.filter((symbol) => existing.has(`${form.dataset}/${symbol}`));
+    if (taken.length > 0) {
+      error = `Already registered for ${form.dataset}: ${taken.join(", ")}. Remove them here, or use Edit on their rows.`;
+      return;
+    }
+    const added: string[] = [];
+    const failures: string[] = [];
+    progress = 0;
+    for (const symbol of typed) {
+      try {
+        await registerSymbol({ ...form, symbol });
+        added.push(symbol);
+      } catch (cause) {
+        failures.push(`${symbol}: ${describe(cause)}`);
+      }
+      progress++;
+    }
+    if (failures.length > 0) {
+      // Keep only the failed symbols so they can be fixed and retried.
+      form.symbol = typed.filter((symbol) => !added.includes(symbol)).join("\n");
+      error = `${failures.length} of ${typed.length} could not be added. ${failures.join("; ")}`;
+    }
+    onsaved(added, failures.length === 0);
+  };
 
   const submit = async (event: SubmitEvent) => {
     event.preventDefault();
     saving = true;
     error = null;
-    const input = { ...form, symbol: form.symbol.trim().toUpperCase() };
-    if (!editing && existing.has(`${input.dataset}/${input.symbol}`)) {
-      error = `${input.symbol} is already registered for ${input.dataset}. Use Edit on its row instead.`;
-      saving = false;
-      return;
-    }
     try {
-      await registerSymbol(input);
-      onsaved(input);
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      await (editing ? submitEdit() : submitAdd());
     } finally {
       saving = false;
     }
@@ -62,7 +101,7 @@
 </script>
 
 <form class="card" onsubmit={submit}>
-  <h2>{editing ? `Edit ${form.symbol}` : "Add a symbol"}</h2>
+  <h2>{editing ? `Edit ${form.symbol}` : "Add symbols"}</h2>
   <div class="fields">
     <label class="field">
       Dataset
@@ -72,17 +111,23 @@
         {/each}
       </select>
     </label>
-    <label class="field">
-      Symbol
-      <input
-        bind:value={form.symbol}
-        placeholder="AAPL.US"
-        disabled={editing}
-        required
-        pattern="[A-Za-z0-9][A-Za-z0-9\-]*(\.[A-Za-z0-9][A-Za-z0-9\-]*)?"
-        title="Letters, digits and dashes, with an optional exchange suffix such as .US"
-      />
-    </label>
+    {#if editing}
+      <label class="field">
+        Symbol
+        <input value={form.symbol} disabled />
+      </label>
+    {:else}
+      <label class="field symbols">
+        Symbols
+        <textarea
+          bind:value={form.symbol}
+          placeholder={"AAPL.US MSFT.US\nBRK-B.US"}
+          rows="3"
+          required
+          title="Separate symbols with spaces, commas or new lines"
+        ></textarea>
+      </label>
+    {/if}
     <label class="field">
       Provider
       <select bind:value={form.provider} required>
@@ -100,7 +145,11 @@
       On the daily schedule
     </label>
   </div>
-  {#if editing}
+  {#if !editing}
+    <p class="muted hint">
+      Separate symbols with spaces, commas or new lines. They all get the settings above.
+    </p>
+  {:else}
     <p class="muted hint">
       Changing the start date or provider applies from the next download, which rebuilds the full history.
     </p>
@@ -110,7 +159,15 @@
   {/if}
   <div class="actions">
     <button type="button" onclick={oncancel} disabled={saving}>Cancel</button>
-    <button type="submit" class="primary" disabled={saving}>{editing ? "Save" : "Add symbol"}</button>
+    <button type="submit" class="primary" disabled={saving || (!editing && typed.length === 0)}>
+      {#if editing}
+        Save
+      {:else if saving}
+        Adding {progress} of {typed.length}…
+      {:else}
+        Add {typed.length > 1 ? `${typed.length} symbols` : "symbol"}
+      {/if}
+    </button>
   </div>
 </form>
 
@@ -128,6 +185,14 @@
     flex-wrap: wrap;
     align-items: flex-end;
     gap: 0.75rem;
+  }
+  .symbols {
+    flex: 1 1 16rem;
+  }
+  .symbols textarea {
+    width: 100%;
+    font: inherit;
+    resize: vertical;
   }
   .check {
     display: flex;

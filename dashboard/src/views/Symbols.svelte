@@ -128,10 +128,15 @@
     };
   };
 
-  const saved = async (input: RegisterInput) => {
-    const added = form?.initial === undefined;
-    form = null;
-    message = added ? `Added ${input.symbol}.` : `Saved ${input.symbol}.`;
+  const saved = async (savedSymbols: string[], done: boolean) => {
+    const adding = form?.initial === undefined;
+    if (done) form = null;
+    message =
+      savedSymbols.length === 0
+        ? null
+        : adding
+          ? `Added ${savedSymbols.length === 1 ? savedSymbols[0] : `${savedSymbols.length} symbols: ${savedSymbols.join(", ")}`}.`
+          : `Saved ${savedSymbols[0]}.`;
     await load();
   };
 </script>
@@ -161,7 +166,7 @@
     <button onclick={() => selected.clear()}>Clear selection</button>
   {/if}
   <button onclick={() => ((form = {}), (message = null), (error = null))} disabled={form !== null}>
-    Add symbol
+    Add symbols
   </button>
   <button onclick={() => load()} disabled={loading}>Refresh</button>
 </div>

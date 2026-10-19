@@ -183,8 +183,9 @@ curl -X POST "$URL/schedule/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKE
 `$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds), the
 tracked symbols with their latest activity, and an explorer for each symbol's
 Parquet data (sort, filter by date, download). On the Symbols page you can also
-add and edit symbols, put them on or off the daily schedule, download them now,
-and change, pause or run the schedule.
+add symbols (several at once, with the same settings) and edit them, put them
+on or off the daily schedule, download them now, and change, pause or run the
+schedule.
 
 Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/)
 with GitHub. Access sits in front of `/dashboard` only, so the API keeps using
