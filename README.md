@@ -72,7 +72,8 @@ running.
 A separate deployment for end-to-end testing of any branch:
 `https://data-service-dev.maxime-filippini.workers.dev`. It has its own
 database (`data-service-market-data-dev`), buckets (`raw-market-data-dev`,
-`processed-market-data-dev`), queues (`*-dev`) and secrets, and no cron.
+`processed-market-data-dev`), queues (`*-dev`), Workflow and secrets, and no
+cron: use "Run now" or `POST /schedule/runs` to try the schedule there.
 
 CI deploys it (see [Deploying](#deploying)). To deploy by hand, with Docker
 running:
@@ -122,10 +123,12 @@ List symbols, optionally filtered:
 curl "$URL/symbols?dataset=prices_eod&enabled=true" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
-Stop scheduled downloads for a symbol. Its history and Parquet file are kept:
+Take a symbol off the daily schedule, or put it back on. Its history and
+Parquet file are kept either way:
 
 ```sh
 curl -X POST "$URL/symbols/prices_eod/AAPL.US/disable" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X POST "$URL/symbols/prices_eod/AAPL.US/enable" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
 Errors: `400` invalid input, `401` bad token, `404` unknown symbol, `500` database error.
@@ -152,11 +155,36 @@ queues nothing.
 Each entry downloads in the background, then its Parquet rebuild is queued
 straight away. A symbol that already has a download in progress is skipped.
 
+## Daily schedule
+
+Every enabled symbol is downloaded once a day, after the schedule's UTC hour.
+The schedule starts **paused**; resume it to start daily downloads. See
+[Daily schedule](docs/ARCHITECTURE.md#daily-schedule) for how runs work.
+
+```sh
+# Show it, with the next run time
+curl "$URL/schedule" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Run after 06:00 UTC and resume it (both fields are optional)
+curl -X PATCH "$URL/schedule" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"hourUtc":6,"paused":false}'
+
+# Recent runs, newest first (limit up to 100, default 20)
+curl "$URL/schedule/runs?limit=5" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Run it now, on top of the daily run
+curl -X POST "$URL/schedule/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
 ## Dashboard
 
 `$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds), the
 tracked symbols with their latest activity, and an explorer for each symbol's
-Parquet data (sort, filter by date, download). It is read-only.
+Parquet data (sort, filter by date, download). On the Symbols page you can also
+add and edit symbols, put them on or off the daily schedule, download them now,
+and change, pause or run the schedule.
 
 Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/)
 with GitHub. Access sits in front of `/dashboard` only, so the API keeps using

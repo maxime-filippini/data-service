@@ -9,8 +9,19 @@ their own name and schema.
 ## Tracked symbol
 
 One `(dataset, symbol)` pair in the download universe, with the provider that
-supplies it and the date its history starts. Disabling stops scheduled
-downloads but keeps history and the Parquet object.
+supplies it and the date its history starts. An enabled symbol is on the daily
+schedule. Disabling takes it off the schedule but keeps history and the Parquet
+object; it can still be downloaded manually.
+
+## Daily schedule
+
+The single schedule that downloads every enabled symbol once a day, after a
+chosen UTC hour. It can be paused.
+
+## Schedule run
+
+One run of the daily schedule, started by the cron (at most once a day) or by
+hand. It queues an ingestion run for every enabled symbol.
 
 ## Ingestion run
 
