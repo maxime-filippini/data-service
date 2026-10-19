@@ -26,7 +26,7 @@
 	},
 	"containers": [{
 		"class_name": "MarketDataProcessor",
-		// Published by data-service-processor CI. Keep in sync with env.dev.
+		// Published by data-service-processor CI. Change with `pnpm processor:pin`.
 		"image": "registry.cloudflare.com/7161f73e7a5a97a5d2fe7ad26e7e28f9/data-service-processor:f11cfbc73c678dd550754bc1d77fdf7fedf6faf5",
 		"max_instances": 1,
 		"instance_type": "basic",

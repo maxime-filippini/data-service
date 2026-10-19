@@ -5,6 +5,7 @@
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy --minify",
 		"deploy:dev": "wrangler deploy --minify --env dev",
+		"processor:pin": "tsx scripts/pin-processor.ts",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
 		"db:migrate:local": "wrangler d1 migrations apply data-service-market-data --local",
 		"db:migrate:remote": "wrangler d1 migrations apply data-service-market-data --remote",

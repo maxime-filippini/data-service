@@ -57,11 +57,17 @@ The workflow needs a `CLOUDFLARE_API_TOKEN` repository secret.
 
 ### Processor image
 
-`containers[].image` in `wrangler.jsonc` pins a processor image by commit SHA,
-in both the top-level block and `env.dev`. The processor repo publishes
-`data-service-processor:<sha>` on every push to any branch. To ship a processor
-change, push it there, then put the new SHA in both blocks in a branch here.
-To try a processor branch on dev, change only the `env.dev` block.
+`wrangler.jsonc` pins a processor image by commit SHA for production and for
+`env.dev`. The processor repo publishes `data-service-processor:<sha>` on every
+push to any branch, and its run summary prints the command to pin it:
+
+```sh
+pnpm processor:pin <sha>         # production and dev
+pnpm processor:pin <sha> --dev   # dev only, to try a processor branch
+```
+
+Commit the change on a branch here. Dev picks it up on push, and production
+picks it up when it reaches `main`.
 
 ## Dev environment
 
