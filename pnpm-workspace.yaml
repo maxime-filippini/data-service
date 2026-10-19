@@ -4,3 +4,5 @@ onlyBuiltDependencies:
 allowBuilds:
   esbuild: true
   workerd: true
+packages:
+  - dashboard

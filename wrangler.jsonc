@@ -17,6 +17,15 @@
 	"workers_dev": true,
 	"preview_urls": false,
 	"triggers": { "crons": ["0 2 * * *"] },
+	// The dashboard's built files (dashboard/dist/dashboard/* is served at
+	// /dashboard/*). The Worker runs first so it can check Access before
+	// serving them.
+	"assets": {
+		"directory": "./dashboard/dist",
+		"binding": "ASSETS",
+		"run_worker_first": true,
+	},
+	"build": { "command": "pnpm --filter dashboard build" },
 	// Bucket names for the processor container (bindings don't expose them),
 	// and the ingestion queue name so the consumer can tell its queues apart.
 	"vars": {
@@ -67,6 +76,9 @@
 			"R2_ENDPOINT_URL",
 			"R2_ACCESS_KEY_ID",
 			"R2_SECRET_ACCESS_KEY",
+			"ACCESS_TEAM_DOMAIN",
+			"ACCESS_AUD",
+			"DASHBOARD_ALLOWED_EMAILS",
 		],
 	},
 	"d1_databases": [
@@ -82,6 +94,11 @@
 	"env": {
 		"dev": {
 			"triggers": { "crons": [] },
+			"assets": {
+				"directory": "./dashboard/dist",
+				"binding": "ASSETS",
+				"run_worker_first": true,
+			},
 			"vars": {
 				"RAW_BUCKET_NAME": "raw-market-data-dev",
 				"PROCESSED_BUCKET_NAME": "processed-market-data-dev",
@@ -129,6 +146,9 @@
 					"R2_ENDPOINT_URL",
 					"R2_ACCESS_KEY_ID",
 					"R2_SECRET_ACCESS_KEY",
+					"ACCESS_TEAM_DOMAIN",
+					"ACCESS_AUD",
+					"DASHBOARD_ALLOWED_EMAILS",
 				],
 			},
 			"d1_databases": [
