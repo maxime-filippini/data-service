@@ -5,8 +5,8 @@
       "path": ".",
     },
     {
-      "name": "data-service-processor",
-      "path": "../data-service-processor",
+      "name": "processor",
+      "path": "containers/processor",
     },
   ],
   "settings": {

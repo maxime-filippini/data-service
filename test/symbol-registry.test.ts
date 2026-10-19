@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { requireManagementToken } from "$/auth";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createSymbolRoutes } from "$/routes/symbols";
 import { makeTestDatabase } from "./support/d1";
@@ -9,7 +10,7 @@ const aapl = { dataset: "prices_eod", symbol: "AAPL.US", provider: "eodhd", back
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
-  const app = createSymbolRoutes(() => D1SymbolRegistryLive(db));
+  const app = createSymbolRoutes(() => D1SymbolRegistryLive(db), requireManagementToken);
   const env = { MANAGEMENT_API_TOKEN: "management" } as CloudflareBindings;
   const request = (path: string, method = "GET", body?: unknown, token = "management") =>
     app.request(
@@ -26,12 +27,12 @@ const setup = () => {
 
 test("every route requires the management token", async () => {
   const { request } = setup();
-  for (const [path, method] of [["/", "GET"], ["/", "POST"], ["/prices_eod/AAPL.US/disable", "POST"]] as const) {
+  for (const [path, method] of [["/", "GET"], ["/", "POST"], ["/prices_eod/AAPL.US/disable", "POST"], ["/prices_eod/AAPL.US/enable", "POST"]] as const) {
     assert.equal((await request(path, method, method === "POST" ? aapl : undefined, "wrong")).status, 401);
   }
 });
 
-test("register, update, disable and re-enable a symbol", async () => {
+test("register, update, and take a symbol off and back on the schedule", async () => {
   const { request } = setup();
 
   const created = await request("/", "POST", aapl);
@@ -49,10 +50,18 @@ test("register, update, disable and re-enable a symbol", async () => {
   assert.equal(disabled.status, 200);
   assert.equal(((await disabled.json()) as Record<string, unknown>).enabled, false);
 
+  const enabled = await request("/prices_eod/AAPL.US/enable", "POST");
+  assert.equal(enabled.status, 200);
+  const third = (await enabled.json()) as Record<string, unknown>;
+  assert.equal(third.enabled, true);
+  assert.equal(third.backfillStartDate, "2010-01-01");
+
+  await request("/prices_eod/AAPL.US/disable", "POST");
   const reenabled = await request("/", "POST", aapl);
   assert.equal(((await reenabled.json()) as Record<string, unknown>).enabled, true);
 
   assert.equal((await request("/prices_eod/MSFT.US/disable", "POST")).status, 404);
+  assert.equal((await request("/prices_eod/MSFT.US/enable", "POST")).status, 404);
 });
 
 test("list filters by dataset and enabled", async () => {

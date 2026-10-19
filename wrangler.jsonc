@@ -16,7 +16,18 @@
 	"upload_source_maps": true,
 	"workers_dev": true,
 	"preview_urls": false,
-	"triggers": { "crons": ["0 2 * * *"] },
+	// Hourly: starts the daily download once its hour has passed (see
+	// download_schedule), and sweeps queued Parquet rebuilds at 02:00 UTC.
+	"triggers": { "crons": ["0 * * * *"] },
+	// The dashboard's built files (dashboard/dist/dashboard/* is served at
+	// /dashboard/*). The Worker runs first so it can check Access before
+	// serving them.
+	"assets": {
+		"directory": "./dashboard/dist",
+		"binding": "ASSETS",
+		"run_worker_first": true,
+	},
+	"build": { "command": "pnpm --filter dashboard build" },
 	// Bucket names for the processor container (bindings don't expose them),
 	// and the ingestion queue name so the consumer can tell its queues apart.
 	"vars": {
@@ -26,14 +37,20 @@
 	},
 	"containers": [{
 		"class_name": "MarketDataProcessor",
-		"image": "../data-service-processor/Dockerfile",
-		"image_build_context": "../data-service-processor",
+		"image": "./containers/processor/Dockerfile",
+		"image_build_context": "./containers/processor",
 		"max_instances": 1,
 		"instance_type": "basic",
 	}],
 	"durable_objects": {
 		"bindings": [{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" }],
 	},
+	// One instance per run of the daily schedule; queues the downloads.
+	"workflows": [{
+		"name": "data-service-scheduled-downloads",
+		"binding": "SCHEDULED_DOWNLOADS",
+		"class_name": "ScheduledDownloadWorkflow",
+	}],
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["MarketDataProcessor"] }],
 	"queues": {
 		"producers": [
@@ -67,6 +84,9 @@
 			"R2_ENDPOINT_URL",
 			"R2_ACCESS_KEY_ID",
 			"R2_SECRET_ACCESS_KEY",
+			"ACCESS_TEAM_DOMAIN",
+			"ACCESS_AUD",
+			"DASHBOARD_ALLOWED_EMAILS",
 		],
 	},
 	"d1_databases": [
@@ -76,11 +96,17 @@
 			"database_id": "02d3dda4-f7b7-4bd1-a1db-e6e9a738b297",
 		},
 	],
-	// Dev environment: `pnpm deploy:dev`. Separate Worker, database, buckets and
-	// queues. Bindings are not inherited from the top level, so they repeat here.
+	// Dev environment: CI deploys it from develop, feat/* and fix/*. Separate
+	// Worker, database, buckets and queues. Bindings are not inherited from the
+	// top level, so they repeat here.
 	"env": {
 		"dev": {
 			"triggers": { "crons": [] },
+			"assets": {
+				"directory": "./dashboard/dist",
+				"binding": "ASSETS",
+				"run_worker_first": true,
+			},
 			"vars": {
 				"RAW_BUCKET_NAME": "raw-market-data-dev",
 				"PROCESSED_BUCKET_NAME": "processed-market-data-dev",
@@ -88,14 +114,19 @@
 			},
 			"containers": [{
 				"class_name": "MarketDataProcessor",
-				"image": "../data-service-processor/Dockerfile",
-				"image_build_context": "../data-service-processor",
+				"image": "./containers/processor/Dockerfile",
+				"image_build_context": "./containers/processor",
 				"max_instances": 1,
 				"instance_type": "basic",
 			}],
 			"durable_objects": {
 				"bindings": [{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" }],
 			},
+			"workflows": [{
+				"name": "data-service-scheduled-downloads-dev",
+				"binding": "SCHEDULED_DOWNLOADS",
+				"class_name": "ScheduledDownloadWorkflow",
+			}],
 			"queues": {
 				"producers": [
 					{ "binding": "INGESTION_QUEUE", "queue": "market-data-ingestion-dev" },
@@ -128,6 +159,9 @@
 					"R2_ENDPOINT_URL",
 					"R2_ACCESS_KEY_ID",
 					"R2_SECRET_ACCESS_KEY",
+					"ACCESS_TEAM_DOMAIN",
+					"ACCESS_AUD",
+					"DASHBOARD_ALLOWED_EMAILS",
 				],
 			},
 			"d1_databases": [

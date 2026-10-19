@@ -61,9 +61,11 @@ export class SymbolRegistry extends Context.Service<
       readonly enabled?: boolean;
     }) => Effect.Effect<readonly TrackedSymbol[], SymbolRegistryError>;
     readonly get: (dataset: Dataset, symbol: string) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
-    readonly disable: (
+    /** Put a symbol on or take it off the daily schedule. Keeps history either way. */
+    readonly setEnabled: (
       dataset: Dataset,
       symbol: string,
+      enabled: boolean,
       now: string,
     ) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
   }

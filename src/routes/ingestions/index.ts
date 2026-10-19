@@ -1,7 +1,6 @@
 import { Effect, Layer, Result, Schema } from "effect";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 
-import { requireManagementToken } from "$/auth";
 import { effectValidator } from "$/effect-validator";
 import { MAX_INGESTION_ENTRIES, requestIngestions } from "$/market-data/ingestion-queue";
 import { DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
@@ -15,9 +14,12 @@ const IngestionRequestSchema = Schema.Struct({
 });
 
 /** Manual ingestion: download registered symbols now instead of waiting for a schedule. */
-export const createIngestionRoutes = (registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>) => {
+export const createIngestionRoutes = (
+  registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>,
+  auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
+) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
-  app.use("*", requireManagementToken);
+  app.use("*", auth);
 
   // Queue a full-history download for each entry, followed by its Parquet rebuild.
   app.post("/", effectValidator("json", IngestionRequestSchema, { onExcessProperty: "error" }), async (c) => {

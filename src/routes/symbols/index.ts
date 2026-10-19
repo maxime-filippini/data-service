@@ -1,8 +1,7 @@
 import { Effect, Layer, Result, Schema } from "effect";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 
-import { requireManagementToken } from "$/auth";
 import { effectValidator } from "$/effect-validator";
 import { DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
 import {
@@ -21,10 +20,16 @@ const IdentitySchema = Schema.Struct({
   symbol: MarketSymbolSchema,
 });
 
-/** Management API for the download universe. */
-export const createSymbolRoutes = (registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>) => {
+/**
+ * The download universe: register, edit, and put symbols on or off the daily
+ * schedule. Served by the management API and the dashboard, each with its own auth.
+ */
+export const createSymbolRoutes = (
+  registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>,
+  auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
+) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
-  app.use("*", requireManagementToken);
+  app.use("*", auth);
 
   const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, SymbolRegistryError, SymbolRegistry>) => {
     const result = await program.pipe(Effect.provide(registryFor(env)), Effect.result, Effect.runPromise);
@@ -61,15 +66,18 @@ export const createSymbolRoutes = (registryFor: (env: CloudflareBindings) => Lay
     return c.json({ symbols });
   });
 
-  // Stop scheduled downloads. Keeps run history and the Parquet object.
-  app.post("/:dataset/:symbol/disable", effectValidator("param", IdentitySchema), async (c) => {
-    const { dataset, symbol } = c.req.valid("param");
-    const result = await run(
-      c.env,
-      SymbolRegistry.use((registry) => registry.disable(dataset, symbol, new Date().toISOString())),
-    );
-    return c.json(result);
-  });
+  // Take a symbol off, or put it back on, the daily schedule. Keeps run
+  // history and the Parquet object.
+  for (const [action, enabled] of [["disable", false], ["enable", true]] as const) {
+    app.post(`/:dataset/:symbol/${action}`, effectValidator("param", IdentitySchema), async (c) => {
+      const { dataset, symbol } = c.req.valid("param");
+      const result = await run(
+        c.env,
+        SymbolRegistry.use((registry) => registry.setEnabled(dataset, symbol, enabled, new Date().toISOString())),
+      );
+      return c.json(result);
+    });
+  }
 
   return app;
 };
