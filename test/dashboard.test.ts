@@ -3,7 +3,11 @@ import test from "node:test";
 
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 
+import type { IngestionMessage } from "$/market-data/ingestion-queue";
+import type { ScheduledDownloadParams } from "$/market-data/schedule";
+import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
+import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import type { RunPage, SymbolStatusView } from "$/market-data/status";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { makeTestDatabase } from "./support/d1";
@@ -33,8 +37,32 @@ const baseEnv = {
 
 const setup = (envOverrides: Record<string, unknown> = {}) => {
   const { sqlite, db } = makeTestDatabase();
-  const app = createDashboardRoutes(() => D1PipelineStatusLive(db), () => keys);
-  const env = { ...baseEnv, ...envOverrides } as unknown as CloudflareBindings;
+  const workflowRuns: ScheduledDownloadParams[] = [];
+  const queued: IngestionMessage[] = [];
+  const app = createDashboardRoutes(
+    {
+      statusFor: () => D1PipelineStatusLive(db),
+      registryFor: () => D1SymbolRegistryLive(db),
+      storeFor: () => D1ScheduleStoreLive(db),
+      workflowFor: () => ({
+        create: async (options) => {
+          workflowRuns.push(options!.params as ScheduledDownloadParams);
+          return { id: options!.id! } as WorkflowInstance;
+        },
+        get: async (id) => ({ id }) as WorkflowInstance,
+      }),
+    },
+    () => keys,
+  );
+  const env = {
+    ...baseEnv,
+    INGESTION_QUEUE: {
+      sendBatch: async (batch: Iterable<MessageSendRequest<IngestionMessage>>) => {
+        queued.push(...[...batch].map((message) => message.body));
+      },
+    },
+    ...envOverrides,
+  } as unknown as CloudflareBindings;
   const request = async (
     path: string,
     token?: string,
@@ -46,7 +74,30 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
       { headers: token === undefined ? headers : { ...headers, "Cf-Access-Jwt-Assertion": token } },
       env,
     );
-  return { sqlite, request };
+  /** A change sent from the dashboard's own page. */
+  const send = async (
+    method: string,
+    path: string,
+    { body, token, headers = { Origin: "https://data-service.example.workers.dev" } }: {
+      body?: unknown;
+      token?: string;
+      headers?: Record<string, string>;
+    } = {},
+  ) =>
+    app.request(
+      `https://data-service.example.workers.dev${path}`,
+      {
+        method,
+        headers: {
+          ...headers,
+          ...(token === undefined ? {} : { "Cf-Access-Jwt-Assertion": token }),
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      },
+      env,
+    );
+  return { sqlite, request, send, workflowRuns, queued };
 };
 
 const insertRun = (
@@ -289,4 +340,51 @@ test("the dataset explorer streams a symbol's Parquet file and revalidates it by
   }
   assert.equal((await request("/api/datasets/prices_eod/AAPL.US")).status, 401);
   assert.equal(bucket.gets.length, 4);
+});
+
+test("the dashboard edits the registry, starts downloads and runs the schedule", async () => {
+  const { send, workflowRuns, queued } = setup();
+  const token = await signToken();
+  const aapl = { dataset: "prices_eod", symbol: "AAPL.US", provider: "eodhd", backfillStartDate: "2016-01-01" };
+
+  const options = await send("GET", "/api/options", { token });
+  assert.deepEqual(await options.json(), { datasetProviders: { prices_eod: ["eodhd"] } });
+
+  assert.equal((await send("POST", "/api/registry", { token, body: aapl })).status, 201);
+  const off = await send("POST", "/api/registry/prices_eod/AAPL.US/disable", { token });
+  assert.equal(((await off.json()) as { enabled: boolean }).enabled, false);
+  const on = await send("POST", "/api/registry/prices_eod/AAPL.US/enable", { token });
+  assert.equal(((await on.json()) as { enabled: boolean }).enabled, true);
+
+  const download = await send("POST", "/api/ingestions", {
+    token,
+    body: { entries: [{ dataset: "prices_eod", symbol: "AAPL.US" }] },
+  });
+  assert.equal(download.status, 202);
+  assert.equal(queued[0]?.symbol, "AAPL.US");
+
+  const schedule = await send("PATCH", "/api/schedule", { token, body: { paused: false, hourUtc: 7 } });
+  assert.equal(schedule.status, 200);
+  assert.equal(((await schedule.json()) as { hourUtc: number }).hourUtc, 7);
+  assert.equal((await send("POST", "/api/schedule/runs", { token })).status, 202);
+  assert.equal(workflowRuns.length, 1);
+  const runs = (await (await send("GET", "/api/schedule/runs", { token })).json()) as { runs: unknown[] };
+  assert.equal(runs.runs.length, 1);
+});
+
+test("dashboard changes need Access and must come from the dashboard's own pages", async () => {
+  const { send } = setup();
+  const token = await signToken();
+
+  assert.equal((await send("POST", "/api/schedule/runs")).status, 401);
+  const cases: [string, Record<string, string>, number][] = [
+    ["no Origin", {}, 403],
+    ["another site", { Origin: "https://evil.example" }, 403],
+    ["another site, fetch metadata", { "Sec-Fetch-Site": "cross-site" }, 403],
+    ["same origin, fetch metadata only", { "Sec-Fetch-Site": "same-origin" }, 202],
+  ];
+  for (const [name, headers, status] of cases) {
+    assert.equal((await send("POST", "/api/schedule/runs", { token, headers })).status, status, name);
+  }
+  assert.equal((await send("GET", "/api/schedule", { token, headers: {} })).status, 200, "reads need no Origin");
 });

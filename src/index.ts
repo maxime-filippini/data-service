@@ -1,25 +1,42 @@
 import { Effect, Layer } from "effect";
 import { Hono } from "hono";
 
+import { requireManagementToken } from "$/auth";
 import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
 import { type IngestionMessage, isRetryable, runIngestion } from "$/market-data/ingestion-queue";
 import { processJob, scheduleProcessing } from "$/market-data/processing";
 import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
+import { triggerScheduledRun } from "$/market-data/schedule";
+import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { createIngestionRoutes } from "$/routes/ingestions";
+import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 
 export { MarketDataProcessor } from "./processor-container";
+export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
+
+/** What the management API and the dashboard share. */
+const services = {
+  statusFor: (env: CloudflareBindings) => D1PipelineStatusLive(env.MARKET_DATA_DB),
+  registryFor: (env: CloudflareBindings) => D1SymbolRegistryLive(env.MARKET_DATA_DB),
+  storeFor: (env: CloudflareBindings) => D1ScheduleStoreLive(env.MARKET_DATA_DB),
+  workflowFor: (env: CloudflareBindings) => env.SCHEDULED_DOWNLOADS,
+};
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
-app.route("/symbols", createSymbolRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
-app.route("/ingestions", createIngestionRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
-app.route("/dashboard", createDashboardRoutes((env) => D1PipelineStatusLive(env.MARKET_DATA_DB)));
+app.route("/symbols", createSymbolRoutes(services.registryFor, requireManagementToken));
+app.route("/ingestions", createIngestionRoutes(services.registryFor, requireManagementToken));
+app.route("/schedule", createScheduleRoutes(services, requireManagementToken));
+app.route("/dashboard", createDashboardRoutes(services));
+
+/** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
+const PROCESSING_SWEEP_HOUR = 2;
 
 /** The download adapter for a tracked symbol's provider. */
 const sourceFor = (env: CloudflareBindings) => (provider: string) =>
@@ -70,10 +87,28 @@ export default {
   fetch: app.fetch,
 
   async scheduled(controller, env) {
-    await scheduleProcessing(env.PROCESSING_QUEUE, new Date(controller.scheduledTime)).pipe(
-      Effect.provide(D1MarketDataControlPlaneLive(env.MARKET_DATA_DB)),
+    const now = new Date(controller.scheduledTime);
+
+    const trigger = await triggerScheduledRun(now, env.SCHEDULED_DOWNLOADS).pipe(
+      Effect.provide(D1ScheduleStoreLive(env.MARKET_DATA_DB)),
+      Effect.result,
       Effect.runPromise,
     );
+    if (trigger._tag === "Success") {
+      if (trigger.success.status === "started") {
+        console.log(JSON.stringify({ event: "schedule_run_started", runId: trigger.success.runId }));
+      }
+    } else {
+      // The run is forgotten, so the next hourly tick tries again.
+      console.error(JSON.stringify({ event: "schedule_run_failed", message: trigger.failure.message }));
+    }
+
+    if (now.getUTCHours() === PROCESSING_SWEEP_HOUR) {
+      await scheduleProcessing(env.PROCESSING_QUEUE, now).pipe(
+        Effect.provide(D1MarketDataControlPlaneLive(env.MARKET_DATA_DB)),
+        Effect.runPromise,
+      );
+    }
   },
 
   async queue(batch, env) {

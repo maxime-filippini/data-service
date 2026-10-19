@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { JobStatus, RunStatus } from "./api";
+  import type { JobStatus, RunStatus, ScheduleRunStatus } from "./api";
 
-  let { status, title }: { status: RunStatus | JobStatus | null; title?: string | undefined } = $props();
+  let { status, title }: { status: RunStatus | JobStatus | ScheduleRunStatus | null; title?: string | undefined } = $props();
 </script>
 
 {#if status === null}
@@ -31,7 +31,8 @@
     color: var(--bad-fg);
   }
   .fetching,
-  .processing {
+  .processing,
+  .running {
     background: var(--busy-bg);
     color: var(--busy-fg);
   }
