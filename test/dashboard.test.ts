@@ -35,10 +35,15 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
   const { sqlite, db } = makeTestDatabase();
   const app = createDashboardRoutes(() => D1PipelineStatusLive(db), () => keys);
   const env = { ...baseEnv, ...envOverrides } as unknown as CloudflareBindings;
-  const request = async (path: string, token?: string, host = "https://data-service.example.workers.dev") =>
+  const request = async (
+    path: string,
+    token?: string,
+    host = "https://data-service.example.workers.dev",
+    headers: Record<string, string> = {},
+  ) =>
     app.request(
       `${host}${path}`,
-      { headers: token === undefined ? {} : { "Cf-Access-Jwt-Assertion": token } },
+      { headers: token === undefined ? headers : { ...headers, "Cf-Access-Jwt-Assertion": token } },
       env,
     );
   return { sqlite, request };
@@ -229,4 +234,59 @@ test("symbols show their latest download, last success and latest rebuild", asyn
 
   assert.deepEqual((await list("?enabled=true")).map((s) => s.symbol), ["AAPL.US"]);
   assert.equal((await request("/api/symbols?enabled=yes", token)).status, 400);
+});
+
+const fakeBucket = (objects: Record<string, { bytes: Uint8Array; etag: string }>) => {
+  const gets: { key: string; onlyIf?: R2Conditional }[] = [];
+  const bucket = {
+    gets,
+    get: async (key: string, options: { onlyIf?: R2Conditional } = {}) => {
+      gets.push({ key, ...options });
+      const object = objects[key];
+      if (object === undefined) return null;
+      const meta = {
+        key,
+        size: object.bytes.byteLength,
+        etag: object.etag,
+        httpEtag: `"${object.etag}"`,
+        uploaded: new Date("2026-10-18T03:00:00.000Z"),
+      };
+      if (options.onlyIf?.etagDoesNotMatch === object.etag) return meta;
+      return { ...meta, body: new Blob([object.bytes]).stream() };
+    },
+  };
+  return bucket;
+};
+
+test("the dataset explorer streams a symbol's Parquet file and revalidates it by ETag", async () => {
+  const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
+  const bucket = fakeBucket({ "dataset=prices_eod/symbol=AAPL.US/data.parquet": { bytes, etag: "abc123" } });
+  const { request } = setup({ PROCESSED_MARKET_DATA_BUCKET: bucket });
+  const token = await signToken();
+
+  const file = await request("/api/datasets/prices_eod/AAPL.US", token);
+  assert.equal(file.status, 200);
+  assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
+  assert.equal(file.headers.get("Content-Type"), "application/vnd.apache.parquet");
+  assert.equal(file.headers.get("ETag"), '"abc123"');
+  assert.equal(file.headers.get("Cache-Control"), "private, no-cache");
+
+  for (const ifNoneMatch of ['"abc123"', 'W/"abc123"']) {
+    const cached = await request("/api/datasets/prices_eod/AAPL.US", token, undefined, {
+      "If-None-Match": ifNoneMatch,
+    });
+    assert.equal(cached.status, 304, ifNoneMatch);
+    assert.equal(cached.headers.get("ETag"), '"abc123"');
+  }
+  assert.deepEqual(bucket.gets.at(-1)?.onlyIf, { etagDoesNotMatch: "abc123" });
+
+  const missing = await request("/api/datasets/prices_eod/MSFT.US", token);
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers.get("Cache-Control"), "no-store");
+
+  for (const path of ["/api/datasets/fred_rates/AAPL.US", "/api/datasets/prices_eod/aapl.us"]) {
+    assert.equal((await request(path, token)).status, 400, path);
+  }
+  assert.equal((await request("/api/datasets/prices_eod/AAPL.US")).status, 401);
+  assert.equal(bucket.gets.length, 4);
 });

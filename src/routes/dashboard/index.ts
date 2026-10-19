@@ -5,7 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
 import { effectValidator } from "$/effect-validator";
-import { DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
+import { canonicalKey, DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
 import {
   CursorSchema,
   type DashboardUser,
@@ -36,7 +36,12 @@ const SymbolsQuerySchema = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Literals(["true", "false"])),
 });
 
-type DashboardEnv = { Bindings: CloudflareBindings; Variables: AccessVariables };
+const DatasetParamsSchema = Schema.Struct({
+  dataset: DatasetSchema,
+  symbol: MarketSymbolSchema,
+});
+
+type DashboardEnv ={ Bindings: CloudflareBindings; Variables: AccessVariables };
 
 /**
  * The dashboard: a Svelte app served from static assets, and a read-only API
@@ -73,7 +78,7 @@ export const createDashboardRoutes = (
   const api = new Hono<DashboardEnv>();
   api.use("*", async (c, next) => {
     await next();
-    c.header("Cache-Control", "no-store");
+    if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-store");
   });
 
   api.get("/me", (c) => c.json<DashboardUser>({ email: c.get("accessEmail") }));
@@ -102,6 +107,34 @@ export const createDashboardRoutes = (
     );
     return c.json<{ symbols: readonly SymbolStatusView[] }>({ symbols });
   });
+
+  // The canonical Parquet file, streamed from R2 for the dataset explorer.
+  // The browser keeps a copy and revalidates it with the ETag, so the file is
+  // only downloaded again after a rebuild.
+  api.get(
+    "/datasets/:dataset/:symbol",
+    effectValidator("param", DatasetParamsSchema, { onExcessProperty: "error" }),
+    async (c) => {
+      const { dataset, symbol } = c.req.valid("param");
+      const cachedEtag = c.req.header("If-None-Match")?.replace(/^W\//u, "").replaceAll('"', "");
+      const object = await c.env.PROCESSED_MARKET_DATA_BUCKET.get(
+        canonicalKey(dataset, symbol),
+        cachedEtag === undefined ? {} : { onlyIf: { etagDoesNotMatch: cachedEtag } },
+      );
+      if (object === null) return c.json({ error: "No data has been built for this symbol yet" }, 404);
+
+      const headers = new Headers({
+        "Cache-Control": "private, no-cache",
+        ETag: object.httpEtag,
+        "Last-Modified": object.uploaded.toUTCString(),
+      });
+      if (!("body" in object)) return new Response(null, { status: 304, headers });
+
+      headers.set("Content-Type", "application/vnd.apache.parquet");
+      headers.set("Content-Length", String(object.size));
+      return new Response(object.body, { headers });
+    },
+  );
 
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
