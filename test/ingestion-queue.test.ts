@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Effect, Layer } from "effect";
 
+import { requireManagementToken } from "$/auth";
 import { MarketDataError, MarketDataSource } from "$/market-data";
 import { ControlPlaneError } from "$/market-data/control-plane";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
@@ -37,7 +38,7 @@ const setup = () => {
       },
     },
   } as unknown as CloudflareBindings;
-  const app = createIngestionRoutes(() => D1SymbolRegistryLive(db));
+  const app = createIngestionRoutes(() => D1SymbolRegistryLive(db), requireManagementToken);
   const post = (body: unknown, token = "management") =>
     app.request(
       "/",

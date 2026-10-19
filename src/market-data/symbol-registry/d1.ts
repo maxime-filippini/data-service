@@ -100,15 +100,15 @@ export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry
           ),
         ),
 
-      disable: (dataset, symbol, now) =>
+      setEnabled: (dataset, symbol, enabled, now) =>
         query(() =>
           db
             .prepare(
-              `UPDATE tracked_symbols SET enabled = 0, updated_at = ?
+              `UPDATE tracked_symbols SET enabled = ?, updated_at = ?
                WHERE dataset = ? AND symbol = ?
                RETURNING *`,
             )
-            .bind(now, dataset, symbol)
+            .bind(Number(enabled), now, dataset, symbol)
             .first<SymbolRow>(),
         ).pipe(
           Effect.flatMap((row) =>

@@ -1,11 +1,12 @@
 import { Effect, Layer, Result, Schema } from "effect";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
 import { effectValidator } from "$/effect-validator";
-import { canonicalKey, DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
+import type { ScheduleStore, ScheduleWorkflow } from "$/market-data/schedule";
+import { canonicalKey, DatasetSchema, datasetProviders, MarketSymbolSchema } from "$/market-data/schemas";
 import {
   CursorSchema,
   type DashboardUser,
@@ -15,6 +16,10 @@ import {
   type RunPage,
   type SymbolStatusView,
 } from "$/market-data/status";
+import type { SymbolRegistry } from "$/market-data/symbol-registry";
+import { createIngestionRoutes } from "$/routes/ingestions";
+import { createScheduleRoutes } from "$/routes/schedule";
+import { createSymbolRoutes } from "$/routes/symbols";
 
 const DEFAULT_RUN_PAGE_SIZE = 50;
 
@@ -41,16 +46,41 @@ const DatasetParamsSchema = Schema.Struct({
   symbol: MarketSymbolSchema,
 });
 
-type DashboardEnv ={ Bindings: CloudflareBindings; Variables: AccessVariables };
+type DashboardEnv = { Bindings: CloudflareBindings; Variables: AccessVariables };
+
+/** Passes every request; the dashboard has already checked Access. */
+const accessChecked: MiddlewareHandler = (_, next) => next();
 
 /**
- * The dashboard: a Svelte app served from static assets, and a read-only API
- * under `/api`. Every request needs a Cloudflare Access user on the allowlist.
+ * Browsers send the Access cookie with cross-site requests too, so changes
+ * must come from the dashboard's own pages. JSON bodies already force a CORS
+ * preflight, which nothing answers; this also covers bodiless POSTs.
+ */
+const requireSameOrigin: MiddlewareHandler = async (c, next) => {
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+    const origin = c.req.header("Origin");
+    const sameOrigin = origin === new URL(c.req.url).origin || c.req.header("Sec-Fetch-Site") === "same-origin";
+    if (!sameOrigin) return c.json({ error: "Cross-site requests are not allowed" }, 403);
+  }
+  await next();
+};
+
+/**
+ * The dashboard: a Svelte app served from static assets, and an API under
+ * `/api`. Every request needs a Cloudflare Access user on the allowlist.
+ * Besides reading pipeline status, it can edit the registry and the schedule
+ * and start downloads, through the same routes as the management API.
  */
 export const createDashboardRoutes = (
-  statusFor: (env: CloudflareBindings) => Layer.Layer<PipelineStatus>,
+  services: {
+    readonly statusFor: (env: CloudflareBindings) => Layer.Layer<PipelineStatus>;
+    readonly registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>;
+    readonly storeFor: (env: CloudflareBindings) => Layer.Layer<ScheduleStore>;
+    readonly workflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
+  },
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
+  const { statusFor } = services;
   const app = new Hono<DashboardEnv>();
 
   app.use(
@@ -76,6 +106,7 @@ export const createDashboardRoutes = (
   };
 
   const api = new Hono<DashboardEnv>();
+  api.use("*", requireSameOrigin);
   api.use("*", async (c, next) => {
     await next();
     if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-store");
@@ -135,6 +166,13 @@ export const createDashboardRoutes = (
       return new Response(object.body, { headers });
     },
   );
+
+  // Choices for the registry form.
+  api.get("/options", (c) => c.json({ datasetProviders }));
+
+  api.route("/registry", createSymbolRoutes(services.registryFor, accessChecked));
+  api.route("/ingestions", createIngestionRoutes(services.registryFor, accessChecked));
+  api.route("/schedule", createScheduleRoutes(services, accessChecked));
 
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
