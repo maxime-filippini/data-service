@@ -14,5 +14,10 @@
 		"svelte-check": "^4.7.7",
 		"typescript": "^6.0.3",
 		"vite": "^8.3.4"
+	},
+	"dependencies": {
+		"@tanstack/svelte-table": "^9.3.1",
+		"fzstd": "^0.1.1",
+		"hyparquet": "^1.31.4"
 	}
 }

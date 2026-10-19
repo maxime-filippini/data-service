@@ -38,3 +38,16 @@ export const formatCount = (value: number) => value.toLocaleString();
 /** "2016-01-04 → 2026-10-17" */
 export const formatRange = (from: string | null, to: string | null) =>
   from === null && to === null ? "—" : `${from ?? "?"} → ${to ?? "?"}`;
+
+const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 });
+
+/** A Parquet cell: numbers with grouping, empty cells as a dash. */
+export const formatValue = (value: string | number | boolean | null | undefined) =>
+  value === null || value === undefined ? "—" : typeof value === "number" ? number.format(value) : String(value);
+
+/** "512 B", "84.2 KB", "1.3 MB" */
+export const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};

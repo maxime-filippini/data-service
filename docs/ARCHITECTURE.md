@@ -3,7 +3,8 @@
 A personal market-data service. It downloads data for a universe of symbols on
 a schedule, turns each symbol's history into one Parquet file in R2, and lets
 other apps manage the universe. Apps read the Parquet files from R2 directly;
-the API never serves market data.
+the management API never serves market data. Only the dashboard does, so its
+users can browse the files.
 
 ```txt
 POST /ingestions → ingestion Queue → Worker consumer → provider API
@@ -19,7 +20,7 @@ Glossary: [CONTEXT.md](../CONTEXT.md).
 | Part | Role |
 | --- | --- |
 | Worker | Management API, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the container. |
-| Dashboard ([`dashboard/`](../dashboard)) | Read-only Svelte app for runs and symbols, served by the Worker behind Cloudflare Access. |
+| Dashboard ([`dashboard/`](../dashboard)) | Read-only Svelte app for runs, symbols and the Parquet data, served by the Worker behind Cloudflare Access. |
 | D1 | Universe (`tracked_symbols`), `ingestion_runs`, `processing_jobs`. No market data. |
 | `raw-market-data` (R2) | Immutable validated provider responses, one per run. |
 | Python container ([`containers/processor`](../containers/processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
@@ -118,11 +119,22 @@ All routes need `Authorization: Bearer <MANAGEMENT_API_TOKEN>`. See the
 
 A Svelte app in `dashboard/`, built into the Worker's static assets and served
 at `/dashboard/`, with a read-only API at `/dashboard/api/*` (`/me`, `/runs`,
-`/symbols`). The Worker runs before the assets (`run_worker_first`), so every
+`/symbols`, `/datasets/:dataset/:symbol`). The Worker runs before the assets (`run_worker_first`), so every
 dashboard request, including its files, needs a Cloudflare Access user whose
 email is in `DASHBOARD_ALLOWED_EMAILS`. The API reads D1 through the
 `PipelineStatus` service; it never changes state. The management token is never
 sent to the browser.
+
+The dataset explorer fetches a symbol's whole canonical Parquet file from
+`/dashboard/api/datasets/:dataset/:symbol`. The Worker streams it from the
+processed bucket with its ETag and `Cache-Control: private, no-cache`, so the
+browser only downloads it again after a rebuild. The browser decodes it with
+[hyparquet](https://github.com/hyparam/hyparquet) (zstd through `fzstd`, both
+plain JS because the CSP blocks WASM) and shows it in a TanStack Table with
+sorting, a date range and pages. Columns come from the file's schema, so a new
+dataset needs no dashboard changes. Files are small (one symbol's daily
+history), so reading them whole is fine; for much larger files, switch to
+range requests.
 
 ## Not implemented yet
 

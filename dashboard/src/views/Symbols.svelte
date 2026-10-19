@@ -90,6 +90,7 @@
         <th class="num">Rows</th>
         <th>Data through</th>
         <th>Latest rebuild</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -131,6 +132,11 @@
               </span>
             {:else}
               <span class="muted">—</span>
+            {/if}
+          </td>
+          <td>
+            {#if s.lastCompletedRun}
+              <a href={href("explore", { dataset: s.dataset, symbol: s.symbol })}>Explore</a>
             {/if}
           </td>
         </tr>
