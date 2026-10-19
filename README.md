@@ -154,8 +154,9 @@ straight away. A symbol that already has a download in progress is skipped.
 
 ## Dashboard
 
-`$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds) and the
-tracked symbols with their latest activity. It is read-only.
+`$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds), the
+tracked symbols with their latest activity, and an explorer for each symbol's
+Parquet data (sort, filter by date, download). It is read-only.
 
 Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/)
 with GitHub. Access sits in front of `/dashboard` only, so the API keeps using
