@@ -15,6 +15,7 @@ How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | --- | --- |
 | `src/` | The Worker (TypeScript) |
 | `containers/processor/` | The Python processor container ([README](containers/processor/README.md)) |
+| `dashboard/` | The Svelte dashboard, served by the Worker at `/dashboard/` |
 | `migrations/` | D1 migrations |
 
 ## Setup
@@ -38,6 +39,8 @@ pnpm exec wrangler secret put R2_ENDPOINT_URL        # https://<account-id>.r2.c
 pnpm exec wrangler secret put R2_ACCESS_KEY_ID       # used by the processor container
 pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
 ```
+
+The dashboard needs three more secrets; see [Dashboard](#dashboard).
 
 ## Deploying
 
@@ -82,7 +85,8 @@ pnpm deploy:dev
 One-time secrets (use an R2 API token scoped to the two dev buckets):
 
 ```sh
-for name in EODHD_API_TOKEN MANAGEMENT_API_TOKEN R2_ENDPOINT_URL R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+for name in EODHD_API_TOKEN MANAGEMENT_API_TOKEN R2_ENDPOINT_URL R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
+  ACCESS_TEAM_DOMAIN ACCESS_AUD DASHBOARD_ALLOWED_EMAILS; do
   pnpm exec wrangler secret put "$name" --env dev
 done
 ```
@@ -95,7 +99,8 @@ local Worker writes to simulated buckets.
 ## Managing symbols
 
 The API is served at `https://data-service.maxime-filippini.workers.dev`
-(`$URL` below). All routes need `Authorization: Bearer $MANAGEMENT_API_TOKEN`.
+(`$URL` below). All routes need `Authorization: Bearer $MANAGEMENT_API_TOKEN`,
+except the [dashboard](#dashboard).
 
 Register or update a symbol. Re-registering a disabled symbol enables it:
 
@@ -147,11 +152,51 @@ queues nothing.
 Each entry downloads in the background, then its Parquet rebuild is queued
 straight away. A symbol that already has a download in progress is skipped.
 
+## Dashboard
+
+`$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds) and the
+tracked symbols with their latest activity. It is read-only.
+
+Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/)
+with GitHub. Access sits in front of `/dashboard` only, so the API keeps using
+the management token. The Worker also checks the token Access adds to each
+request (`Cf-Access-Jwt-Assertion`) and the user's email, so the dashboard
+stays closed if the Access app is removed or its policy is loosened. If any of
+the settings below is missing, the dashboard returns `503`.
+
+One-time setup, per environment (prod and dev have separate hostnames):
+
+1. **GitHub login.** In Zero Trust, go to Settings > Authentication and add
+   GitHub as a login method. This needs a GitHub OAuth app whose callback URL
+   is `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
+2. **Access application.** Under Access controls > Applications, add a
+   self-hosted application:
+   - Domain: `data-service.maxime-filippini.workers.dev`, path `dashboard`
+     (dev: `data-service-dev.maxime-filippini.workers.dev`).
+   - Login methods: GitHub only, with instant auth.
+   - Policy: Allow, include Emails = your GitHub account's primary email.
+3. **Secrets.** Copy the application's AUD tag from its settings, then:
+
+   ```sh
+   pnpm exec wrangler secret put ACCESS_TEAM_DOMAIN         # https://<team>.cloudflareaccess.com
+   pnpm exec wrangler secret put ACCESS_AUD                 # the application's AUD tag
+   pnpm exec wrangler secret put DASHBOARD_ALLOWED_EMAILS   # your email; comma-separated for more
+   ```
+
+   Add `--env dev` for the dev environment, with the dev application's AUD.
+
+Locally, `pnpm dev` builds the dashboard and serves it at
+`http://localhost:8787/dashboard/`. Set `DASHBOARD_LOCAL_BYPASS=true` in
+`.dev.vars` to skip the Access check; it only works for requests to
+localhost. For hot reload while editing the dashboard, run `pnpm dev` and
+`pnpm dashboard:dev` together and open `http://localhost:5173/dashboard/`.
+
 ## Checks
 
 ```sh
 pnpm test
 pnpm typecheck
+pnpm dashboard:check
 pnpm processor:test     # needs uv
 pnpm processor:lint
 ```

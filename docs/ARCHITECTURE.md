@@ -19,6 +19,7 @@ Glossary: [CONTEXT.md](../CONTEXT.md).
 | Part | Role |
 | --- | --- |
 | Worker | Management API, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the container. |
+| Dashboard ([`dashboard/`](../dashboard)) | Read-only Svelte app for runs and symbols, served by the Worker behind Cloudflare Access. |
 | D1 | Universe (`tracked_symbols`), `ingestion_runs`, `processing_jobs`. No market data. |
 | `raw-market-data` (R2) | Immutable validated provider responses, one per run. |
 | Python container ([`containers/processor`](../containers/processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
@@ -112,6 +113,16 @@ queued ──claim──> processing ──container 2xx──> completed
 
 All routes need `Authorization: Bearer <MANAGEMENT_API_TOKEN>`. See the
 [README](../README.md) for examples.
+
+## Dashboard
+
+A Svelte app in `dashboard/`, built into the Worker's static assets and served
+at `/dashboard/`, with a read-only API at `/dashboard/api/*` (`/me`, `/runs`,
+`/symbols`). The Worker runs before the assets (`run_worker_first`), so every
+dashboard request, including its files, needs a Cloudflare Access user whose
+email is in `DASHBOARD_ALLOWED_EMAILS`. The API reads D1 through the
+`PipelineStatus` service; it never changes state. The management token is never
+sent to the browser.
 
 ## Not implemented yet
 

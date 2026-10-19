@@ -8,6 +8,8 @@ import { type IngestionMessage, isRetryable, runIngestion } from "$/market-data/
 import { processJob, scheduleProcessing } from "$/market-data/processing";
 import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
+import { D1PipelineStatusLive } from "$/market-data/status/d1";
+import { createDashboardRoutes } from "$/routes/dashboard";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createSymbolRoutes } from "$/routes/symbols";
 
@@ -17,6 +19,7 @@ const app = new Hono<{ Bindings: CloudflareBindings }>();
 
 app.route("/symbols", createSymbolRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
 app.route("/ingestions", createIngestionRoutes((env) => D1SymbolRegistryLive(env.MARKET_DATA_DB)));
+app.route("/dashboard", createDashboardRoutes((env) => D1PipelineStatusLive(env.MARKET_DATA_DB)));
 
 /** The download adapter for a tracked symbol's provider. */
 const sourceFor = (env: CloudflareBindings) => (provider: string) =>

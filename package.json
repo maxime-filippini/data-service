@@ -11,13 +11,16 @@
 		"db:migrate:dev": "wrangler d1 migrations apply data-service-market-data-dev --remote --env dev",
 		"test": "node --import tsx --test test/*.test.*",
 		"typecheck": "tsc --noEmit",
+		"dashboard:dev": "pnpm --filter dashboard dev",
+		"dashboard:check": "pnpm --filter dashboard check",
 		"processor:test": "uv run --directory containers/processor pytest",
 		"processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests"
 	},
 	"dependencies": {
 		"@cloudflare/containers": "^0.3.7",
 		"effect": "4.0.0-rc.118",
-		"hono": "^4.13.12"
+		"hono": "^4.13.12",
+		"jose": "^6.2.12"
 	},
 	"devDependencies": {
 		"@types/node": "^26.6.3",
