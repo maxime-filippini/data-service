@@ -12,8 +12,8 @@ before starting any of them.
 | 1 | Engine container | | Done ([PR #17](https://github.com/maxime-filippini/data-service/pull/17)) |
 | 2 | Portfolios and snapshots in D1 | | Done ([PR #18](https://github.com/maxime-filippini/data-service/pull/18)) |
 | 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | Done ([PR #19](https://github.com/maxime-filippini/data-service/pull/19)) |
-| 4 | Calculations and runs | 2, 3 | In review (`feat/calc-runs`) |
-| 5 | Cron scheduling | 4 | To do |
+| 4 | Calculations and runs | 2, 3 | Done ([PR #20](https://github.com/maxime-filippini/data-service/pull/20)) |
+| 5 | Cron scheduling | 4 | In review (`feat/calc-cron`) |
 | 6 | Dashboard pages | 2, 4 (results view needs only 4) | To do |
 | 7 | Docs pass | all | To do |
 
@@ -32,7 +32,7 @@ lands.
   bodies with Effect Schema ([effect-schema-validation.md](effect-schema-validation.md)).
 - Tests go in `test/*.test.ts` (`pnpm test`); also run `pnpm typecheck`.
   Engine changes run `pnpm engine:test` and `pnpm engine:lint`.
-- Migrations are numbered SQL files in `migrations/` (next is `0007`), with a
+- Migrations are numbered SQL files in `migrations/` (next is `0008`), with a
   comment above each table.
 - Python: name dataframes `df` / `dfs`, never `frame`.
 - The dev VM has no AVX, so the containers can't run locally. Test end to end

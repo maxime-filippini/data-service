@@ -5,6 +5,7 @@ import { requireManagementToken } from "$/auth";
 import { D1CalculationsLive } from "$/calculations/d1";
 import { EngineLive } from "$/calculations/engine";
 import { failStoppedRuns } from "$/calculations/runs";
+import { triggerScheduledCalculations } from "$/calculations/schedule";
 import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
@@ -131,6 +132,21 @@ export default {
       console.log(JSON.stringify({ event: "calculation_runs_failed_as_stopped", count: sweep.success }));
     } else if (sweep._tag === "Failure") {
       console.error(JSON.stringify({ event: "calculation_run_sweep_failed", message: sweep.failure.message }));
+    }
+
+    // Start calculations whose cron has fired since their last scheduled run.
+    const calculations = await triggerScheduledCalculations(now, env.CALCULATION_RUNS).pipe(
+      Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
+      Effect.result,
+      Effect.runPromise,
+    );
+    if (calculations._tag === "Success") {
+      for (const run of calculations.success) {
+        if ("error" in run) console.error(JSON.stringify({ event: "calculation_schedule_failed", ...run }));
+        else console.log(JSON.stringify({ event: "calculation_run_scheduled", ...run }));
+      }
+    } else {
+      console.error(JSON.stringify({ event: "calculation_schedule_failed", message: calculations.failure.message }));
     }
 
     if (now.getUTCHours() === PROCESSING_SWEEP_HOUR) {

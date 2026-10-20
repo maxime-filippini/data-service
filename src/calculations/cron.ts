@@ -107,3 +107,33 @@ export const parseCron = (expression: string): CronSchedule | { readonly error: 
 
 export const isCronError = (parsed: ReturnType<typeof parseCron>): parsed is { readonly error: string } =>
   "error" in parsed;
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** How far back `latestSlot` looks: long enough for a 29 February schedule. */
+const SEARCH_DAYS = 8 * 366;
+
+const matchesDay = (schedule: CronSchedule, day: Date) => {
+  if (!schedule.months.has(day.getUTCMonth() + 1)) return false;
+  const dayOfMonth = schedule.daysOfMonth.has(day.getUTCDate());
+  const dayOfWeek = schedule.daysOfWeek.has(day.getUTCDay());
+  return schedule.eitherDay ? dayOfMonth || dayOfWeek : dayOfMonth && dayOfWeek;
+};
+
+/**
+ * The most recent hour at or before `now` that the schedule fires in, or null
+ * if it never fires (for example 30 February). The minute field is ignored:
+ * the cron that checks schedules ticks hourly, so a slot is a whole UTC hour.
+ */
+export const latestSlot = (schedule: CronSchedule, now: Date): Date | null => {
+  const hours = [...schedule.hours].sort((a, b) => b - a);
+  const today = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
+  for (let back = 0; back <= SEARCH_DAYS; back += 1) {
+    const day = new Date(today - back * DAY_MS);
+    if (!matchesDay(schedule, day)) continue;
+    const hour = back === 0 ? hours.find((h) => h <= now.getUTCHours()) : hours[0];
+    if (hour !== undefined) return new Date(day.getTime() + hour * HOUR_MS);
+  }
+  return null;
+};

@@ -20,6 +20,7 @@ interface CalculationRow {
   readonly enabled: number;
   readonly created_at: string;
   readonly updated_at: string;
+  readonly last_scheduled_slot: string | null;
   /** JSON array, in run order. */
   readonly portfolio_ids: string;
 }
@@ -70,6 +71,7 @@ const fromRow = (row: CalculationRow, lastRun: RunRow | undefined): Calculation 
   outputKey: calculationOutputKey(row.calculation_id),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  lastScheduledSlot: row.last_scheduled_slot,
   lastRun: lastRun === undefined ? null : fromRunRow(lastRun),
 });
 
@@ -236,6 +238,18 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
         query(() =>
           db.prepare(`DELETE FROM calculations WHERE calculation_id = ? RETURNING calculation_id`).bind(id).first(),
         ).pipe(Effect.flatMap((row) => (row === null ? Effect.fail(notFound()) : Effect.void))),
+
+      claimSlot: (id, slot) =>
+        query(() =>
+          db
+            .prepare(
+              `UPDATE calculations SET last_scheduled_slot = ?1
+               WHERE calculation_id = ?2 AND (last_scheduled_slot IS NULL OR last_scheduled_slot < ?1)
+               RETURNING calculation_id`,
+            )
+            .bind(slot, id)
+            .first(),
+        ).pipe(Effect.map((row) => row !== null)),
 
       startRun: (run) =>
         Effect.gen(function* () {
