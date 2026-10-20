@@ -12,9 +12,7 @@ from ..framework import CalculationError, CalculationType, Context
 class Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    window: int = Field(
-        252, ge=2, le=2520, description="Number of daily returns to use."
-    )
+    window: int = Field(252, ge=2, description="Number of daily returns to use.")
     annualisation: float = Field(
         252, gt=0, description="Periods per year; the variance is scaled by it."
     )
@@ -67,9 +65,11 @@ def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame
 
 def run(params: Params, ctx: Context) -> pl.DataFrame:
     assert ctx.portfolio is not None
+
     snapshot = ctx.portfolio.holdings_at(ctx.as_of)
     symbols = snapshot.symbols
     weights = np.array([snapshot.weights[symbol] for symbol in symbols])
+
     if params.normalise_weights:
         total = weights.sum()
         if np.isclose(total, 0):

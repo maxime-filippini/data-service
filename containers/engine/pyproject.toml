@@ -23,4 +23,9 @@ build-backend = "uv_build"
 engine = "data_service_engine.cli:main"
 
 [dependency-groups]
-dev = ["httpx>=0.28.1", "pytest>=9.1.1", "ruff>=0.16.10"]
+dev = [
+    "httpx>=0.28.1",
+    "polars[rtcompat]>=2.0.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]

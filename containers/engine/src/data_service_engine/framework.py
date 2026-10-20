@@ -66,15 +66,15 @@ class Context:
         sees data up to that date.
         """
         end = self.as_of if end is None else min(end, self.as_of)
-        frames = []
+        dfs = []
         for symbol in dict.fromkeys(symbols):
-            frame = self._load_symbol(dataset, symbol).filter(pl.col("date") <= end)
+            df = self._load_symbol(dataset, symbol).filter(pl.col("date") <= end)
             if start is not None:
-                frame = frame.filter(pl.col("date") >= start)
-            frames.append(frame.select(pl.lit(symbol).alias("symbol"), pl.all()))
-        if not frames:
+                df = df.filter(pl.col("date") >= start)
+            dfs.append(df.select(pl.lit(symbol).alias("symbol"), pl.all()))
+        if not dfs:
             raise ValueError("Load at least one symbol")
-        return pl.concat(frames).sort("symbol", "date")
+        return pl.concat(dfs).sort("symbol", "date")
 
 
 @dataclass(frozen=True)
@@ -133,17 +133,18 @@ class CalculationType:
         error. Invalid params or the wrong number of portfolios raise.
         """
         validated = self.validate_params(params)
+
         if self.takes_portfolio and not portfolios:
             raise CalculationError(f"{self.name} needs at least one portfolio")
         if not self.takes_portfolio and portfolios:
             raise CalculationError(f"{self.name} doesn't take a portfolio")
 
-        frames, outcomes = [], []
+        dfs, outcomes = [], []
         for portfolio in portfolios or [None]:
             portfolio_id = portfolio.id if portfolio else None
             try:
                 ctx = Context(as_of, _known_on(portfolio, as_of), load_symbol)
-                frame = self._finish(self.run(validated, ctx), as_of, portfolio_id)
+                df = self._finish(self.run(validated, ctx), as_of, portfolio_id)
             except Exception as error:
                 logger.exception("%s failed for portfolio %s", self.name, portfolio_id)
                 outcomes.append(
@@ -154,17 +155,17 @@ class CalculationType:
                     )
                 )
                 continue
-            frames.append(frame)
+            dfs.append(df)
             outcomes.append(
                 PortfolioOutcome(
                     portfolio_id=portfolio_id,
                     status="completed",
-                    row_count=frame.height,
+                    row_count=df.height,
                 )
             )
 
         schema = self.result_schema()
-        result = pl.concat(frames) if frames else pl.DataFrame(schema=schema)
+        result = pl.concat(dfs) if dfs else pl.DataFrame(schema=schema)
         return result, outcomes
 
     def _finish(self, frame: Any, as_of: date, portfolio_id: str | None):

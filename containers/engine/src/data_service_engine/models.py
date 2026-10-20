@@ -196,7 +196,7 @@ class RunRequest(Contract):
 class PortfolioOutcome(Contract):
     portfolio_id: str | None = Field(serialization_alias="portfolioId")
     status: Literal["completed", "failed"]
-    row_count: int = Field(0, serialization_alias="rowCount")
+    row_count: int = Field(default=0, serialization_alias="rowCount")
     error: str | None = None
 
 
