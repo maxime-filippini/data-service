@@ -28,7 +28,8 @@ def total_weight(params: Params, ctx: Context) -> pl.DataFrame:
     assert ctx.portfolio is not None
     if ctx.portfolio.id == "broken":
         raise RuntimeError("boom")
-    return pl.DataFrame({"total": [sum(ctx.portfolio.weights.values()) * params.scale]})
+    weights = ctx.portfolio.holdings_at(ctx.as_of).weights
+    return pl.DataFrame({"total": [sum(weights.values()) * params.scale]})
 
 
 TOTAL = CalculationType(

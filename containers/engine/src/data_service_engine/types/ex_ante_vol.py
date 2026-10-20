@@ -1,4 +1,4 @@
-"""Ex-ante volatility: today's weights applied to past daily returns."""
+"""Ex-ante volatility: the as-of date's weights applied to past daily returns."""
 
 from datetime import timedelta
 
@@ -37,6 +37,7 @@ OUTPUT = {
     "observations": pl.Int64,
     "window_start": pl.Date,
     "window_end": pl.Date,
+    "holdings_date": pl.Date,
 }
 
 
@@ -66,8 +67,9 @@ def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame
 
 def run(params: Params, ctx: Context) -> pl.DataFrame:
     assert ctx.portfolio is not None
-    symbols = ctx.portfolio.symbols
-    weights = np.array([ctx.portfolio.weights[symbol] for symbol in symbols])
+    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
+    symbols = snapshot.symbols
+    weights = np.array([snapshot.weights[symbol] for symbol in symbols])
     if params.normalise_weights:
         total = weights.sum()
         if np.isclose(total, 0):
@@ -94,14 +96,16 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
             "observations": [returns.height],
             "window_start": [dates.first()],
             "window_end": [dates.last()],
-        }
+            "holdings_date": [snapshot.holdings_date],
+        },
+        schema=OUTPUT,
     )
 
 
 TYPE = CalculationType(
     name="ex_ante_vol",
     description=(
-        "Annualised volatility of the portfolio's current weights over past "
+        "Annualised volatility of the weights held at the as-of date over past "
         "daily returns of adjusted close prices."
     ),
     params=Params,

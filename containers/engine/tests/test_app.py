@@ -13,8 +13,17 @@ AS_OF = "2026-10-16"
 OUTPUT_KEY = "calculation=calc-1/data.parquet"
 
 
-def portfolio(id, symbol="A.US"):
-    return {"id": id, "name": id, "holdings": [{"symbol": symbol, "weight": 1}]}
+def portfolio(id, symbol="A.US", holdings_date="2026-01-02"):
+    return {
+        "id": id,
+        "name": id,
+        "snapshots": [
+            {
+                "holdingsDate": holdings_date,
+                "holdings": [{"symbol": symbol, "weight": 1}],
+            }
+        ],
+    }
 
 
 def run_request(**overrides):
@@ -94,6 +103,10 @@ def test_run_writes_results_and_reports_each_portfolio(client, engine_r2):
         ({"type": "removed_type"}, "Unknown calculation type 'removed_type'"),
         ({"params": {"window": 1}}, "Invalid Params: window:"),
         ({"portfolios": []}, "ex_ante_vol needs at least one portfolio"),
+        (
+            {"portfolios": [portfolio("p1", holdings_date="2026-10-17")]},
+            "No holdings on or before 2026-10-16",
+        ),
         ({"portfolios": [portfolio("p1", "MISSING.US")]}, "No prices_eod data"),
         (
             {"portfolios": [portfolio("p1", "X.US"), portfolio("p2", "Y.US")]},
@@ -120,10 +133,13 @@ def test_malformed_run_requests_are_rejected(client):
     assert client.post("/runs", json={"runId": "x"}).status_code == 422
     unsaved = run_request(portfolios=[{"holdings": [{"symbol": "A", "weight": 1}]}])
     assert client.post("/runs", json=unsaved).status_code == 422
-    zero = run_request(
-        portfolios=[{"id": "p", "holdings": [{"symbol": "A", "weight": 0}]}]
+    undated = run_request(
+        portfolios=[{"id": "p", "holdings": [{"symbol": "A", "weight": 1}]}]
     )
-    assert client.post("/runs", json=zero).status_code == 422
+    assert client.post("/runs", json=undated).status_code == 422
+    zero = portfolio("p")
+    zero["snapshots"][0]["holdings"][0]["weight"] = 0
+    assert client.post("/runs", json=run_request(portfolios=[zero])).status_code == 422
 
 
 def calculate_request(**overrides):

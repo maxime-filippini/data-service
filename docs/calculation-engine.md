@@ -56,25 +56,37 @@ The framework passes a `ctx`:
 - `ctx.load(dataset, symbols, start, end)` returns a polars DataFrame read from
   the canonical Parquet files in R2.
 - `ctx.as_of` is the date being calculated.
-- `ctx.portfolio` is the portfolio being calculated, with its holdings already
-  resolved.
+- `ctx.portfolio` is the portfolio being calculated, with every holdings
+  snapshot up to `ctx.as_of`. The type picks the holdings it needs:
+  `holdings_at(date)` for the snapshot in effect on one date (ex-ante
+  volatility), or `snapshots_between(start, end)` and `holdings_frame(start,
+  end)` for every snapshot over a period (realised P&L).
 
 Types never call R2 or providers directly. In v1 they can only read datasets,
 not other calculations' results.
 
 ## Portfolios
 
-A portfolio is a name and a list of `(symbol, weight)`. It has no dataset;
-a type that needs prices loads `prices_eod`.
+A portfolio is a name and a series of holdings snapshots. A snapshot is a
+holdings date and a list of `(symbol, weight)`: the holdings at the close of
+that date. It stays in effect until the next snapshot. The service stores
+snapshots, not trades or changes between them. A portfolio has no dataset; a
+type that needs prices loads `prices_eod`.
 
 - **Checks.** Every symbol must be a tracked symbol in `prices_eod`. Weights
   are any non-zero numbers (shorts and leverage are allowed, and they don't
-  need to sum to 1). Each type normalises or checks them as it needs.
-- **Changes.** A portfolio only holds its current holdings, with no history.
-  Each run saves the holdings it used, so earlier results stay explainable.
+  need to sum to 1). Each type normalises or checks them as it needs. A
+  portfolio has at most one snapshot per holdings date.
+- **Which holdings.** A run for as-of date D sees the snapshots dated on or
+  before D, never later ones. A snapshot dated D counts for D itself. If a
+  portfolio has no snapshot on or before D, only that portfolio fails.
+- **Changes.** Snapshots can be added or deleted, not edited. To correct one,
+  delete it and add it again. Earlier results aren't rewritten; types that
+  depend on one snapshot (like `ex_ante_vol`) record its holdings date in
+  their results.
 - **Deleting.** Deleting a portfolio that a calculation uses returns `409` with
-  the calculations that use it. So does deleting a tracked symbol that a
-  portfolio holds. Disabling a symbol is allowed: its Parquet file stays, so
+  the calculations that use it. So does deleting a tracked symbol that any
+  snapshot holds. Disabling a symbol is allowed: its Parquet file stays, so
   calculations keep working on its old data.
 
 ## Calculations
@@ -135,7 +147,8 @@ do datasets, and the dashboard explorer shows it unchanged.
 - **Ad hoc.** `POST /calculate` takes a type, params and a portfolio, runs it
   and returns the result in the response (JSON or Arrow), with a timeout of
   about 60 seconds. Nothing is saved. The portfolio is either
-  `{ "portfolioId": … }` or `{ "holdings": [ … ] }`, so other apps can
+  `{ "portfolioId": … }`, which uses its snapshots up to `asOf`, or
+  `{ "holdings": [ … ] }`, which counts as held at all times, so other apps can
   calculate for portfolios the service doesn't store. Saved calculations only
   take portfolio IDs.
 
@@ -143,16 +156,14 @@ Both use the management token, or Cloudflare Access through the dashboard.
 
 ## Dashboard
 
-- **Portfolios.** List, create, edit, delete.
+- **Portfolios.** List, create, rename, delete; add and delete snapshots.
 - **Calculations.** List, create, edit (a JSON editor for params, checked by
   the engine), cron, enable or pause, run now with an optional as-of date.
-- **Runs.** Status, the params and holdings used, and errors for each
-  portfolio.
+- **Runs.** Status, the params used, and errors for each portfolio.
 - **Results.** Opened in the existing dataset explorer.
 
 ## Left out of v1
 
-- Portfolios with history (holdings with effective dates).
 - Calculations that read other calculations' results.
 - Backfilling a range of as-of dates in one request.
 - A params form built from the JSON Schema.

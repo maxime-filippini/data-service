@@ -17,7 +17,8 @@ class Params(BaseModel):
     window: int = Field(252, ge=2)
 
 def run(params: Params, ctx: Context) -> pl.DataFrame:
-    prices = ctx.load("prices_eod", ctx.portfolio.symbols, start=...)
+    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
+    prices = ctx.load("prices_eod", snapshot.symbols, start=...)
     return pl.DataFrame({"value": [...]})
 
 TYPE = CalculationType(
@@ -35,9 +36,20 @@ TYPE = CalculationType(
 - `output` lists the columns `run` returns, in order. The framework checks
   them, casts to these types and adds `as_of` and `portfolio_id`. `run` may
   return any number of rows.
-- `takes_portfolio=True` runs the type once per portfolio, with
-  `ctx.portfolio` set (holdings already resolved). Otherwise the type runs
-  once with `ctx.portfolio` set to `None`.
+- `takes_portfolio=True` runs the type once per portfolio. Otherwise the type
+  runs once with `ctx.portfolio` set to `None`.
+- `ctx.portfolio` holds every holdings snapshot up to `ctx.as_of`, and the
+  type picks what it needs. A snapshot is the holdings at the close of its
+  `holdings_date`, in effect until the next one:
+  - `holdings_at(day)`: the snapshot in effect at the close of `day`.
+  - `snapshots_between(start, end)`: every snapshot in effect at some close
+    in the period, starting with the one in effect at `start`.
+  - `holdings_frame(start, end)`: the same as `holdings_date`, `symbol`,
+    `weight` rows, for joining with prices.
+  - `symbols`: every symbol held in any snapshot.
+
+  A portfolio with no snapshot on or before the as-of date fails before the
+  type runs.
 - `ctx.load(dataset, symbols, start, end)` returns the dataset's rows with a
   `symbol` column. It never returns rows after `ctx.as_of`.
 - Raise `CalculationError` for expected failures, like missing data. Its
@@ -68,7 +80,13 @@ authentication.
   "params": { "window": 252 },
   "asOf": "2026-10-16",
   "portfolios": [
-    { "id": "…", "name": "Core", "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }] }
+    {
+      "id": "…",
+      "name": "Core",
+      "snapshots": [
+        { "holdingsDate": "2026-09-30", "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }] }
+      ]
+    }
   ],
   "outputKey": "calculation=<id>/data.parquet"
 }
@@ -115,9 +133,13 @@ Arrow IPC stream with `Accept: application/vnd.apache.arrow.stream`.
 `404` for an unknown type, `422` for invalid params or a missing portfolio,
 `500 {"detail": …}` when the calculation fails.
 
-The Worker resolves portfolio IDs to holdings and checks that each symbol is
-tracked before calling the engine. `422` covers malformed requests: a zero
-weight, a repeated symbol, or a saved run portfolio without an `id`.
+`portfolio` takes `snapshots` like a run, or plain `holdings`, which become
+one undated snapshot that counts as held at all times.
+
+The Worker loads each portfolio's snapshots up to the as-of date and checks
+that each symbol is tracked before calling the engine. `422` covers malformed
+requests: a zero weight, a repeated symbol or holdings date, or a saved run
+portfolio without an `id` or with an undated snapshot.
 
 ## Configuration
 

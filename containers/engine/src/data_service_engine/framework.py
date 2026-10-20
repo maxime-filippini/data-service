@@ -17,7 +17,10 @@ from typing import Any
 import polars as pl
 from pydantic import BaseModel, ValidationError
 
+from .errors import CalculationError, MissingDataError, UnknownTypeError
 from .models import Portfolio, PortfolioOutcome
+
+__all__ = ["CalculationError", "MissingDataError", "UnknownTypeError"]
 
 logger = logging.getLogger(__name__)
 
@@ -26,18 +29,6 @@ RESERVED_COLUMNS = {"as_of": pl.Date, "portfolio_id": pl.String}
 
 # Reads the whole (dataset, symbol) Parquet object. Raises MissingDataError.
 SymbolLoader = Callable[[str, str], pl.DataFrame]
-
-
-class CalculationError(Exception):
-    """An expected failure, e.g. not enough data. Its message is shown as is."""
-
-
-class MissingDataError(CalculationError):
-    pass
-
-
-class UnknownTypeError(CalculationError):
-    pass
 
 
 def describe_error(error: Exception) -> str:
@@ -94,7 +85,8 @@ class CalculationType:
     - `output`: the columns of each result row (`as_of` and `portfolio_id`
       are added by the framework).
     - `run(params, ctx)`: returns a DataFrame with exactly the `output` columns.
-    - `takes_portfolio`: run once per portfolio, with `ctx.portfolio` set.
+    - `takes_portfolio`: run once per portfolio, with `ctx.portfolio` set to
+      its snapshots up to `as_of`. The type picks the holdings it needs.
     """
 
     name: str
@@ -150,7 +142,7 @@ class CalculationType:
         for portfolio in portfolios or [None]:
             portfolio_id = portfolio.id if portfolio else None
             try:
-                ctx = Context(as_of, portfolio, load_symbol)
+                ctx = Context(as_of, _known_on(portfolio, as_of), load_symbol)
                 frame = self._finish(self.run(validated, ctx), as_of, portfolio_id)
             except Exception as error:
                 logger.exception("%s failed for portfolio %s", self.name, portfolio_id)
@@ -191,6 +183,16 @@ class CalculationType:
                 for name, dtype in self.output.items()
             ),
         )
+
+
+def _known_on(portfolio: Portfolio | None, as_of: date) -> Portfolio | None:
+    """The portfolio without snapshots dated after `as_of`."""
+    if portfolio is None:
+        return None
+    known = portfolio.until(as_of)
+    if not known.snapshots:
+        raise CalculationError(f"No holdings on or before {as_of}")
+    return known
 
 
 def discover(package: ModuleType) -> dict[str, CalculationType]:

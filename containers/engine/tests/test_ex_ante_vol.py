@@ -109,3 +109,31 @@ def test_params_reject_unknown_fields_and_bad_values():
     for params in [{"windw": 10}, {"window": 1}, {"decay": 1}, {"annualisation": 0}]:
         with pytest.raises(ValueError):
             VOL.validate_params(params)
+
+
+def test_uses_the_snapshot_in_effect_at_the_as_of_date(reader):
+    history = Portfolio.model_validate(
+        {
+            "id": "p1",
+            "snapshots": [
+                {
+                    "holdingsDate": "2026-10-01",
+                    "holdings": [{"symbol": "A.US", "weight": 1}],
+                },
+                {
+                    "holdingsDate": "2026-10-14",
+                    "holdings": [{"symbol": "B.US", "weight": 1}],
+                },
+                # After the as-of date, so it must be ignored.
+                {
+                    "holdingsDate": "2026-10-16",
+                    "holdings": [{"symbol": "A.US", "weight": 5}],
+                },
+            ],
+        }
+    )
+    rows, _ = VOL.calculate({"window": 3}, date(2026, 10, 15), [history], reader)
+    row = rows.row(0, named=True)
+    assert row["holdings_date"] == date(2026, 10, 14)
+    expected = statistics.stdev(RETURNS["B.US"][4:7]) * math.sqrt(252)
+    assert row["volatility"] == pytest.approx(expected)
