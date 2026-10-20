@@ -9,6 +9,7 @@ import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import type { RunPage, SymbolStatusView } from "$/market-data/status";
+import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { makeTestDatabase } from "./support/d1";
 
@@ -44,6 +45,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
       storeFor: () => D1ScheduleStoreLive(db),
+      portfoliosFor: () => D1PortfoliosLive(db),
       workflowFor: () => ({
         create: async (options) => {
           workflowRuns.push(options!.params as ScheduledDownloadParams);

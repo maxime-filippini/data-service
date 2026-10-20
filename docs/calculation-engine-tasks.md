@@ -10,7 +10,7 @@ before starting any of them.
 | # | Task | Depends on | Status |
 | --- | --- | --- | --- |
 | 1 | Engine container | | Done ([PR #17](https://github.com/maxime-filippini/data-service/pull/17)) |
-| 2 | Portfolios and snapshots in D1 | | To do |
+| 2 | Portfolios and snapshots in D1 | | In review (`feat/calc-portfolios`) |
 | 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | To do |
 | 4 | Calculations and runs | 2, 3 | To do |
 | 5 | Cron scheduling | 4 | To do |
@@ -32,7 +32,7 @@ lands.
   bodies with Effect Schema ([effect-schema-validation.md](effect-schema-validation.md)).
 - Tests go in `test/*.test.ts` (`pnpm test`); also run `pnpm typecheck`.
   Engine changes run `pnpm engine:test` and `pnpm engine:lint`.
-- Migrations are numbered SQL files in `migrations/` (next is `0005`), with a
+- Migrations are numbered SQL files in `migrations/` (next is `0006`), with a
   comment above each table.
 - Python: name dataframes `df` / `dfs`, never `frame`.
 - The dev VM has no AVX, so the containers can't run locally. Test end to end
@@ -54,7 +54,10 @@ Spec: "Portfolios".
 - Checks: every symbol is a tracked `prices_eod` symbol (disabled symbols
   count as tracked); weights are finite and non-zero; one snapshot per date.
 - Deleting a symbol from the registry that any snapshot holds returns `409`
-  with the portfolios holding it. Disabling stays allowed.
+  with the portfolios holding it. Disabling stays allowed. The registry has
+  no delete route yet, so for now a foreign key from `portfolio_holdings` to
+  `tracked_symbols` blocks the delete; whoever adds the route maps it to the
+  `409` (the `portfolio_holdings_by_symbol` index finds the portfolios).
 - Deleting a portfolio a calculation uses returns `409`. The `calculations`
   table doesn't exist until task 4, so task 4 adds this check.
 - Add a function that loads a portfolio with its snapshots up to a date, in
