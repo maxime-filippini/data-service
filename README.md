@@ -179,6 +179,41 @@ curl "$URL/schedule/runs?limit=5" -H "Authorization: Bearer $MANAGEMENT_API_TOKE
 curl -X POST "$URL/schedule/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
+## Portfolios
+
+A portfolio is a name and a series of dated holdings snapshots, which
+calculations run over. Every symbol must be tracked in `prices_eod` (disabled
+symbols count), weights are any non-zero numbers, and a portfolio has at most
+one snapshot per date. Snapshots can't be edited: delete one and add it again.
+See [Portfolios](docs/calculation-engine.md#portfolios).
+
+```sh
+# Create one, optionally with its first snapshot
+curl -X POST "$URL/portfolios" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Core","snapshot":{"holdingsDate":"2026-09-30","holdings":[{"symbol":"AAPL.US","weight":0.6},{"symbol":"MSFT.US","weight":0.4}]}}'
+
+# List them; get one with its snapshots
+curl "$URL/portfolios" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/portfolios/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Rename or delete one
+curl -X PATCH "$URL/portfolios/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"Core equity"}'
+curl -X DELETE "$URL/portfolios/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Add a snapshot, or delete the one for a date
+curl -X POST "$URL/portfolios/$ID/snapshots" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"holdingsDate":"2026-10-15","holdings":[{"symbol":"AAPL.US","weight":1}]}'
+curl -X DELETE "$URL/portfolios/$ID/snapshots/2026-10-15" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+Untracked symbols return `400` with their list in `symbols`; a second snapshot
+for the same date returns `409`.
+
 ## Dashboard
 
 `$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds), the

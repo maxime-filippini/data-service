@@ -17,7 +17,9 @@ import {
   type SymbolStatusView,
 } from "$/market-data/status";
 import type { SymbolRegistry } from "$/market-data/symbol-registry";
+import type { Portfolios } from "$/portfolios";
 import { createIngestionRoutes } from "$/routes/ingestions";
+import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 
@@ -69,7 +71,8 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * The dashboard: a Svelte app served from static assets, and an API under
  * `/api`. Every request needs a Cloudflare Access user on the allowlist.
  * Besides reading pipeline status, it can edit the registry and the schedule
- * and start downloads, through the same routes as the management API.
+ * and start downloads, and manage portfolios, through the same routes as the
+ * management API.
  */
 export const createDashboardRoutes = (
   services: {
@@ -77,6 +80,7 @@ export const createDashboardRoutes = (
     readonly registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>;
     readonly storeFor: (env: CloudflareBindings) => Layer.Layer<ScheduleStore>;
     readonly workflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
+    readonly portfoliosFor: (env: CloudflareBindings) => Layer.Layer<Portfolios>;
   },
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
@@ -173,6 +177,7 @@ export const createDashboardRoutes = (
   api.route("/registry", createSymbolRoutes(services.registryFor, accessChecked));
   api.route("/ingestions", createIngestionRoutes(services.registryFor, accessChecked));
   api.route("/schedule", createScheduleRoutes(services, accessChecked));
+  api.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, accessChecked));
 
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 

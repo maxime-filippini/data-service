@@ -12,8 +12,10 @@ import { triggerScheduledRun } from "$/market-data/schedule";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
+import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { createIngestionRoutes } from "$/routes/ingestions";
+import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 
@@ -26,6 +28,7 @@ const services = {
   registryFor: (env: CloudflareBindings) => D1SymbolRegistryLive(env.MARKET_DATA_DB),
   storeFor: (env: CloudflareBindings) => D1ScheduleStoreLive(env.MARKET_DATA_DB),
   workflowFor: (env: CloudflareBindings) => env.SCHEDULED_DOWNLOADS,
+  portfoliosFor: (env: CloudflareBindings) => D1PortfoliosLive(env.MARKET_DATA_DB),
 };
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -33,6 +36,7 @@ const app = new Hono<{ Bindings: CloudflareBindings }>();
 app.route("/symbols", createSymbolRoutes(services.registryFor, requireManagementToken));
 app.route("/ingestions", createIngestionRoutes(services.registryFor, requireManagementToken));
 app.route("/schedule", createScheduleRoutes(services, requireManagementToken));
+app.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, requireManagementToken));
 app.route("/dashboard", createDashboardRoutes(services));
 
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
