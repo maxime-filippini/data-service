@@ -1,4 +1,4 @@
-# Calculation engine (spec, not built yet)
+# Calculation engine (spec, being built)
 
 The service only serves provider data today. The calculation engine adds
 calculations on top of that data, for example ex-ante volatility for a
@@ -36,7 +36,10 @@ A calculation type is one Python module in the engine that registers:
 - `name`, for example `ex_ante_vol`;
 - a Pydantic `Params` model;
 - an output schema (the columns of its result table);
+- whether it takes a portfolio;
 - `run(params, ctx) -> table`.
+
+How to write one: [the engine README](../containers/engine/README.md).
 
 The engine serves `GET /types`, which returns each type's name and the JSON
 Schema of its params. The Worker doesn't know any types. It asks the engine to
@@ -90,8 +93,8 @@ rewritten, and each run saves the params it used.
 
 ### Several portfolios
 
-A type that takes a portfolio says so in its `Params` (a `portfolio` field).
-The calculation lists several portfolios, and the framework runs the type once
+A type that takes a portfolio says so when it registers, so its params never
+hold portfolios. The calculation lists several portfolios, and the framework runs the type once
 per portfolio, so a type only ever handles one. If one portfolio fails, the
 others still complete and the run is marked `partial`, with an error for each
 portfolio that failed.

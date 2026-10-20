@@ -1,4 +1,4 @@
-# Checks the Worker and the processor container on every push. main deploys
+# Checks the Worker and the Python containers on every push. main deploys
 # production; develop, feat/* and fix/* deploy the dev environment. Each deploy
 # applies D1 migrations, then builds the processor image and deploys it with
 # the Worker.
@@ -46,8 +46,21 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest
 
+  check-engine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: containers/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - run: uv run pytest
+
   deploy-dev:
-    needs: [check, check-processor]
+    needs: [check, check-processor, check-engine]
     if: github.event_name != 'pull_request' && github.ref_name != 'main'
     runs-on: ubuntu-latest
     # Every branch shares the dev environment: deploy one at a time, latest wins.
@@ -71,7 +84,7 @@ jobs:
       - run: pnpm deploy:dev
 
   deploy-prod:
-    needs: [check, check-processor]
+    needs: [check, check-processor, check-engine]
     if: github.event_name != 'pull_request' && github.ref_name == 'main'
     runs-on: ubuntu-latest
     concurrency: deploy-prod

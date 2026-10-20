@@ -8,6 +8,10 @@
       "name": "processor",
       "path": "containers/processor",
     },
+    {
+      "name": "engine",
+      "path": "containers/engine",
+    },
   ],
   "settings": {
     "workbench.colorCustomizations": {
