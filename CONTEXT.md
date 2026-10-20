@@ -47,8 +47,15 @@ the engine container with its own params and output columns. See
 
 ## Portfolio
 
-A name and a list of `(symbol, weight)`. Every symbol must be tracked in
-`prices_eod`. A portfolio only holds its current holdings.
+A name and a series of holdings snapshots. Every symbol must be tracked in
+`prices_eod`.
+
+## Holdings snapshot
+
+A portfolio's holdings, a list of `(symbol, weight)`, at the close of a
+holdings date. It stays in effect until the portfolio's next snapshot.
+Snapshots are added or deleted, never edited. Each calculation type decides
+which snapshots it uses.
 
 ## Calculation
 
@@ -59,5 +66,4 @@ expression and an enabled flag. Its results are one Parquet file at
 ## Calculation run
 
 One run of a calculation for one as-of date, started by its cron or by hand.
-The type runs once per portfolio, and the run saves the params and holdings it
-used.
+The type runs once per portfolio, and the run saves the params it used.

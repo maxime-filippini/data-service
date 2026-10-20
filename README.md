@@ -15,6 +15,7 @@ How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | --- | --- |
 | `src/` | The Worker (TypeScript) |
 | `containers/processor/` | The Python processor container ([README](containers/processor/README.md)) |
+| `containers/engine/` | The Python calculation engine container ([README](containers/engine/README.md)) |
 | `dashboard/` | The Svelte dashboard, served by the Worker at `/dashboard/` |
 | `migrations/` | D1 migrations |
 
@@ -229,4 +230,6 @@ pnpm typecheck
 pnpm dashboard:check
 pnpm processor:test     # needs uv
 pnpm processor:lint
+pnpm engine:test        # needs uv
+pnpm engine:lint
 ```

@@ -14,7 +14,9 @@
 		"dashboard:dev": "pnpm --filter dashboard dev",
 		"dashboard:check": "pnpm --filter dashboard check",
 		"processor:test": "uv run --directory containers/processor pytest",
-		"processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests"
+		"processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests",
+		"engine:test": "uv run --directory containers/engine pytest",
+		"engine:lint": "uv run --directory containers/engine ruff check src tests && uv run --directory containers/engine ruff format --check src tests"
 	},
 	"dependencies": {
 		"@cloudflare/containers": "^0.3.7",
