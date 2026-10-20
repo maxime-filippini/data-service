@@ -39,11 +39,10 @@ export const createPortfolioRoutes = (
   const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, PortfolioError, Portfolios>) => {
     const result = await program.pipe(Effect.provide(portfoliosFor(env)), Effect.result, Effect.runPromise);
     if (Result.isFailure(result)) {
-      const { kind, message, symbols } = result.failure;
+      const { kind, message, symbols, calculations } = result.failure;
       const status = portfolioStatusOf[kind];
-      throw new HTTPException(status, {
-        res: Response.json({ error: message, ...(symbols === undefined ? {} : { symbols }) }, { status }),
-      });
+      const extra = { ...(symbols === undefined ? {} : { symbols }), ...(calculations === undefined ? {} : { calculations }) };
+      throw new HTTPException(status, { res: Response.json({ error: message, ...extra }, { status }) });
     }
     return result.success;
   };
@@ -79,6 +78,7 @@ export const createPortfolioRoutes = (
     },
   );
 
+  // A portfolio a calculation uses can't be deleted (409, with the calculations).
   app.delete("/:id", effectValidator("param", IdParamSchema), async (c) => {
     const { id } = c.req.valid("param");
     await run(c.env, Portfolios.use((store) => store.remove(id)));

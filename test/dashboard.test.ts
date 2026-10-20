@@ -9,6 +9,7 @@ import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import type { RunPage, SymbolStatusView } from "$/market-data/status";
+import { D1CalculationsLive } from "$/calculations/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { makeTestDatabase } from "./support/d1";
@@ -49,6 +50,11 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
       storeFor: () => D1ScheduleStoreLive(db),
       portfoliosFor: () => D1PortfoliosLive(db),
       engineFor: () => engine.layer,
+      calculationsFor: () => D1CalculationsLive(db),
+      runWorkflowFor: () => ({
+        create: async (options) => ({ id: options!.id! }) as WorkflowInstance,
+        get: async (id) => ({ id }) as WorkflowInstance,
+      }),
       workflowFor: () => ({
         create: async (options) => {
           workflowRuns.push(options!.params as ScheduledDownloadParams);
@@ -410,4 +416,17 @@ test("the dashboard lists calculation types and runs ad hoc calculations", async
   assert.equal(result.status, 200);
   assert.equal(result.headers.get("Cache-Control"), "no-store");
   assert.deepEqual(await result.json(), { rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }] });
+});
+
+test("the dashboard serves the calculation routes", async () => {
+  const { request, send } = setup();
+  const token = await signToken();
+  const list = await request("/api/calculations", token);
+  assert.equal(list.status, 200);
+  assert.deepEqual(await list.json(), { calculations: [] });
+
+  const path = `/api/calculations/${crypto.randomUUID()}/runs`;
+  assert.equal((await send("POST", path)).status, 401);
+  assert.equal((await send("POST", path, { token, headers: {} })).status, 403);
+  assert.equal((await send("POST", path, { token })).status, 404);
 });

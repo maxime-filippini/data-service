@@ -4,7 +4,9 @@ import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
+import type { Calculations } from "$/calculations";
 import type { Engine } from "$/calculations/engine";
+import type { RunWorkflow } from "$/calculations/runs";
 import { effectValidator } from "$/effect-validator";
 import type { ScheduleStore, ScheduleWorkflow } from "$/market-data/schedule";
 import { canonicalKey, DatasetSchema, datasetProviders, MarketSymbolSchema } from "$/market-data/schemas";
@@ -20,6 +22,7 @@ import {
 import type { SymbolRegistry } from "$/market-data/symbol-registry";
 import type { Portfolios } from "$/portfolios";
 import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
+import { createCalculationRoutes } from "$/routes/calculations";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
@@ -73,8 +76,8 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * The dashboard: a Svelte app served from static assets, and an API under
  * `/api`. Every request needs a Cloudflare Access user on the allowlist.
  * Besides reading pipeline status, it can edit the registry and the schedule
- * and start downloads, manage portfolios and run ad hoc calculations, through the same routes as the
- * management API.
+ * and start downloads, manage portfolios and calculations and run them, through the same routes as
+ * the management API.
  */
 export const createDashboardRoutes = (
   services: {
@@ -84,6 +87,8 @@ export const createDashboardRoutes = (
     readonly workflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
     readonly portfoliosFor: (env: CloudflareBindings) => Layer.Layer<Portfolios>;
     readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
+    readonly calculationsFor: (env: CloudflareBindings) => Layer.Layer<Calculations>;
+    readonly runWorkflowFor: (env: CloudflareBindings) => RunWorkflow;
   },
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
@@ -183,6 +188,7 @@ export const createDashboardRoutes = (
   api.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, accessChecked));
   api.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, accessChecked));
   api.route("/calculate", createCalculateRoutes(services, accessChecked));
+  api.route("/calculations", createCalculationRoutes(services, accessChecked));
 
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 

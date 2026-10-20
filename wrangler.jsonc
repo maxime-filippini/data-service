@@ -54,11 +54,16 @@
 			{ "name": "CALCULATION_ENGINE", "class_name": "CalculationEngine" },
 		],
 	},
-	// One instance per run of the daily schedule; queues the downloads.
+	// One instance per run of the daily schedule (queues the downloads) and one
+	// per calculation run (calls the engine off the request path).
 	"workflows": [{
 		"name": "data-service-scheduled-downloads",
 		"binding": "SCHEDULED_DOWNLOADS",
 		"class_name": "ScheduledDownloadWorkflow",
+	}, {
+		"name": "data-service-calculation-runs",
+		"binding": "CALCULATION_RUNS",
+		"class_name": "CalculationRunWorkflow",
 	}],
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["MarketDataProcessor"] },
@@ -147,6 +152,10 @@
 				"name": "data-service-scheduled-downloads-dev",
 				"binding": "SCHEDULED_DOWNLOADS",
 				"class_name": "ScheduledDownloadWorkflow",
+			}, {
+				"name": "data-service-calculation-runs-dev",
+				"binding": "CALCULATION_RUNS",
+				"class_name": "CalculationRunWorkflow",
 			}],
 			"queues": {
 				"producers": [

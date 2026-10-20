@@ -10,7 +10,7 @@ import { portfolioStatusOf } from "$/routes/portfolios";
 
 type Env = { Bindings: CloudflareBindings };
 
-const engineStatusOf = {
+export const engineStatusOf = {
   not_found: 404,
   invalid: 422,
   failed: 500,

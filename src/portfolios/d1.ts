@@ -34,6 +34,16 @@ const notFound = () => new PortfolioError({ kind: "not_found", message: "The por
 const dateTaken = (holdingsDate: string) =>
   new PortfolioError({ kind: "conflict", message: `The portfolio already has a snapshot for ${holdingsDate}` });
 
+const inUse = (calculations: readonly { id: string; name: string }[]) =>
+  new PortfolioError({
+    kind: "conflict",
+    message:
+      calculations.length === 0
+        ? "A calculation uses the portfolio"
+        : `Used by calculations: ${calculations.map((calculation) => calculation.name).join(", ")}`,
+    calculations,
+  });
+
 const symbolsOf = (snapshot: NewSnapshot) => snapshot.holdings.map((holding) => holding.symbol);
 
 const query = <A>(operation: () => Promise<A>) => Effect.tryPromise({ try: operation, catch: databaseError });
@@ -181,9 +191,26 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
         ).pipe(Effect.flatMap((row) => (row === null ? Effect.fail(notFound()) : load(id, null)))),
 
       remove: (id) =>
-        query(() => db.prepare(`DELETE FROM portfolios WHERE portfolio_id = ? RETURNING portfolio_id`).bind(id).first()).pipe(
-          Effect.flatMap((row) => (row === null ? Effect.fail(notFound()) : Effect.void)),
-        ),
+        Effect.gen(function* () {
+          const { results: users } = yield* query(() =>
+            db
+              .prepare(
+                `SELECT c.calculation_id AS id, c.name
+                 FROM calculation_portfolios cp JOIN calculations c USING (calculation_id)
+                 WHERE cp.portfolio_id = ?
+                 ORDER BY c.name, c.calculation_id`,
+              )
+              .bind(id)
+              .all<{ id: string; name: string }>(),
+          );
+          if (users.length > 0) return yield* Effect.fail(inUse(users));
+          const row = yield* Effect.tryPromise({
+            try: () => db.prepare(`DELETE FROM portfolios WHERE portfolio_id = ? RETURNING portfolio_id`).bind(id).first(),
+            // A calculation started using it since the check.
+            catch: (error) => (String(error).includes("FOREIGN KEY constraint failed") ? inUse([]) : databaseError()),
+          });
+          if (row === null) return yield* Effect.fail(notFound());
+        }),
 
       addSnapshot: (id, snapshot, now) =>
         Effect.gen(function* () {
