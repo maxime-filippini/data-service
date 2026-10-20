@@ -34,6 +34,8 @@ const notFound = () => new PortfolioError({ kind: "not_found", message: "The por
 const dateTaken = (holdingsDate: string) =>
   new PortfolioError({ kind: "conflict", message: `The portfolio already has a snapshot for ${holdingsDate}` });
 
+const symbolsOf = (snapshot: NewSnapshot) => snapshot.holdings.map((holding) => holding.symbol);
+
 const query = <A>(operation: () => Promise<A>) => Effect.tryPromise({ try: operation, catch: databaseError });
 
 /** Groups holding rows, sorted by date, into snapshots. */
@@ -78,8 +80,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
       }),
     );
 
-  /** Fails unless every symbol is tracked in prices_eod. */
-  const requireTracked = (snapshot: NewSnapshot) =>
+  const requireTracked = (symbols: readonly string[]) =>
     query(() =>
       db
         .prepare(
@@ -88,7 +89,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
              SELECT 1 FROM tracked_symbols t WHERE t.dataset = 'prices_eod' AND t.symbol = j.value
            )`,
         )
-        .bind(JSON.stringify(snapshot.holdings.map((holding) => holding.symbol)))
+        .bind(JSON.stringify(symbols))
         .all<{ symbol: string }>(),
     ).pipe(
       Effect.flatMap(({ results }) =>
@@ -161,7 +162,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
 
       create: (input, id, now) =>
         Effect.gen(function* () {
-          if (input.snapshot !== undefined) yield* requireTracked(input.snapshot);
+          if (input.snapshot !== undefined) yield* requireTracked(symbolsOf(input.snapshot));
           yield* write([
             db
               .prepare(`INSERT INTO portfolios (portfolio_id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`)
@@ -199,7 +200,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           );
           if (existing === null) return yield* Effect.fail(notFound());
           if (existing.taken === 1) return yield* Effect.fail(dateTaken(snapshot.holdingsDate));
-          yield* requireTracked(snapshot);
+          yield* requireTracked(symbolsOf(snapshot));
           yield* write(
             [
               ...insertSnapshot(id, snapshot, now),
@@ -234,6 +235,8 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           ),
           Effect.asVoid,
         ),
+
+      requireTracked,
 
       forEngine: (id, asOf) =>
         load(id, asOf).pipe(

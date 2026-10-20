@@ -1,7 +1,7 @@
 # Checks the Worker and the Python containers on every push. main deploys
 # production; develop, feat/* and fix/* deploy the dev environment. Each deploy
-# applies D1 migrations, then builds the processor image and deploys it with
-# the Worker.
+# applies D1 migrations, then builds the container images (processor and
+# engine) and deploys them with the Worker.
 name: Deploy
 
 on:

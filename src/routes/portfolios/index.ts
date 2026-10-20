@@ -16,10 +16,11 @@ import {
 const IdParamSchema = Schema.Struct({ id: PortfolioIdSchema });
 const SnapshotParamSchema = Schema.Struct({ id: PortfolioIdSchema, holdingsDate: MarketDateSchema });
 
-const statusOf = {
+export const portfolioStatusOf = {
   not_found: 404,
   conflict: 409,
   untracked_symbols: 400,
+  no_holdings: 422,
   database: 500,
 } as const satisfies Record<PortfolioError["kind"], number>;
 
@@ -39,7 +40,7 @@ export const createPortfolioRoutes = (
     const result = await program.pipe(Effect.provide(portfoliosFor(env)), Effect.result, Effect.runPromise);
     if (Result.isFailure(result)) {
       const { kind, message, symbols } = result.failure;
-      const status = statusOf[kind];
+      const status = portfolioStatusOf[kind];
       throw new HTTPException(status, {
         res: Response.json({ error: message, ...(symbols === undefined ? {} : { symbols }) }, { status }),
       });

@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
+import type { Engine } from "$/calculations/engine";
 import { effectValidator } from "$/effect-validator";
 import type { ScheduleStore, ScheduleWorkflow } from "$/market-data/schedule";
 import { canonicalKey, DatasetSchema, datasetProviders, MarketSymbolSchema } from "$/market-data/schemas";
@@ -18,6 +19,7 @@ import {
 } from "$/market-data/status";
 import type { SymbolRegistry } from "$/market-data/symbol-registry";
 import type { Portfolios } from "$/portfolios";
+import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
@@ -71,7 +73,7 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * The dashboard: a Svelte app served from static assets, and an API under
  * `/api`. Every request needs a Cloudflare Access user on the allowlist.
  * Besides reading pipeline status, it can edit the registry and the schedule
- * and start downloads, and manage portfolios, through the same routes as the
+ * and start downloads, manage portfolios and run ad hoc calculations, through the same routes as the
  * management API.
  */
 export const createDashboardRoutes = (
@@ -81,6 +83,7 @@ export const createDashboardRoutes = (
     readonly storeFor: (env: CloudflareBindings) => Layer.Layer<ScheduleStore>;
     readonly workflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
     readonly portfoliosFor: (env: CloudflareBindings) => Layer.Layer<Portfolios>;
+    readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
   },
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
@@ -178,6 +181,8 @@ export const createDashboardRoutes = (
   api.route("/ingestions", createIngestionRoutes(services.registryFor, accessChecked));
   api.route("/schedule", createScheduleRoutes(services, accessChecked));
   api.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, accessChecked));
+  api.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, accessChecked));
+  api.route("/calculate", createCalculateRoutes(services, accessChecked));
 
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 

@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 import { Hono } from "hono";
 
 import { requireManagementToken } from "$/auth";
+import { EngineLive } from "$/calculations/engine";
 import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
@@ -13,12 +14,14 @@ import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
+import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 
+export { CalculationEngine } from "./engine-container";
 export { MarketDataProcessor } from "./processor-container";
 export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
 
@@ -29,6 +32,8 @@ const services = {
   storeFor: (env: CloudflareBindings) => D1ScheduleStoreLive(env.MARKET_DATA_DB),
   workflowFor: (env: CloudflareBindings) => env.SCHEDULED_DOWNLOADS,
   portfoliosFor: (env: CloudflareBindings) => D1PortfoliosLive(env.MARKET_DATA_DB),
+  // One engine instance for now, like the processor.
+  engineFor: (env: CloudflareBindings) => EngineLive(env.CALCULATION_ENGINE.getByName("engine")),
 };
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -37,6 +42,8 @@ app.route("/symbols", createSymbolRoutes(services.registryFor, requireManagement
 app.route("/ingestions", createIngestionRoutes(services.registryFor, requireManagementToken));
 app.route("/schedule", createScheduleRoutes(services, requireManagementToken));
 app.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, requireManagementToken));
+app.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, requireManagementToken));
+app.route("/calculate", createCalculateRoutes(services, requireManagementToken));
 app.route("/dashboard", createDashboardRoutes(services));
 
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
