@@ -12,6 +12,7 @@ import type { RunPage, SymbolStatusView } from "$/market-data/status";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createDashboardRoutes } from "$/routes/dashboard";
 import { makeTestDatabase } from "./support/d1";
+import { exAnteVol, makeFakeEngine } from "./support/engine";
 
 const TEAM = "https://team.cloudflareaccess.com";
 const AUD = "dashboard-aud";
@@ -40,12 +41,14 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
   const { sqlite, db } = makeTestDatabase();
   const workflowRuns: ScheduledDownloadParams[] = [];
   const queued: IngestionMessage[] = [];
+  const engine = makeFakeEngine();
   const app = createDashboardRoutes(
     {
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
       storeFor: () => D1ScheduleStoreLive(db),
       portfoliosFor: () => D1PortfoliosLive(db),
+      engineFor: () => engine.layer,
       workflowFor: () => ({
         create: async (options) => {
           workflowRuns.push(options!.params as ScheduledDownloadParams);
@@ -389,4 +392,22 @@ test("dashboard changes need Access and must come from the dashboard's own pages
     assert.equal((await send("POST", "/api/schedule/runs", { token, headers })).status, status, name);
   }
   assert.equal((await send("GET", "/api/schedule", { token, headers: {} })).status, 200, "reads need no Origin");
+});
+
+test("the dashboard lists calculation types and runs ad hoc calculations", async () => {
+  const { sqlite, request, send } = setup();
+  const token = await signToken();
+  insertSymbol(sqlite, "AAPL.US");
+
+  const types = await request("/api/calculation-types", token);
+  assert.equal(types.status, 200);
+  assert.deepEqual(await types.json(), { types: [exAnteVol] });
+
+  const body = { type: "ex_ante_vol", asOf: "2026-10-16", portfolio: { holdings: [{ symbol: "AAPL.US", weight: 1 }] } };
+  assert.equal((await send("POST", "/api/calculate", { body })).status, 401);
+  assert.equal((await send("POST", "/api/calculate", { body, token, headers: {} })).status, 403);
+  const result = await send("POST", "/api/calculate", { body, token });
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("Cache-Control"), "no-store");
+  assert.deepEqual(await result.json(), { rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }] });
 });

@@ -28,7 +28,7 @@
 		"run_worker_first": true,
 	},
 	"build": { "command": "pnpm --filter dashboard build" },
-	// Bucket names for the processor container (bindings don't expose them),
+	// Bucket names for the containers (bindings don't expose them),
 	// and the ingestion queue name so the consumer can tell its queues apart.
 	"vars": {
 		"RAW_BUCKET_NAME": "raw-market-data",
@@ -41,9 +41,18 @@
 		"image_build_context": "./containers/processor",
 		"max_instances": 1,
 		"instance_type": "basic",
+	}, {
+		"class_name": "CalculationEngine",
+		"image": "./containers/engine/Dockerfile",
+		"image_build_context": "./containers/engine",
+		"max_instances": 1,
+		"instance_type": "basic",
 	}],
 	"durable_objects": {
-		"bindings": [{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" }],
+		"bindings": [
+			{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" },
+			{ "name": "CALCULATION_ENGINE", "class_name": "CalculationEngine" },
+		],
 	},
 	// One instance per run of the daily schedule; queues the downloads.
 	"workflows": [{
@@ -51,7 +60,10 @@
 		"binding": "SCHEDULED_DOWNLOADS",
 		"class_name": "ScheduledDownloadWorkflow",
 	}],
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["MarketDataProcessor"] }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["MarketDataProcessor"] },
+		{ "tag": "v2", "new_sqlite_classes": ["CalculationEngine"] },
+	],
 	"queues": {
 		"producers": [
 			{ "binding": "INGESTION_QUEUE", "queue": "market-data-ingestion" },
@@ -118,9 +130,18 @@
 				"image_build_context": "./containers/processor",
 				"max_instances": 1,
 				"instance_type": "basic",
+			}, {
+				"class_name": "CalculationEngine",
+				"image": "./containers/engine/Dockerfile",
+				"image_build_context": "./containers/engine",
+				"max_instances": 1,
+				"instance_type": "basic",
 			}],
 			"durable_objects": {
-				"bindings": [{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" }],
+				"bindings": [
+					{ "name": "MARKET_DATA_PROCESSOR", "class_name": "MarketDataProcessor" },
+					{ "name": "CALCULATION_ENGINE", "class_name": "CalculationEngine" },
+				],
 			},
 			"workflows": [{
 				"name": "data-service-scheduled-downloads-dev",

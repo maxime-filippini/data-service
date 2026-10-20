@@ -10,8 +10,8 @@ before starting any of them.
 | # | Task | Depends on | Status |
 | --- | --- | --- | --- |
 | 1 | Engine container | | Done ([PR #17](https://github.com/maxime-filippini/data-service/pull/17)) |
-| 2 | Portfolios and snapshots in D1 | | In review (`feat/calc-portfolios`) |
-| 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | To do |
+| 2 | Portfolios and snapshots in D1 | | Done ([PR #18](https://github.com/maxime-filippini/data-service/pull/18)) |
+| 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | In review (`feat/calc-engine-worker`) |
 | 4 | Calculations and runs | 2, 3 | To do |
 | 5 | Cron scheduling | 4 | To do |
 | 6 | Dashboard pages | 2, 4 (results view needs only 4) | To do |

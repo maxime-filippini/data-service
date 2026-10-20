@@ -15,16 +15,19 @@ export const HoldingSchema = Schema.Struct({
 });
 export type Holding = typeof HoldingSchema.Type;
 
+/** One snapshot's holdings: at least one, each symbol once. */
+export const HoldingsSchema = Schema.Array(HoldingSchema).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS),
+  Schema.makeFilter((holdings) =>
+    new Set(holdings.map((holding) => holding.symbol)).size === holdings.length ||
+    "Each symbol can appear only once",
+  ),
+);
+
 export const NewSnapshotSchema = Schema.Struct({
   holdingsDate: MarketDateSchema,
-  holdings: Schema.Array(HoldingSchema).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS),
-    Schema.makeFilter((holdings) =>
-      new Set(holdings.map((holding) => holding.symbol)).size === holdings.length ||
-      "Each symbol can appear only once",
-    ),
-  ),
+  holdings: HoldingsSchema,
 });
 export type NewSnapshot = typeof NewSnapshotSchema.Type;
 
@@ -68,7 +71,8 @@ export interface EnginePortfolio {
 }
 
 export class PortfolioError extends Schema.TaggedError<PortfolioError>()("PortfolioError", {
-  kind: Schema.Literals(["database", "not_found", "conflict", "untracked_symbols"]),
+  /** `no_holdings`: no snapshot on or before the as-of date of a calculation. */
+  kind: Schema.Literals(["database", "not_found", "conflict", "untracked_symbols", "no_holdings"]),
   message: Schema.String,
   /** The untracked symbols, for `untracked_symbols`. */
   symbols: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -91,6 +95,8 @@ export class Portfolios extends Context.Service<
     readonly remove: (id: string) => Effect.Effect<void, PortfolioError>;
     readonly addSnapshot: (id: string, snapshot: NewSnapshot, now: string) => Effect.Effect<Snapshot, PortfolioError>;
     readonly removeSnapshot: (id: string, holdingsDate: string, now: string) => Effect.Effect<void, PortfolioError>;
+    /** Fails with `untracked_symbols` unless every symbol is a tracked `prices_eod` symbol. */
+    readonly requireTracked: (symbols: readonly string[]) => Effect.Effect<void, PortfolioError>;
     /** A portfolio with the snapshots dated on or before `asOf`, for the engine. */
     readonly forEngine: (id: string, asOf: string) => Effect.Effect<EnginePortfolio, PortfolioError>;
   }
