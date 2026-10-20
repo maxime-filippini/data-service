@@ -168,15 +168,15 @@ class CalculationType:
         result = pl.concat(dfs) if dfs else pl.DataFrame(schema=schema)
         return result, outcomes
 
-    def _finish(self, frame: Any, as_of: date, portfolio_id: str | None):
-        if not isinstance(frame, pl.DataFrame):
-            raise TypeError(f"run returned {type(frame).__name__}, not a DataFrame")
-        if set(frame.columns) != set(self.output):
+    def _finish(self, df: Any, as_of: date, portfolio_id: str | None):
+        if not isinstance(df, pl.DataFrame):
+            raise TypeError(f"run returned {type(df).__name__}, not a DataFrame")
+        if set(df.columns) != set(self.output):
             raise ValueError(
-                f"run returned columns {sorted(frame.columns)}, "
+                f"run returned columns {sorted(df.columns)}, "
                 f"expected {sorted(self.output)}"
             )
-        return frame.select(
+        return df.select(
             pl.lit(as_of, pl.Date).alias("as_of"),
             pl.lit(portfolio_id, pl.String).alias("portfolio_id"),
             *(

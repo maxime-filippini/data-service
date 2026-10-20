@@ -117,7 +117,7 @@ class Portfolio(Contract):
             )
         )
 
-    def holdings_frame(self, start: date, end: date) -> pl.DataFrame:
+    def holdings_df(self, start: date, end: date) -> pl.DataFrame:
         """`snapshots_between` as rows of `holdings_date`, `symbol`, `weight`."""
         return pl.DataFrame(
             [

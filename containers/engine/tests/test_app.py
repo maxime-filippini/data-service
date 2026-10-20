@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from data_service_engine.app import ARROW_STREAM, app
 
-from .conftest import prices_frame, prices_key
+from .conftest import prices_df, prices_key
 
 AS_OF = "2026-10-16"
 OUTPUT_KEY = "calculation=calc-1/data.parquet"
@@ -40,7 +40,7 @@ def run_request(**overrides):
 
 @pytest.fixture
 def client(engine_r2):
-    engine_r2.put_frame(prices_key("A.US"), prices_frame([100, 101, 99, 102, 103]))
+    engine_r2.put_df(prices_key("A.US"), prices_df([100, 101, 99, 102, 103]))
     with TestClient(app) as client:
         yield client
 
@@ -93,8 +93,8 @@ def test_run_writes_results_and_reports_each_portfolio(client, engine_r2):
             "error": "No prices_eod data for MISSING.US",
         },
     ]
-    frame = engine_r2.frame(OUTPUT_KEY)
-    assert frame.select("as_of", "portfolio_id").rows() == [(date(2026, 10, 16), "p1")]
+    df = engine_r2.read_df(OUTPUT_KEY)
+    assert df.select("as_of", "portfolio_id").rows() == [(date(2026, 10, 16), "p1")]
 
 
 @pytest.mark.parametrize(
@@ -164,8 +164,8 @@ def test_calculate_returns_rows_as_json_or_arrow(client, engine_r2):
         "/calculate", json=calculate_request(), headers={"accept": ARROW_STREAM}
     )
     assert arrow.headers["content-type"] == ARROW_STREAM
-    frame = pl.read_ipc_stream(io.BytesIO(arrow.content))
-    assert frame["volatility"].to_list() == [row["volatility"]]
+    df = pl.read_ipc_stream(io.BytesIO(arrow.content))
+    assert df["volatility"].to_list() == [row["volatility"]]
     assert engine_r2.writes == []
 
 

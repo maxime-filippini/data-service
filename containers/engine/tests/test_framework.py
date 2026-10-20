@@ -15,7 +15,7 @@ from data_service_engine.framework import (
 )
 from data_service_engine.models import Portfolio
 
-from .conftest import prices_frame
+from .conftest import prices_df
 
 AS_OF = date(2026, 10, 16)
 
@@ -129,20 +129,20 @@ def test_type_definitions_are_checked():
 
 
 def test_context_load_never_returns_rows_after_as_of():
-    frames = {
-        "A": prices_frame([1, 2, 3, 4], end=date(2026, 10, 16)),
-        "B": prices_frame([5, 6], end=date(2026, 10, 16)),
+    dfs = {
+        "A": prices_df([1, 2, 3, 4], end=date(2026, 10, 16)),
+        "B": prices_df([5, 6], end=date(2026, 10, 16)),
     }
     loaded = []
 
     def load(dataset, symbol):
         loaded.append((dataset, symbol))
-        return frames[symbol]
+        return dfs[symbol]
 
     ctx = Context(date(2026, 10, 15), None, load)
-    frame = ctx.load("prices_eod", ["B", "A", "B"], start=date(2026, 10, 13))
-    assert frame.columns[0] == "symbol"
-    assert frame.select("symbol", "date", "close").rows() == [
+    df = ctx.load("prices_eod", ["B", "A", "B"], start=date(2026, 10, 13))
+    assert df.columns[0] == "symbol"
+    assert df.select("symbol", "date", "close").rows() == [
         ("A", date(2026, 10, 13), 1.0),
         ("A", date(2026, 10, 14), 2.0),
         ("A", date(2026, 10, 15), 3.0),

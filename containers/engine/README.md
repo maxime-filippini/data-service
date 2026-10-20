@@ -16,10 +16,12 @@ class Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
     window: int = Field(252, ge=2)
 
+
 def run(params: Params, ctx: Context) -> pl.DataFrame:
     snapshot = ctx.portfolio.holdings_at(ctx.as_of)
     prices = ctx.load("prices_eod", snapshot.symbols, start=...)
     return pl.DataFrame({"value": [...]})
+
 
 TYPE = CalculationType(
     name="my_type",
@@ -44,7 +46,7 @@ TYPE = CalculationType(
   - `holdings_at(day)`: the snapshot in effect at the close of `day`.
   - `snapshots_between(start, end)`: every snapshot in effect at some close
     in the period, starting with the one in effect at `start`.
-  - `holdings_frame(start, end)`: the same as `holdings_date`, `symbol`,
+  - `holdings_df(start, end)`: the same as `holdings_date`, `symbol`,
     `weight` rows, for joining with prices.
   - `symbols`: every symbol held in any snapshot.
 

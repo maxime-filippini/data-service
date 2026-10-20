@@ -54,8 +54,8 @@ def test_snapshots_between_include_the_one_in_effect_at_the_start(portfolio):
     assert dates(date(2026, 1, 1), date(2026, 2, 1)) == [JAN]
     assert dates(date(2025, 1, 1), date(2025, 12, 31)) == []
 
-    frame = portfolio.holdings_frame(date(2026, 2, 10), date(2026, 3, 10))
-    assert frame.rows() == [
+    df = portfolio.holdings_df(date(2026, 2, 10), date(2026, 3, 10))
+    assert df.rows() == [
         (JAN, "A", 0.5),
         (JAN, "B", 0.5),
         (FEB, "B", 1.0),

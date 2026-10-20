@@ -59,7 +59,7 @@ The framework passes a `ctx`:
 - `ctx.portfolio` is the portfolio being calculated, with every holdings
   snapshot up to `ctx.as_of`. The type picks the holdings it needs:
   `holdings_at(date)` for the snapshot in effect on one date (ex-ante
-  volatility), or `snapshots_between(start, end)` and `holdings_frame(start,
+  volatility), or `snapshots_between(start, end)` and `holdings_df(start,
   end)` for every snapshot over a period (realised P&L).
 
 Types never call R2 or providers directly. In v1 they can only read datasets,

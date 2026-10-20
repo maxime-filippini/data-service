@@ -30,12 +30,12 @@ class FakeR2:
         self.objects[bucket, key] = (body, etag)
         return etag
 
-    def put_frame(self, key: str, frame: pl.DataFrame) -> str:
+    def put_df(self, key: str, df: pl.DataFrame) -> str:
         output = io.BytesIO()
-        frame.write_parquet(output)
+        df.write_parquet(output)
         return self.put(key, output.getvalue())
 
-    def frame(self, key: str) -> pl.DataFrame:
+    def read_df(self, key: str) -> pl.DataFrame:
         return pl.read_parquet(io.BytesIO(self.objects[BUCKET, key][0]))
 
     def get_object(self, Bucket, Key):
@@ -66,8 +66,8 @@ def weekdays(end: date, count: int) -> list[date]:
     return days[::-1]
 
 
-def prices_frame(closes: list[float], end: date = date(2026, 10, 16)) -> pl.DataFrame:
-    """A prices_eod frame with one weekday row per close, ending on `end`."""
+def prices_df(closes: list[float], end: date = date(2026, 10, 16)) -> pl.DataFrame:
+    """A prices_eod dataframe with one weekday row per close, ending on `end`."""
     return pl.DataFrame(
         {
             "date": weekdays(end, len(closes)),

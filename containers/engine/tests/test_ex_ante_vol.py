@@ -8,7 +8,7 @@ from data_service_engine.framework import get_type
 from data_service_engine.models import Portfolio
 from data_service_engine.storage import SymbolReader
 
-from .conftest import BUCKET, prices_frame, prices_key
+from .conftest import BUCKET, prices_df, prices_key
 
 AS_OF = date(2026, 10, 16)
 VOL = get_type("ex_ante_vol")
@@ -28,7 +28,7 @@ def closes(returns, start=100.0):
 @pytest.fixture
 def reader(r2):
     for symbol, returns in RETURNS.items():
-        r2.put_frame(prices_key(symbol), prices_frame(closes(returns), end=AS_OF))
+        r2.put_df(prices_key(symbol), prices_df(closes(returns), end=AS_OF))
     return SymbolReader(r2, BUCKET)
 
 

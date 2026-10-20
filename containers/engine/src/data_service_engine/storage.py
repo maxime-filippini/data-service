@@ -26,10 +26,10 @@ def _read_parquet(s3, bucket: str, key: str) -> tuple[pl.DataFrame, str] | None:
         raise
     body = result["Body"]
     try:
-        frame = pl.read_parquet(io.BytesIO(body.read()))
+        df = pl.read_parquet(io.BytesIO(body.read()))
     finally:
         body.close()
-    return frame, result["ETag"].strip('"')
+    return df, result["ETag"].strip('"')
 
 
 class SymbolReader:
