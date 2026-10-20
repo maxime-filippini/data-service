@@ -8,7 +8,7 @@ stored next to the market data.
 The goal is that **adding a calculation type is one Python file**. The
 Worker, D1 and the dashboard don't know about individual types.
 
-Glossary: [CONTEXT.md](../CONTEXT.md).
+Glossary: [CONTEXT.md](../CONTEXT.md). Remaining work: [calculation-engine-tasks.md](calculation-engine-tasks.md).
 
 ```txt
 hourly cron ──────────────┐
