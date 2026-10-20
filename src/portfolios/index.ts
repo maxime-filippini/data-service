@@ -76,6 +76,8 @@ export class PortfolioError extends Schema.TaggedError<PortfolioError>()("Portfo
   message: Schema.String,
   /** The untracked symbols, for `untracked_symbols`. */
   symbols: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** The calculations using a portfolio that can't be deleted, for `conflict`. */
+  calculations: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String }))),
 }) {}
 
 /**
@@ -91,7 +93,7 @@ export class Portfolios extends Context.Service<
     readonly get: (id: string) => Effect.Effect<Portfolio, PortfolioError>;
     readonly create: (input: CreatePortfolio, id: string, now: string) => Effect.Effect<Portfolio, PortfolioError>;
     readonly rename: (id: string, name: string, now: string) => Effect.Effect<Portfolio, PortfolioError>;
-    /** Delete a portfolio and its snapshots. */
+    /** Delete a portfolio and its snapshots. A conflict if a calculation uses it. */
     readonly remove: (id: string) => Effect.Effect<void, PortfolioError>;
     readonly addSnapshot: (id: string, snapshot: NewSnapshot, now: string) => Effect.Effect<Snapshot, PortfolioError>;
     readonly removeSnapshot: (id: string, holdingsDate: string, now: string) => Effect.Effect<void, PortfolioError>;

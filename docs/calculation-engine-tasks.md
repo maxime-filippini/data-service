@@ -11,8 +11,8 @@ before starting any of them.
 | --- | --- | --- | --- |
 | 1 | Engine container | | Done ([PR #17](https://github.com/maxime-filippini/data-service/pull/17)) |
 | 2 | Portfolios and snapshots in D1 | | Done ([PR #18](https://github.com/maxime-filippini/data-service/pull/18)) |
-| 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | In review (`feat/calc-engine-worker`) |
-| 4 | Calculations and runs | 2, 3 | To do |
+| 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | Done ([PR #19](https://github.com/maxime-filippini/data-service/pull/19)) |
+| 4 | Calculations and runs | 2, 3 | In review (`feat/calc-runs`) |
 | 5 | Cron scheduling | 4 | To do |
 | 6 | Dashboard pages | 2, 4 (results view needs only 4) | To do |
 | 7 | Docs pass | all | To do |
@@ -32,7 +32,7 @@ lands.
   bodies with Effect Schema ([effect-schema-validation.md](effect-schema-validation.md)).
 - Tests go in `test/*.test.ts` (`pnpm test`); also run `pnpm typecheck`.
   Engine changes run `pnpm engine:test` and `pnpm engine:lint`.
-- Migrations are numbered SQL files in `migrations/` (next is `0006`), with a
+- Migrations are numbered SQL files in `migrations/` (next is `0007`), with a
   comment above each table.
 - Python: name dataframes `df` / `dfs`, never `frame`.
 - The dev VM has no AVX, so the containers can't run locally. Test end to end
@@ -126,13 +126,14 @@ run at a time".
 
 Spec: "Scheduling".
 
-- A 5-field UTC cron parser and "most recent slot at or before now"
-  function. The minute field is ignored because the tick is hourly. Prefer a
-  small dependency if a good one exists for Workers; otherwise write it with
-  tests.
+- A "most recent slot at or before now" function. Task 4 added the 5-field
+  parser (`src/calculations/cron.ts`, used to validate calculations), which
+  returns the allowed values of each field; build on it. The minute field is
+  ignored because the tick is hourly.
 - On each hourly tick in `scheduled` (`src/index.ts`), for each enabled
   calculation: if its most recent slot is after the last slot it ran for,
-  start a run as of the previous UTC day and record the slot. A missed slot
+  start a run as of the previous UTC day (`startRun` in
+  `src/calculations/runs.ts`, trigger `schedule`) and record the slot. A missed slot
   runs once on the next tick, not once per missed slot. Store the last slot
   on `calculations` (task 4's migration or a new one).
 - Keep the download trigger working if calculation scheduling fails, and the
