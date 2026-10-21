@@ -1,8 +1,10 @@
 <script lang="ts">
   import { fetchMe } from "./lib/api";
   import { href, route } from "./lib/router.svelte";
-  import Runs from "./views/Runs.svelte";
+  import Calculations from "./views/Calculations.svelte";
   import Explore from "./views/Explore.svelte";
+  import Portfolios from "./views/Portfolios.svelte";
+  import Runs from "./views/Runs.svelte";
   import Symbols from "./views/Symbols.svelte";
 
   const me = fetchMe().catch(() => undefined);
@@ -13,6 +15,8 @@
   <nav>
     <a href={href("runs")} class:active={route.view === "runs"}>Ingestion runs</a>
     <a href={href("symbols")} class:active={route.view === "symbols"}>Symbols</a>
+    <a href={href("portfolios")} class:active={route.view === "portfolios"}>Portfolios</a>
+    <a href={href("calculations")} class:active={route.view === "calculations"}>Calculations</a>
     <a href={href("explore")} class:active={route.view === "explore"}>Explore data</a>
   </nav>
   <span class="user muted">
@@ -23,6 +27,10 @@
 <main>
   {#if route.view === "symbols"}
     <Symbols />
+  {:else if route.view === "portfolios"}
+    <Portfolios />
+  {:else if route.view === "calculations"}
+    <Calculations />
   {:else if route.view === "explore"}
     <Explore />
   {:else}

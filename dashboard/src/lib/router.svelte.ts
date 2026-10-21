@@ -1,8 +1,8 @@
 // Hash routes, such as #/runs?symbol=AAPL.US, so the Worker only serves one page.
 
-export type View = "runs" | "symbols" | "explore";
+export type View = "runs" | "symbols" | "portfolios" | "calculations" | "explore";
 
-const VIEWS: readonly View[] = ["runs", "symbols", "explore"];
+const VIEWS: readonly View[] = ["runs", "symbols", "portfolios", "calculations", "explore"];
 
 const parse = () => {
   const [path = "", search = ""] = window.location.hash.replace(/^#\/?/u, "").split("?");

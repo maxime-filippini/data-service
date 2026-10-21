@@ -353,6 +353,30 @@ test("the dataset explorer streams a symbol's Parquet file and revalidates it by
   assert.equal(bucket.gets.length, 4);
 });
 
+test("the explorer streams a calculation's results file", async () => {
+  const id = "7b0f9a52-4c1e-4f7a-9d55-0d6a1c3e2b10";
+  const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
+  const bucket = fakeBucket({ [`calculation=${id}/data.parquet`]: { bytes, etag: "def456" } });
+  const { request } = setup({ PROCESSED_MARKET_DATA_BUCKET: bucket });
+  const token = await signToken();
+
+  const file = await request(`/api/calculations/${id}/results`, token);
+  assert.equal(file.status, 200);
+  assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
+  assert.equal(file.headers.get("Content-Type"), "application/vnd.apache.parquet");
+  assert.equal(file.headers.get("ETag"), '"def456"');
+
+  const cached = await request(`/api/calculations/${id}/results`, token, undefined, { "If-None-Match": '"def456"' });
+  assert.equal(cached.status, 304);
+
+  const missing = await request("/api/calculations/0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b/results", token);
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { error: "This calculation has no results yet" });
+
+  assert.equal((await request("/api/calculations/not-a-uuid/results", token)).status, 400);
+  assert.equal((await request(`/api/calculations/${id}/results`)).status, 401);
+});
+
 test("the dashboard edits the registry, starts downloads and runs the schedule", async () => {
   const { send, workflowRuns, queued } = setup();
   const token = await signToken();
