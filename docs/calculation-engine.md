@@ -1,4 +1,4 @@
-# Calculation engine (spec, being built)
+# Calculation engine
 
 The service only serves provider data today. The calculation engine adds
 calculations on top of that data, for example ex-ante volatility for a
@@ -8,7 +8,9 @@ stored next to the market data.
 The goal is that **adding a calculation type is one Python file**. The
 Worker, D1 and the dashboard don't know about individual types.
 
-Glossary: [CONTEXT.md](../CONTEXT.md). Remaining work: [calculation-engine-tasks.md](calculation-engine-tasks.md).
+Glossary: [CONTEXT.md](../CONTEXT.md). How it was built, task by task:
+[calculation-engine-tasks.md](calculation-engine-tasks.md). How it fits the
+rest of the service: [ARCHITECTURE.md](ARCHITECTURE.md#calculations).
 
 ```txt
 hourly cron ──────────────┐
@@ -162,7 +164,37 @@ Both use the management token, or Cloudflare Access through the dashboard.
 - **Calculations.** List, create, edit (a JSON editor for params, checked by
   the engine), cron, enable or pause, run now with an optional as-of date.
 - **Runs.** Status, the params used, and errors for each portfolio.
-- **Results.** Opened in the existing dataset explorer.
+- **Results.** Opened in the existing dataset explorer, from
+  `/dashboard/api/calculations/:id/results`.
+
+## Decisions made while building
+
+- **Runs use a Workflow, not a queue.** Each run is a `CalculationRunWorkflow`
+  instance whose ID is the run ID. A Workflow step has no wall-clock limit
+  (a queue consumer has 15 minutes), and the Worker can look an instance up by
+  run ID to tell whether a run is still alive. The engine step retries twice
+  and times out after 30 minutes; retrying is safe because a run replaces its
+  as-of date's rows.
+- **Stuck runs.** A run `running` for over 5 minutes whose Workflow has
+  stopped or never started is marked failed, on every hourly tick and before
+  each new run of the calculation, so a crash can't block later runs.
+- **Portfolios with no holdings** for the as-of date fail in the Worker and
+  aren't sent to the engine, which would reject the whole request. Their
+  outcome is merged into the engine's result.
+- **One engine instance**, like the processor. The engine still writes
+  conditionally, but the Worker runs one run per calculation at a time.
+- **Scheduling.** Each calculation stores the last cron slot it ran for
+  (`last_scheduled_slot`). The tick claims a slot with a conditional update
+  before starting the run, so a slot runs at most once even if the tick fires
+  twice. If the run can't start, it's recorded as failed and the slot isn't
+  retried. A new calculation doesn't run for slots before its creation.
+- **Deleting held symbols.** The registry has no delete route yet. A foreign
+  key from holdings to `tracked_symbols` blocks the delete; the route, when
+  added, maps it to `409` with the portfolios holding the symbol.
+- **Snapshots** are addressed by holdings date, not a separate ID.
+- **Dashboard results** are read through the dashboard API
+  (`/dashboard/api/calculations/:id/results`), with the same ETag caching as
+  datasets. They stay readable after the calculation is deleted.
 
 ## Left out of v1
 

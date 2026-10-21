@@ -1,6 +1,6 @@
-# Calculation engine: remaining work
+# Calculation engine: tasks
 
-The work left to build [the calculation engine spec](calculation-engine.md).
+The work that built [the calculation engine spec](calculation-engine.md).
 Each task below is sized for one session and one PR. Read the spec,
 [CONTEXT.md](../CONTEXT.md) and [the engine README](../containers/engine/README.md)
 before starting any of them.
@@ -13,9 +13,9 @@ before starting any of them.
 | 2 | Portfolios and snapshots in D1 | | Done ([PR #18](https://github.com/maxime-filippini/data-service/pull/18)) |
 | 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | Done ([PR #19](https://github.com/maxime-filippini/data-service/pull/19)) |
 | 4 | Calculations and runs | 2, 3 | Done ([PR #20](https://github.com/maxime-filippini/data-service/pull/20)) |
-| 5 | Cron scheduling | 4 | In review (`feat/calc-cron`) |
-| 6 | Dashboard pages | 2, 4 (results view needs only 4) | To do |
-| 7 | Docs pass | all | To do |
+| 5 | Cron scheduling | 4 | Done ([PR #21](https://github.com/maxime-filippini/data-service/pull/21)) |
+| 6 | Dashboard pages | 2, 4 (results view needs only 4) | In review (`feat/calc-dashboard`) |
+| 7 | Docs pass | all | In review (`feat/calc-dashboard`) |
 
 Tasks 2 and 3 can run in parallel. Update this table when a task starts or
 lands.
