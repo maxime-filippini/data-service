@@ -213,4 +213,18 @@
     gap: 0.5rem;
     margin-top: 0.75rem;
   }
+
+  /* Phones: one field per row, and full-width buttons. */
+  @media (max-width: 720px) {
+    .fields {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .symbols {
+      flex: none;
+    }
+    .actions button {
+      flex: 1;
+    }
+  }
 </style>

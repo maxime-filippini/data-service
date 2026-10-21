@@ -16,7 +16,7 @@
     <a href={href("explore")} class:active={route.view === "explore"}>Explore data</a>
   </nav>
   <span class="user muted">
-    {#await me then user}{user?.email ?? ""}{/await}
+    {#await me then user}<span title={user?.email}>{user?.email ?? ""}</span>{/await}
   </span>
 </header>
 
@@ -42,6 +42,7 @@
   }
   .title {
     font-weight: 700;
+    white-space: nowrap;
   }
   nav {
     display: flex;
@@ -66,10 +67,49 @@
   .user {
     margin-left: auto;
     font-size: 0.85rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   main {
     padding: 1.5rem;
     max-width: 1400px;
     margin: 0 auto;
+  }
+
+  /* Phones: title and user on top, the tabs on their own full-width row. */
+  @media (max-width: 720px) {
+    header {
+      flex-wrap: wrap;
+      gap: 0 1rem;
+      height: auto;
+      padding: 0 1rem;
+    }
+    .title {
+      padding: 0.6rem 0;
+    }
+    .user {
+      flex: 1 1 0;
+      text-align: right;
+    }
+    nav {
+      order: 1;
+      flex: 1 0 100%;
+      height: 2.75rem;
+      margin: 0 -1rem;
+      padding: 0 0.25rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      border-top: 1px solid var(--border);
+    }
+    nav a {
+      flex: 1 0 auto;
+      justify-content: center;
+      white-space: nowrap;
+    }
+    main {
+      padding: 1rem 0.75rem;
+    }
   }
 </style>
