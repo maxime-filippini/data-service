@@ -86,7 +86,7 @@
 {/if}
 
 <div class="card">
-  <table>
+  <table class="stack">
     <thead>
       <tr>
         <th></th>
@@ -103,7 +103,7 @@
     <tbody>
       {#each runs as run (run.runId)}
         <tr class="run" class:open={expanded === run.runId} onclick={() => toggle(run.runId)}>
-          <td>
+          <td class="toggle">
             <button
               class="expand"
               aria-expanded={expanded === run.runId}
@@ -114,30 +114,36 @@
               }}>{expanded === run.runId ? "▾" : "▸"}</button
             >
           </td>
-          <td><StatusBadge status={run.status} title={run.error ?? undefined} /></td>
-          <td>
+          <td class="status"><StatusBadge status={run.status} title={run.error ?? undefined} /></td>
+          <td class="symbol">
             <a href={href("runs", { symbol: run.symbol, status })} onclick={(event) => event.stopPropagation()}
               >{run.symbol}</a
             >
             <span class="muted dataset">{run.dataset}</span>
           </td>
-          <td title={formatDateTime(run.createdAt)}>{formatAgo(run.createdAt)}</td>
-          <td class="num">{run.completedAt ? formatDuration(run.createdAt, run.completedAt) : "—"}</td>
-          <td class="mono">{formatRange(run.requestedFrom, run.requestedTo)}</td>
-          <td class="num">{run.rowCount === null ? "—" : formatCount(run.rowCount)}</td>
-          <td class="mono">{formatRange(run.observedFrom, run.observedTo)}</td>
-          <td><StatusBadge status={run.job?.status ?? null} title={run.job?.error ?? undefined} /></td>
+          <td data-label="Started" title={formatDateTime(run.createdAt)}>{formatAgo(run.createdAt)}</td>
+          <td data-label="Duration" class="num">
+            {run.completedAt ? formatDuration(run.createdAt, run.completedAt) : "—"}
+          </td>
+          <td class="mono wide-only">{formatRange(run.requestedFrom, run.requestedTo)}</td>
+          <td data-label="Rows" class="num">{run.rowCount === null ? "—" : formatCount(run.rowCount)}</td>
+          <td data-label="Data covers" class="mono full">{formatRange(run.observedFrom, run.observedTo)}</td>
+          <td data-label="Parquet">
+            <StatusBadge status={run.job?.status ?? null} title={run.job?.error ?? undefined} />
+          </td>
         </tr>
         {#if expanded === run.runId}
           <tr class="details">
-            <td></td>
-            <td colspan="8">
+            <td class="wide-only"></td>
+            <td class="full" colspan="8">
               {#if run.error}
                 <p class="message">{run.error}</p>
               {/if}
               <dl>
                 <dt>Run ID</dt>
                 <dd class="mono">{run.runId}</dd>
+                <dt class="narrow-only">Requested</dt>
+                <dd class="narrow-only mono">{formatRange(run.requestedFrom, run.requestedTo)}</dd>
                 <dt>Provider</dt>
                 <dd>{run.provider}</dd>
                 <dt>Started</dt>
@@ -240,9 +246,71 @@
   dd .message {
     margin: 0;
   }
+  dd.mono {
+    overflow-wrap: anywhere;
+  }
   .more {
     display: flex;
     justify-content: center;
     margin-top: 1rem;
+  }
+
+  /* Phones: each run is a card with the symbol and status on top. The toggle
+     spans every row so the fields line up under the symbol. */
+  @media (max-width: 720px) {
+    form input {
+      flex: 1 1 12rem;
+      min-width: 0;
+    }
+    tr.run {
+      grid-template-columns: auto repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row dense;
+      column-gap: 0.75rem;
+    }
+    tr.run.open {
+      border-bottom: none;
+    }
+    .toggle {
+      grid-column: 1;
+      grid-row: 1 / span 4;
+    }
+    .expand {
+      min-height: 0;
+      padding: 0;
+    }
+    .symbol {
+      grid-column: 2;
+      grid-row: 1;
+      font-weight: 600;
+    }
+    .dataset {
+      display: block;
+      margin-left: 0;
+      font-weight: normal;
+    }
+    .status {
+      grid-column: 3;
+      grid-row: 1;
+      justify-self: end;
+    }
+    tr.run td.full {
+      grid-column: 2 / span 2;
+    }
+    tr.details {
+      padding-top: 0;
+    }
+    dl {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    dt {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    dd + dt {
+      margin-top: 0.6rem;
+    }
   }
 </style>

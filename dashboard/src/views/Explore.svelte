@@ -145,10 +145,10 @@
     {/each}
   </select>
   {#if dateColumn !== undefined}
-    <label class="muted">
+    <label class="muted date">
       From <input type="date" bind:value={from} min={span?.first} max={span?.last} />
     </label>
-    <label class="muted">
+    <label class="muted date">
       To <input type="date" bind:value={to} min={span?.first} max={span?.last} />
     </label>
     {#if from || to}
@@ -216,11 +216,19 @@
 
 {#if file && rows.length > 0}
   <div class="pager">
-    <button onclick={() => table.firstPage()} disabled={!table.getCanPreviousPage()}>« First</button>
-    <button onclick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>‹ Previous</button>
-    <span class="muted">Page {pagination.pageIndex + 1} of {table.getPageCount()}</span>
-    <button onclick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next ›</button>
-    <button onclick={() => table.lastPage()} disabled={!table.getCanNextPage()}>Last »</button>
+    <button onclick={() => table.firstPage()} disabled={!table.getCanPreviousPage()} aria-label="First page">
+      «<span class="wide-only"> First</span>
+    </button>
+    <button onclick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Previous page">
+      ‹<span class="wide-only"> Previous</span>
+    </button>
+    <span class="muted page">Page {pagination.pageIndex + 1} of {table.getPageCount()}</span>
+    <button onclick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="Next page">
+      <span class="wide-only">Next </span>›
+    </button>
+    <button onclick={() => table.lastPage()} disabled={!table.getCanNextPage()} aria-label="Last page">
+      <span class="wide-only">Last </span>»
+    </button>
     <select
       aria-label="Rows per page"
       value={pagination.pageSize}
@@ -265,9 +273,53 @@
   }
   .pager {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
     margin-top: 0.75rem;
+  }
+
+  /* Phones: the table keeps its columns and scrolls sideways, with the
+     first column (usually the date) pinned. */
+  @media (max-width: 720px) {
+    .toolbar > select {
+      flex-basis: 100%;
+    }
+    .date {
+      flex: 1 1 9rem;
+      min-width: 0;
+    }
+    .date input {
+      flex: 1;
+      min-width: 0;
+    }
+    th:first-child,
+    td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: var(--surface);
+      box-shadow: inset -1px 0 var(--border);
+    }
+    tbody tr:hover td:first-child {
+      background: var(--row-hover);
+    }
+    th,
+    td {
+      padding: 0.45rem 0.6rem;
+    }
+    .pager {
+      justify-content: center;
+    }
+    .pager button {
+      min-width: 2.75rem;
+    }
+    .page {
+      padding: 0 0.25rem;
+    }
+    .pager select {
+      flex-basis: 100%;
+    }
   }
 </style>

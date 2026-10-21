@@ -144,7 +144,7 @@
   {/if}
 
   {#if showHistory}
-    <table>
+    <table class="stack">
       <thead>
         <tr>
           <th>Started</th>
@@ -158,12 +158,14 @@
       <tbody>
         {#each runs as run (run.runId)}
           <tr>
-            <td title={run.runId}>{formatDateTime(run.createdAt)}</td>
-            <td>{run.trigger === "manual" ? "Manual" : "Schedule"}</td>
-            <td><StatusBadge status={run.status} /></td>
-            <td class="mono">{run.snapshotTo}</td>
-            <td class="num">{run.queuedCount === null ? "—" : formatCount(run.queuedCount)}</td>
-            <td class="bad">{run.error ?? ""}</td>
+            <td data-label="Started" title={run.runId}>{formatDateTime(run.createdAt)}</td>
+            <td data-label="Trigger">{run.trigger === "manual" ? "Manual" : "Schedule"}</td>
+            <td data-label="Status"><StatusBadge status={run.status} /></td>
+            <td data-label="Data through" class="mono">{run.snapshotTo}</td>
+            <td data-label="Queued" class="num">
+              {run.queuedCount === null ? "—" : formatCount(run.queuedCount)}
+            </td>
+            <td class="bad full" class:wide-only={!run.error}>{run.error ?? ""}</td>
           </tr>
         {/each}
       </tbody>
@@ -216,6 +218,7 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    white-space: nowrap;
   }
   .bad {
     color: var(--bad-fg);
@@ -225,7 +228,32 @@
     cursor: pointer;
     color: var(--accent);
   }
+  button.link:hover {
+    background: none;
+    text-decoration: underline;
+  }
   table {
     border-top: 1px solid var(--border);
+  }
+
+  /* Phones: the hour picker gets its own row, with the buttons below. */
+  @media (max-width: 720px) {
+    .controls {
+      flex: 1 1 100%;
+      flex-wrap: wrap;
+    }
+    .controls label {
+      flex: 1 1 100%;
+    }
+    .controls select {
+      flex: 1;
+      min-width: 0;
+    }
+    .controls button {
+      flex: 1;
+    }
+    button.link {
+      padding: 0.4rem 0;
+    }
   }
 </style>

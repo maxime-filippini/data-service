@@ -156,7 +156,7 @@
     value={enabled}
     onchange={(event) => replace("symbols", { enabled: event.currentTarget.value })}
   >
-    <option value="">On and off the schedule</option>
+    <option value="">All symbols</option>
     <option value="true">On the schedule</option>
     <option value="false">Off the schedule</option>
   </select>
@@ -200,7 +200,14 @@
 {/if}
 
 <div class="card">
-  <table>
+  {#if visible.length > 0}
+    <!-- The table header, with its select-all box, is hidden on phones. -->
+    <label class="select-all">
+      <input type="checkbox" checked={allVisibleSelected} onchange={toggleAll} />
+      Select all {visible.length} shown
+    </label>
+  {/if}
+  <table class="stack">
     <thead>
       <tr>
         <th class="pick">
@@ -228,7 +235,7 @@
     <tbody>
       {#each visible as s (keyOf(s))}
         {@const key = keyOf(s)}
-        <tr class:disabled={!s.enabled} class:picked={selected.has(key)}>
+        <tr class="entry" class:disabled={!s.enabled} class:picked={selected.has(key)}>
           <td class="pick">
             <input
               type="checkbox"
@@ -237,12 +244,12 @@
               onchange={() => toggleSelected(key)}
             />
           </td>
-          <td>
+          <td class="symbol">
             <a href={href("runs", { symbol: s.symbol })} title="Show runs">{s.symbol}</a>
           </td>
-          <td>{s.dataset}</td>
-          <td>{s.provider}</td>
-          <td>
+          <td data-label="Dataset">{s.dataset}</td>
+          <td class="wide-only">{s.provider}</td>
+          <td class="schedule">
             <label class="switch" title={s.enabled ? "Take off the daily schedule" : "Put on the daily schedule"}>
               <input
                 type="checkbox"
@@ -255,18 +262,18 @@
               <span>{s.enabled ? "On" : "Off"}</span>
             </label>
           </td>
-          <td class="mono">{s.backfillStartDate}</td>
-          <td>
+          <td class="mono wide-only">{s.backfillStartDate}</td>
+          <td data-label="Latest download">
             {#if s.latestRun}
               <StatusBadge status={s.latestRun.status} title={s.latestRun.error ?? undefined} />
-              <span class="muted" title={formatDateTime(s.latestRun.createdAt)}>
+              <span class="muted ago" title={formatDateTime(s.latestRun.createdAt)}>
                 {formatAgo(s.latestRun.createdAt)}
               </span>
             {:else}
               <span class="muted">Never</span>
             {/if}
           </td>
-          <td>
+          <td data-label="Last successful">
             {#if s.lastCompletedRun}
               <span title={formatDateTime(s.lastCompletedRun.completedAt)}>
                 {formatAgo(s.lastCompletedRun.completedAt)}
@@ -275,19 +282,21 @@
               <span class="muted">—</span>
             {/if}
           </td>
-          <td class="num">{s.lastCompletedRun ? formatCount(s.lastCompletedRun.rowCount) : "—"}</td>
-          <td class="mono">{s.lastCompletedRun?.observedTo ?? "—"}</td>
-          <td>
+          <td data-label="Rows" class="num">
+            {s.lastCompletedRun ? formatCount(s.lastCompletedRun.rowCount) : "—"}
+          </td>
+          <td data-label="Data through" class="mono">{s.lastCompletedRun?.observedTo ?? "—"}</td>
+          <td data-label="Latest rebuild">
             {#if s.latestJob}
               <StatusBadge status={s.latestJob.status} title={s.latestJob.error ?? undefined} />
-              <span class="muted" title={formatDateTime(s.latestJob.completedAt ?? s.latestJob.createdAt)}>
+              <span class="muted ago" title={formatDateTime(s.latestJob.completedAt ?? s.latestJob.createdAt)}>
                 {formatAgo(s.latestJob.completedAt ?? s.latestJob.createdAt)}
               </span>
             {:else}
               <span class="muted">—</span>
             {/if}
           </td>
-          <td>
+          <td class="full">
             <div class="actions">
               <button class="link" onclick={() => edit(s)}>Edit</button>
               <button
@@ -320,6 +329,9 @@
   .summary {
     margin: -0.25rem 0 0.75rem;
   }
+  .select-all {
+    display: none;
+  }
   .bad {
     color: var(--bad-fg);
   }
@@ -332,6 +344,9 @@
   .pick {
     width: 1%;
     padding-right: 0;
+  }
+  .ago {
+    white-space: nowrap;
   }
   .switch {
     display: inline-flex;
@@ -349,10 +364,66 @@
     color: var(--accent);
   }
   button.link:hover {
+    background: none;
     text-decoration: underline;
   }
   button.link:disabled {
     color: var(--muted);
     cursor: default;
+  }
+
+  /* Phones: each symbol is a card with the checkbox, symbol and schedule
+     switch on top, then its latest activity. */
+  @media (max-width: 720px) {
+    .select-all {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    tr.entry {
+      grid-template-columns: auto repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row dense;
+      column-gap: 0.75rem;
+    }
+    tr.entry.picked {
+      background: var(--row-hover);
+    }
+    tr.picked td {
+      background: none;
+    }
+    .pick {
+      grid-column: 1;
+      grid-row: 1 / span 5;
+      width: auto;
+    }
+    .symbol {
+      grid-column: 2;
+      grid-row: 1;
+      font-weight: 600;
+    }
+    .schedule {
+      grid-column: 3;
+      grid-row: 1;
+      justify-self: end;
+    }
+    tr.entry td.full {
+      grid-column: 2 / span 2;
+    }
+    .actions {
+      gap: 0.5rem;
+    }
+    .actions > button.link,
+    .actions > a {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.25rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
   }
 </style>
