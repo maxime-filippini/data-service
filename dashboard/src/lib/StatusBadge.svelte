@@ -1,7 +1,13 @@
 <script lang="ts">
-  import type { JobStatus, RunStatus, ScheduleRunStatus } from "./api";
+  import type { CalculationRunStatus, JobStatus, RunStatus, ScheduleRunStatus } from "./api";
 
-  let { status, title }: { status: RunStatus | JobStatus | ScheduleRunStatus | null; title?: string | undefined } = $props();
+  let {
+    status,
+    title,
+  }: {
+    status: RunStatus | JobStatus | ScheduleRunStatus | CalculationRunStatus | null;
+    title?: string | undefined;
+  } = $props();
 </script>
 
 {#if status === null}
@@ -29,6 +35,10 @@
   .failed {
     background: var(--bad-bg);
     color: var(--bad-fg);
+  }
+  .partial {
+    background: var(--warn-bg);
+    color: var(--warn-fg);
   }
   .fetching,
   .processing,

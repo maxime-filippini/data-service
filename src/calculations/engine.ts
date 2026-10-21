@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
+import type { CalculationParams, CalculationTypeInfo, PortfolioOutcome } from "$/calculations/views";
 import type { EnginePortfolio, Holding } from "$/portfolios";
 
 /** How long an ad hoc calculation may take, including a cold start. */
@@ -10,18 +11,7 @@ const QUICK_TIMEOUT_MS = 30_000;
 
 export const ARROW_STREAM = "application/vnd.apache.arrow.stream";
 
-/** A calculation type, as `GET /types` describes it. */
-export interface CalculationTypeInfo {
-  readonly name: string;
-  readonly description: string;
-  readonly takesPortfolio: boolean;
-  /** JSON Schema of the type's params. */
-  readonly paramsSchema: unknown;
-  /** Output column names and their polars types. */
-  readonly output: Record<string, string>;
-}
-
-export type CalculationParams = Readonly<Record<string, unknown>>;
+export type { CalculationParams, CalculationTypeInfo, PortfolioOutcome } from "$/calculations/views";
 
 /** One run of a saved calculation for one as-of date. */
 export interface RunRequest {
@@ -32,13 +22,6 @@ export interface RunRequest {
   readonly portfolios: readonly EnginePortfolio[];
   /** Where the rows go in the processed bucket, e.g. `calculation=<id>/data.parquet`. */
   readonly outputKey: string;
-}
-
-export interface PortfolioOutcome {
-  readonly portfolioId: string | null;
-  readonly status: "completed" | "failed";
-  readonly rowCount: number;
-  readonly error: string | null;
 }
 
 /** What happened in a run. `partial`: some portfolios failed, the others were written. */

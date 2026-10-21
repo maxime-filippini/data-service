@@ -2,7 +2,13 @@ import { Context, type Effect, Schema } from "effect";
 
 import { CalculationTypeNameSchema } from "$/calculations/ad-hoc";
 import { isCronError, parseCron } from "$/calculations/cron";
-import type { CalculationParams, PortfolioOutcome } from "$/calculations/engine";
+import type {
+  Calculation,
+  CalculationParams,
+  CalculationRun,
+  PortfolioOutcome,
+  RunTrigger,
+} from "$/calculations/views";
 import { MarketDateSchema } from "$/market-data/schemas";
 import { PortfolioIdSchema } from "$/portfolios";
 
@@ -62,43 +68,8 @@ export const StartRunSchema = Schema.Struct({
   asOf: Schema.optionalKey(MarketDateSchema),
 });
 
-export type RunTrigger = "schedule" | "manual";
-export type RunStatus = "running" | "completed" | "partial" | "failed" | "skipped";
-
-export interface CalculationRun {
-  readonly runId: string;
-  readonly calculationId: string;
-  readonly trigger: RunTrigger;
-  readonly asOf: string;
-  /** The params the run used. */
-  readonly params: CalculationParams;
-  readonly status: RunStatus;
-  /** Each portfolio's outcome, once the run has finished. */
-  readonly portfolios: readonly PortfolioOutcome[] | null;
-  readonly rowCount: number | null;
-  readonly outputEtag: string | null;
-  readonly error: string | null;
-  readonly createdAt: string;
-  readonly completedAt: string | null;
-}
-
-export interface Calculation {
-  readonly id: string;
-  readonly name: string;
-  readonly type: string;
-  readonly params: CalculationParams;
-  /** In the order they run. */
-  readonly portfolioIds: readonly string[];
-  readonly cron: string;
-  readonly enabled: boolean;
-  /** Where the results are in the processed bucket. */
-  readonly outputKey: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  /** The latest cron slot the schedule started a run for. */
-  readonly lastScheduledSlot: string | null;
-  readonly lastRun: CalculationRun | null;
-}
+export type * from "$/calculations/views";
+export type { CalculationRunStatus as RunStatus } from "$/calculations/views";
 
 /** A calculation's results, in the processed bucket. */
 export const calculationOutputKey = (calculationId: string) => `calculation=${calculationId}/data.parquet`;

@@ -1,10 +1,10 @@
 import { Effect, Layer, Result, Schema } from "effect";
-import { Hono, type MiddlewareHandler } from "hono";
+import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
-import type { Calculations } from "$/calculations";
+import { CalculationIdSchema, type Calculations, calculationOutputKey } from "$/calculations";
 import type { Engine } from "$/calculations/engine";
 import type { RunWorkflow } from "$/calculations/runs";
 import { effectValidator } from "$/effect-validator";
@@ -52,6 +52,8 @@ const DatasetParamsSchema = Schema.Struct({
   dataset: DatasetSchema,
   symbol: MarketSymbolSchema,
 });
+
+const CalculationParamsSchema = Schema.Struct({ id: CalculationIdSchema });
 
 type DashboardEnv = { Bindings: CloudflareBindings; Variables: AccessVariables };
 
@@ -151,31 +153,51 @@ export const createDashboardRoutes = (
     return c.json<{ symbols: readonly SymbolStatusView[] }>({ symbols });
   });
 
-  // The canonical Parquet file, streamed from R2 for the dataset explorer.
-  // The browser keeps a copy and revalidates it with the ETag, so the file is
-  // only downloaded again after a rebuild.
+  /**
+   * A Parquet file streamed from the processed bucket for the explorer. The
+   * browser keeps a copy and revalidates it with the ETag, so the file is only
+   * downloaded again after it changes.
+   */
+  const streamParquet = async (
+    c: Context<DashboardEnv>,
+    key: string,
+    missing: string,
+  ): Promise<Response> => {
+    const cachedEtag = c.req.header("If-None-Match")?.replace(/^W\//u, "").replaceAll('"', "");
+    const object = await c.env.PROCESSED_MARKET_DATA_BUCKET.get(
+      key,
+      cachedEtag === undefined ? {} : { onlyIf: { etagDoesNotMatch: cachedEtag } },
+    );
+    if (object === null) return c.json({ error: missing }, 404);
+
+    const headers = new Headers({
+      "Cache-Control": "private, no-cache",
+      ETag: object.httpEtag,
+      "Last-Modified": object.uploaded.toUTCString(),
+    });
+    if (!("body" in object)) return new Response(null, { status: 304, headers });
+
+    headers.set("Content-Type", "application/vnd.apache.parquet");
+    headers.set("Content-Length", String(object.size));
+    return new Response(object.body, { headers });
+  };
+
   api.get(
     "/datasets/:dataset/:symbol",
     effectValidator("param", DatasetParamsSchema, { onExcessProperty: "error" }),
-    async (c) => {
+    (c) => {
       const { dataset, symbol } = c.req.valid("param");
-      const cachedEtag = c.req.header("If-None-Match")?.replace(/^W\//u, "").replaceAll('"', "");
-      const object = await c.env.PROCESSED_MARKET_DATA_BUCKET.get(
-        canonicalKey(dataset, symbol),
-        cachedEtag === undefined ? {} : { onlyIf: { etagDoesNotMatch: cachedEtag } },
-      );
-      if (object === null) return c.json({ error: "No data has been built for this symbol yet" }, 404);
+      return streamParquet(c, canonicalKey(dataset, symbol), "No data has been built for this symbol yet");
+    },
+  );
 
-      const headers = new Headers({
-        "Cache-Control": "private, no-cache",
-        ETag: object.httpEtag,
-        "Last-Modified": object.uploaded.toUTCString(),
-      });
-      if (!("body" in object)) return new Response(null, { status: 304, headers });
-
-      headers.set("Content-Type", "application/vnd.apache.parquet");
-      headers.set("Content-Length", String(object.size));
-      return new Response(object.body, { headers });
+  // A calculation's results. They stay in R2 after the calculation is deleted.
+  api.get(
+    "/calculations/:id/results",
+    effectValidator("param", CalculationParamsSchema, { onExcessProperty: "error" }),
+    (c) => {
+      const { id } = c.req.valid("param");
+      return streamParquet(c, calculationOutputKey(id), "This calculation has no results yet");
     },
   );
 

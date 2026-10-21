@@ -12,10 +12,19 @@
   } from "@tanstack/svelte-table";
   import { untrack } from "svelte";
 
-  import { datasetUrl, fetchDatasetFile, fetchSymbols, type SymbolStatusView } from "../lib/api";
+  import {
+    type Calculation,
+    calculationResultsUrl,
+    datasetUrl,
+    fetchCalculationResults,
+    fetchCalculations,
+    fetchDatasetFile,
+    fetchSymbols,
+    type SymbolStatusView,
+  } from "../lib/api";
   import { formatBytes, formatCount, formatRange, formatValue } from "../lib/format";
   import { readParquet, type Column, type Dataset, type Row } from "../lib/parquet";
-  import { replace, route } from "../lib/router.svelte";
+  import { href, replace, route } from "../lib/router.svelte";
 
   const PAGE_SIZES = [25, 50, 100, 250];
 
@@ -29,8 +38,11 @@
 
   const dataset = $derived(route.params.get("dataset") ?? "");
   const symbol = $derived(route.params.get("symbol") ?? "");
+  /** A calculation's results, `calculation=<id>/data.parquet`, instead of a dataset. */
+  const calculation = $derived(route.params.get("calculation") ?? "");
 
   let symbols = $state<SymbolStatusView[]>([]);
+  let calculations = $state<Calculation[]>([]);
   let file = $state<Dataset | null>(null);
   let fileSize = $state(0);
   let loading = $state(false);
@@ -44,6 +56,12 @@
   fetchSymbols({})
     .then((result) => (symbols = result.symbols))
     .catch((cause) => (error = cause instanceof Error ? cause.message : String(cause)));
+  fetchCalculations()
+    .then((result) => (calculations = result.calculations))
+    .catch(() => undefined);
+
+  const chosenCalculation = $derived(calculations.find((c) => c.id === calculation));
+  const chosen = $derived(calculation ? `calculation:${calculation}` : dataset && symbol ? `${dataset}/${symbol}` : "");
 
   let latestRequest = 0;
 
@@ -51,15 +69,15 @@
     const request = ++latestRequest;
     file = null;
     error = null;
-    if (!dataset || !symbol) return;
+    if (!calculation && (!dataset || !symbol)) return;
     loading = true;
     try {
-      const bytes = await fetchDatasetFile(dataset, symbol);
+      const bytes = calculation ? await fetchCalculationResults(calculation) : await fetchDatasetFile(dataset, symbol);
       const decoded = await readParquet(bytes);
       if (request !== latestRequest) return;
       fileSize = bytes.byteLength;
       file = decoded;
-      const dateColumn = decoded.columns.find((column) => column.kind === "date");
+      const dateColumn = dateColumnOf(decoded.columns);
       table.setSorting(dateColumn ? [{ id: dateColumn.name, desc: true }] : []);
       table.resetPageIndex(true);
     } catch (cause) {
@@ -72,14 +90,22 @@
   $effect(() => {
     void dataset;
     void symbol;
+    void calculation;
     untrack(() => load());
   });
 
   const columns = $derived(file?.columns ?? []);
   const kinds = $derived(new Map(columns.map((column) => [column.name, column.kind])));
 
-  // The date range applies to the first date column, e.g. `date` in prices_eod.
-  const dateColumn = $derived(columns.find((column) => column.kind === "date")?.name);
+  /**
+   * The column the date range applies to: `as_of` in calculation results,
+   * otherwise the first date column, e.g. `date` in prices_eod.
+   */
+  function dateColumnOf(all: Column[]) {
+    const dates = all.filter((column) => column.kind === "date");
+    return dates.find((column) => column.name === "as_of") ?? dates[0];
+  }
+  const dateColumn = $derived(dateColumnOf(columns)?.name);
   const rows = $derived.by(() => {
     const all = file?.rows ?? [];
     if (dateColumn === undefined || (from === "" && to === "")) return all;
@@ -120,9 +146,13 @@
   const pagination = $derived(table.atoms.pagination.get());
 
   const choose = (value: string) => {
-    const [nextDataset = "", nextSymbol = ""] = value.split("/");
     from = "";
     to = "";
+    if (value.startsWith("calculation:")) {
+      replace("explore", { calculation: value.slice("calculation:".length) });
+      return;
+    }
+    const [nextDataset = "", nextSymbol = ""] = value.split("/");
     replace("explore", { dataset: nextDataset, symbol: nextSymbol });
   };
 
@@ -131,18 +161,26 @@
 </script>
 
 <div class="toolbar">
-  <select
-    aria-label="Symbol"
-    value={dataset && symbol ? `${dataset}/${symbol}` : ""}
-    onchange={(event) => choose(event.currentTarget.value)}
-  >
-    <option value="" disabled>Choose a symbol</option>
-    {#if dataset && symbol && !choices.some((s) => s.dataset === dataset && s.symbol === symbol)}
+  <select aria-label="Data" value={chosen} onchange={(event) => choose(event.currentTarget.value)}>
+    <option value="" disabled>Choose a symbol or calculation</option>
+    {#if !calculation && dataset && symbol && !choices.some((s) => s.dataset === dataset && s.symbol === symbol)}
       <option value={`${dataset}/${symbol}`}>{symbol} · {dataset}</option>
     {/if}
-    {#each choices as s (`${s.dataset}/${s.symbol}`)}
-      <option value={`${s.dataset}/${s.symbol}`}>{s.symbol} · {s.dataset}</option>
-    {/each}
+    <optgroup label="Datasets">
+      {#each choices as s (`${s.dataset}/${s.symbol}`)}
+        <option value={`${s.dataset}/${s.symbol}`}>{s.symbol} · {s.dataset}</option>
+      {/each}
+    </optgroup>
+    {#if calculations.length > 0 || calculation}
+      <optgroup label="Calculation results">
+        {#if calculation && !chosenCalculation}
+          <option value={`calculation:${calculation}`}>Calculation {calculation}</option>
+        {/if}
+        {#each calculations as c (c.id)}
+          <option value={`calculation:${c.id}`}>{c.name} · {c.type}</option>
+        {/each}
+      </optgroup>
+    {/if}
   </select>
   {#if dateColumn !== undefined}
     <label class="muted date">
@@ -156,10 +194,15 @@
     {/if}
   {/if}
   <span class="spacer"></span>
-  {#if file}
+  {#if file && calculation}
+    <a href={href("calculations", { id: calculation })}>Calculation</a>
+    <a href={calculationResultsUrl(calculation)} download={`${chosenCalculation?.name ?? calculation}.parquet`}>
+      Download Parquet
+    </a>
+  {:else if file}
     <a href={datasetUrl(dataset, symbol)} download={`${symbol}.${dataset}.parquet`}>Download Parquet</a>
   {/if}
-  <button onclick={() => load()} disabled={loading || !symbol}>Refresh</button>
+  <button onclick={() => load()} disabled={loading || !chosen}>Refresh</button>
 </div>
 
 {#if error}
@@ -209,8 +252,8 @@
     {/if}
   {:else if loading}
     <p class="notice">Loading…</p>
-  {:else if !symbol}
-    <p class="notice">Choose a symbol to see its data.</p>
+  {:else if !chosen}
+    <p class="notice">Choose a symbol or a calculation to see its data.</p>
   {/if}
 </div>
 

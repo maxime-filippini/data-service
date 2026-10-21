@@ -2,11 +2,14 @@
 
 Personal market-data service on Cloudflare Workers. It downloads data for a
 universe of symbols, builds one Parquet file per symbol in R2, and exposes a
-small API so other apps can manage the universe. Apps read the Parquet files
-from R2 directly:
+small API so other apps can manage the universe. It also runs calculations,
+such as ex-ante volatility, over portfolios on a schedule or on demand, and
+stores their results next to the data. Apps read the Parquet files from R2
+directly:
 
 ```txt
 processed-market-data/dataset=prices_eod/symbol=AAPL.US/data.parquet
+processed-market-data/calculation=<calculation-id>/data.parquet
 ```
 
 How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -37,7 +40,7 @@ and `market-data-processing-dlq` queues. Secrets:
 pnpm exec wrangler secret put EODHD_API_TOKEN
 pnpm exec wrangler secret put MANAGEMENT_API_TOKEN
 pnpm exec wrangler secret put R2_ENDPOINT_URL        # https://<account-id>.r2.cloudflarestorage.com
-pnpm exec wrangler secret put R2_ACCESS_KEY_ID       # used by the processor container
+pnpm exec wrangler secret put R2_ACCESS_KEY_ID       # used by the processor and engine containers
 pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
 ```
 
@@ -54,8 +57,9 @@ deploys:
 | `main` | production (`data-service`) |
 | `develop`, `feat/*`, `fix/*` | dev environment (`data-service-dev`) |
 
-Each deploy builds the processor image from `containers/processor` and ships it
-with the Worker, so both always come from the same commit. Wrangler only rolls
+Each deploy builds the processor and engine images from `containers/processor`
+and `containers/engine` and ships them with the Worker, so all three always come
+from the same commit. CI also runs the engine's tests and lint. Wrangler only rolls
 out containers when the image changes.
 
 So the flow is: push a `feat/*` or `fix/*` branch and test it on dev, merge it
@@ -95,8 +99,10 @@ done
 
 Workflow: develop and run unit tests with `pnpm dev`, then push the branch and
 test end to end on dev.
-`pnpm dev` can't run the full pipeline: the container reads real R2 while the
-local Worker writes to simulated buckets.
+`pnpm dev` can't run the full pipeline: the containers read real R2 while the
+local Worker writes to simulated buckets. To try the dashboard without them,
+run `pnpm exec wrangler dev --enable-containers=false`; pages that need the
+engine (calculation types, saving params, runs) show its error.
 
 ## Managing symbols
 
@@ -212,16 +218,90 @@ curl -X DELETE "$URL/portfolios/$ID/snapshots/2026-10-15" -H "Authorization: Bea
 ```
 
 Untracked symbols return `400` with their list in `symbols`; a second snapshot
-for the same date returns `409`.
+for the same date returns `409`. Deleting a portfolio a calculation uses
+returns `409` with those calculations in `calculations`.
+
+## Calculations
+
+A calculation is a saved calculation type with its params, the portfolios it
+runs over, a cron expression (UTC) and an enabled flag. Its results go to
+`calculation=<id>/data.parquet` in the processed bucket. See
+[the calculation engine spec](docs/calculation-engine.md), and
+[the engine README](containers/engine/README.md) to add a type.
+
+```sh
+# The engine's types, with each one's params JSON Schema and output columns
+curl "$URL/calculation-types" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Create one. The engine checks the params and fills in defaults.
+curl -X POST "$URL/calculations" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Core vol","type":"ex_ante_vol","params":{"window":126},"portfolioIds":["'"$PORTFOLIO_ID"'"],"cron":"0 8 * * 1-5"}'
+
+# List them (with each one's latest run); get one
+curl "$URL/calculations" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/calculations/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Change the name, params, portfolios, cron or enabled flag (not the type); delete one
+curl -X PATCH "$URL/calculations/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"enabled":false}'
+curl -X DELETE "$URL/calculations/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+# Run now, optionally as of a past date (default: the previous UTC day)
+curl -X POST "$URL/calculations/$ID/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"asOf":"2026-10-16"}'
+
+# Its runs, newest first (limit up to 100, default 20); one run
+curl "$URL/calculations/$ID/runs?limit=10" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/calculations/$ID/runs/$RUN_ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+- Invalid params return `422` with the engine's errors in `detail`. A type
+  that takes a portfolio needs at least one; other types take none.
+- Run now returns `202 {"runId", "status"}` straight away. `status` is
+  `skipped` if the calculation already has a run going.
+- A run ends `completed`, `partial` (some portfolios failed, with each one's
+  error in `portfolios`) or `failed`.
+- The hourly cron starts a run when a calculation's cron fires, as of the
+  previous UTC day, so schedule calculations a few hours after the download
+  hour. The minute field has no effect. Deleting a calculation deletes its
+  runs; its results stay in R2.
+
+### Ad hoc calculations
+
+`POST /calculate` runs a type and returns the result without saving anything,
+with a timeout of about 60 seconds. `portfolio` is a saved portfolio
+(`{"portfolioId": …}`, using its snapshots up to `asOf`) or plain holdings
+held at all times. `asOf` defaults to the previous UTC day.
+
+```sh
+curl -X POST "$URL/calculate" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"ex_ante_vol","params":{},"portfolio":{"holdings":[{"symbol":"AAPL.US","weight":1}]}}'
+```
+
+It returns `{"rows": [...]}`, or an Arrow IPC stream with
+`Accept: application/vnd.apache.arrow.stream`. Unknown types return `404`;
+invalid params and expected failures, such as missing prices, return `422`;
+other failures return `500`.
 
 ## Dashboard
 
 `$URL/dashboard/` shows ingestion runs (with their Parquet rebuilds), the
 tracked symbols with their latest activity, and an explorer for each symbol's
-Parquet data (sort, filter by date, download). On the Symbols page you can also
-add symbols (several at once, with the same settings) and edit them, put them
-on or off the daily schedule, download them now, and change, pause or run the
-schedule.
+Parquet data and each calculation's results (sort, filter by date, download).
+On the Symbols page you can also add symbols (several at once, with the same
+settings) and edit them, put them on or off the daily schedule, download them
+now, and change, pause or run the schedule.
+
+The Portfolios page creates, renames and deletes portfolios, and adds or
+deletes their snapshots (type or paste symbol and weight rows, or start from
+the latest snapshot). The Calculations page creates and edits calculations,
+with a JSON editor for params and the type's params as help, pauses or enables
+them, runs them now for any as-of date, and shows their runs with each
+portfolio's outcome.
 
 Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/)
 with GitHub. Access sits in front of `/dashboard` only, so the API keeps using

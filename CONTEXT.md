@@ -66,4 +66,17 @@ expression and an enabled flag. Its results are one Parquet file at
 ## Calculation run
 
 One run of a calculation for one as-of date, started by its cron or by hand.
-The type runs once per portfolio, and the run saves the params it used.
+The type runs once per portfolio, and the run saves the params it used. It
+ends `completed`, `partial` (some portfolios failed) or `failed`. A run started
+while another is going is recorded as `skipped`.
+
+## Cron slot
+
+An hour a calculation's cron expression fires in. The hourly tick runs each
+calculation once for its most recent slot, so missed slots are caught up once,
+not replayed.
+
+## Ad hoc calculation
+
+A calculation type run once through `POST /calculate`, for a saved portfolio
+or plain holdings. The result is returned and nothing is saved.
