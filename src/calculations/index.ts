@@ -95,6 +95,8 @@ export interface Calculation {
   readonly outputKey: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** The latest cron slot the schedule started a run for. */
+  readonly lastScheduledSlot: string | null;
   readonly lastRun: CalculationRun | null;
 }
 
@@ -157,6 +159,11 @@ export class Calculations extends Context.Service<
     readonly update: (id: string, patch: CalculationPatch, now: string) => Effect.Effect<Calculation, CalculationError>;
     /** Delete a calculation and its runs. Its results stay in R2. */
     readonly remove: (id: string) => Effect.Effect<void, CalculationError>;
+    /**
+     * Record that the schedule is starting a run for a cron slot. False if
+     * that slot or a later one was already recorded, so a slot runs once.
+     */
+    readonly claimSlot: (id: string, slot: string) => Effect.Effect<boolean, CalculationError>;
 
     /**
      * Record a new run as `running`, or as `skipped` if the calculation already

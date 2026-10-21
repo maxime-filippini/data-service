@@ -131,7 +131,9 @@ do datasets, and the dashboard explorer shows it unchanged.
   finest resolution is one hour. Monthly calculations are just a cron
   expression.
 - **Missed slots.** A missed slot is caught up once on the next tick, not
-  replayed.
+  replayed. Each calculation records the last slot it ran for. A new
+  calculation doesn't run for slots before it was created. A paused
+  calculation catches up its latest slot once when it's enabled again.
 - **As-of date.** A scheduled run calculates as of the previous UTC day, using
   whatever canonical data exists at that time. It doesn't wait for that day's
   downloads, so schedule calculations a few hours after the download hour.
