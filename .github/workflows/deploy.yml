@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          # The runner's cached 22.x can be older than Astro's minimum.
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -79,6 +81,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          # The runner's cached 22.x can be older than Astro's minimum.
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate:dev
@@ -100,6 +104,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          # The runner's cached 22.x can be older than Astro's minimum.
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate:remote
