@@ -21,8 +21,8 @@ pnpm dev
 | `http://localhost:8787/dashboard/` | Dashboard |
 | `http://localhost:8787/docs/` | These docs |
 
-Set `DASHBOARD_LOCAL_BYPASS=true` in `.dev.vars` to skip the Access check; it
-only works for requests to localhost.
+Set `DASHBOARD_LOCAL_BYPASS=true` in `.dev.vars` to skip the Access check on
+the dashboard and docs; it only works for requests to localhost.
 
 ### Hot reload
 

@@ -45,8 +45,8 @@ sequenceDiagram
   end
 ```
 
-Access sits in front of `/dashboard` only, so the API keeps using the
-management token. The Worker **also** verifies the token Access adds to each
+Access sits in front of `/dashboard` and `/docs` only, so the API keeps using
+the management token. The Worker **also** verifies the token Access adds to each
 request and the user's email, so the dashboard stays closed if the Access app
 is removed or its policy is loosened. The management token is never sent to
 the browser.
@@ -78,8 +78,10 @@ Per environment (prod and dev have separate hostnames):
    is `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
 2. **Access application.** Under Access controls > Applications, add a
    self-hosted application:
-   - Domain: `data-service.maxime-filippini.workers.dev`, path `dashboard`
-     (dev: `data-service-dev.maxime-filippini.workers.dev`).
+   - Domains: `data-service.maxime-filippini.workers.dev` with path
+     `dashboard`, and the same hostname again with path `docs` (dev:
+     `data-service-dev.maxime-filippini.workers.dev`). Both paths must be in
+     this one application, since the Worker checks a single AUD.
    - Login methods: GitHub only, with instant auth.
    - Policy: Allow, include Emails = your GitHub account's primary email.
 3. **Secrets.** Copy the application's AUD tag from its settings, then:

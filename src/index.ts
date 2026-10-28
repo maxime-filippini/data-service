@@ -20,6 +20,7 @@ import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createDashboardRoutes } from "$/routes/dashboard";
+import { createDocsRoutes } from "$/routes/docs";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
@@ -53,6 +54,7 @@ app.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, 
 app.route("/calculate", createCalculateRoutes(services, requireManagementToken));
 app.route("/calculations", createCalculationRoutes(services, requireManagementToken));
 app.route("/dashboard", createDashboardRoutes(services));
+app.route("/docs", createDocsRoutes());
 
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
 const PROCESSING_SWEEP_HOUR = 2;

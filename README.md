@@ -306,10 +306,10 @@ them, runs them now for any as-of date, and shows their runs with each
 portfolio's outcome.
 
 Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/)
-with GitHub. Access sits in front of `/dashboard` only, so the API keeps using
-the management token. The Worker also checks the token Access adds to each
-request (`Cf-Access-Jwt-Assertion`) and the user's email, so the dashboard
-stays closed if the Access app is removed or its policy is loosened. If any of
+with GitHub. Access sits in front of `/dashboard` and `/docs` only, so the API
+keeps using the management token. The Worker also checks the token Access adds
+to each request (`Cf-Access-Jwt-Assertion`) and the user's email, so the
+dashboard and docs stay closed if the Access app is removed or its policy is loosened. If any of
 the settings below is missing, the dashboard returns `503`.
 
 One-time setup, per environment (prod and dev have separate hostnames):
@@ -319,8 +319,10 @@ One-time setup, per environment (prod and dev have separate hostnames):
    is `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
 2. **Access application.** Under Access controls > Applications, add a
    self-hosted application:
-   - Domain: `data-service.maxime-filippini.workers.dev`, path `dashboard`
-     (dev: `data-service-dev.maxime-filippini.workers.dev`).
+   - Domains: `data-service.maxime-filippini.workers.dev` with path
+     `dashboard`, and the same hostname again with path `docs` (dev:
+     `data-service-dev.maxime-filippini.workers.dev`). Both paths must be in
+     this one application, since the Worker checks a single AUD.
    - Login methods: GitHub only, with instant auth.
    - Policy: Allow, include Emails = your GitHub account's primary email.
 3. **Secrets.** Copy the application's AUD tag from its settings, then:
