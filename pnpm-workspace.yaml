@@ -7,3 +7,6 @@ allowBuilds:
 packages:
   - dashboard
   - docs
+# Matches pnpm 11's default (used in CI), so local installs resolve the same
+# versions: nothing published in the last day.
+minimumReleaseAge: 1440
