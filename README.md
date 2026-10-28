@@ -77,7 +77,7 @@ running.
 ## Dev environment
 
 A separate deployment for end-to-end testing of any branch:
-`https://data-service-dev.maxime-filippini.workers.dev`. It has its own
+`https://data-service-dev.maximefilippini.me`. It has its own
 database (`data-service-market-data-dev`), buckets (`raw-market-data-dev`,
 `processed-market-data-dev`), queues (`*-dev`), Workflow and secrets, and no
 cron: use "Run now" or `POST /schedule/runs` to try the schedule there.
@@ -108,7 +108,7 @@ engine (calculation types, saving params, runs) show its error.
 
 ## Managing symbols
 
-The API is served at `https://data-service.maxime-filippini.workers.dev`
+The API is served at `https://data-service.maximefilippini.me`
 (`$URL` below). All routes need `Authorization: Bearer $MANAGEMENT_API_TOKEN`,
 except the [dashboard](#dashboard).
 
@@ -319,9 +319,9 @@ One-time setup, per environment (prod and dev have separate hostnames):
    is `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
 2. **Access application.** Under Access controls > Applications, add a
    self-hosted application:
-   - Domains: `data-service.maxime-filippini.workers.dev` with path
+   - Domains: `data-service.maximefilippini.me` with path
      `dashboard`, and the same hostname again with path `docs` (dev:
-     `data-service-dev.maxime-filippini.workers.dev`). Both paths must be in
+     `data-service-dev.maximefilippini.me`). Both paths must be in
      this one application, since the Worker checks a single AUD.
    - Login methods: GitHub only, with instant auth.
    - Policy: Allow, include Emails = your GitHub account's primary email.

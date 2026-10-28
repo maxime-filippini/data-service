@@ -6,7 +6,7 @@ import mermaid from "astro-mermaid";
 // dashboard for the Worker's assets. Astro builds inside this package so its
 // prerender step resolves this package's dependencies, not the root's.
 export default defineConfig({
-  site: "https://data-service.maxime-filippini.workers.dev",
+  site: "https://data-service.maximefilippini.me",
   base: "/docs",
   trailingSlash: "always",
   integrations: [

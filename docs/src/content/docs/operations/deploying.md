@@ -63,7 +63,7 @@ pnpm db:migrate:dev && pnpm deploy:dev      # dev
 ## Dev environment
 
 A separate deployment for end-to-end testing of any branch at
-`https://data-service-dev.maxime-filippini.workers.dev`. It has its own
+`https://data-service-dev.maximefilippini.me`. It has its own
 database (`data-service-market-data-dev`), buckets (`raw-market-data-dev`,
 `processed-market-data-dev`), queues (`*-dev`), Workflows and secrets, and
 **no cron**: use "Run now" or `POST /schedule/runs` to try the schedule there.

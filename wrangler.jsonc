@@ -16,6 +16,9 @@
 	"upload_source_maps": true,
 	"workers_dev": true,
 	"preview_urls": false,
+	// Deploying creates the DNS record and certificate. Cloudflare Access
+	// protects /dashboard and /docs on this hostname.
+	"routes": [{ "pattern": "data-service.maximefilippini.me", "custom_domain": true }],
 	// Hourly: starts the daily download once its hour has passed (see
 	// download_schedule), and sweeps queued Parquet rebuilds at 02:00 UTC.
 	"triggers": { "crons": ["0 * * * *"] },
@@ -119,6 +122,7 @@
 	"env": {
 		"dev": {
 			"triggers": { "crons": [] },
+			"routes": [{ "pattern": "data-service-dev.maximefilippini.me", "custom_domain": true }],
 			"assets": {
 				"directory": "./dist",
 				"binding": "ASSETS",

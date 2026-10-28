@@ -78,9 +78,9 @@ Per environment (prod and dev have separate hostnames):
    is `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
 2. **Access application.** Under Access controls > Applications, add a
    self-hosted application:
-   - Domains: `data-service.maxime-filippini.workers.dev` with path
+   - Domains: `data-service.maximefilippini.me` with path
      `dashboard`, and the same hostname again with path `docs` (dev:
-     `data-service-dev.maxime-filippini.workers.dev`). Both paths must be in
+     `data-service-dev.maximefilippini.me`). Both paths must be in
      this one application, since the Worker checks a single AUD.
    - Login methods: GitHub only, with instant auth.
    - Policy: Allow, include Emails = your GitHub account's primary email.

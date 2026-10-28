@@ -3,8 +3,8 @@ title: Management API
 description: Every management route, with curl examples.
 ---
 
-The API is served at `https://data-service.maxime-filippini.workers.dev`
-(dev: `https://data-service-dev.maxime-filippini.workers.dev`), written `$URL`
+The API is served at `https://data-service.maximefilippini.me`
+(dev: `https://data-service-dev.maximefilippini.me`), written `$URL`
 below. Every route needs:
 
 ```txt

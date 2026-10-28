@@ -70,7 +70,7 @@ jobs:
     concurrency: deploy-dev
     environment:
       name: dev
-      url: https://data-service-dev.maxime-filippini.workers.dev
+      url: https://data-service-dev.maximefilippini.me
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
