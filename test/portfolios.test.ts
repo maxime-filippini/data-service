@@ -5,6 +5,8 @@ import { Effect } from "effect";
 
 import { requireManagementToken } from "$/auth";
 import { Portfolios } from "$/portfolios";
+import { SymbolRegistry } from "$/market-data/symbol-registry";
+import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { makeTestDatabase } from "./support/d1";
@@ -122,6 +124,40 @@ test("add and delete snapshots", async () => {
   assert.deepEqual(after.snapshots.map((s) => s.holdingsDate), ["2026-10-15"]);
 
   assert.equal((await request(`/${crypto.randomUUID()}/snapshots`, "POST", september)).status, 404);
+});
+
+test("a symbol's single-asset portfolio can't be changed", async () => {
+  const { request, db } = setup();
+  await SymbolRegistry.use((registry) =>
+    registry.register(
+      { dataset: "prices_eod", symbol: "NVDA.US", provider: "eodhd", backfillStartDate: "2016-01-01" },
+      "2026-10-28T00:00:00.000Z",
+    ),
+  ).pipe(Effect.provide(D1SymbolRegistryLive(db)), Effect.runPromise);
+
+  const list = (await (await request("/")).json()) as { portfolios: { id: string; name: string; assetSymbol: string | null }[] };
+  const nvda = list.portfolios.find((p) => p.assetSymbol === "NVDA.US");
+  assert.ok(nvda);
+  assert.equal(nvda.name, "NVDA.US");
+  const { id } = nvda;
+
+  const portfolio = (await (await request(`/${id}`)).json()) as PortfolioBody & { assetSymbol: string };
+  assert.equal(portfolio.assetSymbol, "NVDA.US");
+  assert.deepEqual(portfolio.snapshots.map(({ holdingsDate, holdings }) => ({ holdingsDate, holdings })), [
+    { holdingsDate: "1900-01-01", holdings: [{ symbol: "NVDA.US", weight: 1 }] },
+  ]);
+
+  for (const [path, method, body] of [
+    [`/${id}`, "PATCH", { name: "Nvidia" }],
+    [`/${id}`, "DELETE", undefined],
+    [`/${id}/snapshots`, "POST", { holdingsDate: "2026-01-02", holdings: [{ symbol: "NVDA.US", weight: 1 }] }],
+    [`/${id}/snapshots/1900-01-01`, "DELETE", undefined],
+  ] as const) {
+    const response = await request(path, method, body);
+    assert.equal(response.status, 409, `${method} ${path}`);
+    assert.match(((await response.json()) as { error: string }).error, /single-asset portfolio of NVDA\.US/u);
+  }
+  assert.equal(((await (await request(`/${id}`)).json()) as PortfolioBody).snapshots.length, 1);
 });
 
 test("snapshots only hold tracked prices_eod symbols", async () => {

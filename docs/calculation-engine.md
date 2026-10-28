@@ -90,6 +90,13 @@ type that needs prices loads `prices_eod`.
   the calculations that use it. So does deleting a tracked symbol that any
   snapshot holds. Disabling a symbol is allowed: its Parquet file stays, so
   calculations keep working on its old data.
+- **Single-asset portfolios.** Registering a `prices_eod` symbol creates a
+  portfolio named after it, with one snapshot on `1900-01-01` holding the
+  symbol at weight 1, in the same D1 batch as the registration. Re-registering
+  leaves it alone. `portfolios.asset_symbol` marks them (one per symbol), and
+  the API returns it as `assetSymbol`. They can't be renamed, deleted or given
+  other snapshots (`409`). Migration `0008` created them for the symbols
+  registered before.
 
 ## Calculations
 
@@ -161,6 +168,7 @@ Both use the management token, or Cloudflare Access through the dashboard.
 ## Dashboard
 
 - **Portfolios.** List, create, rename, delete; add and delete snapshots.
+  Single-asset portfolios are read-only and can be hidden from the list.
 - **Calculations.** List, create, edit (a JSON editor for params, checked by
   the engine), cron, enable or pause, run now with an optional as-of date.
 - **Runs.** Status, the params used, and errors for each portfolio.
@@ -190,7 +198,8 @@ Both use the management token, or Cloudflare Access through the dashboard.
   retried. A new calculation doesn't run for slots before its creation.
 - **Deleting held symbols.** The registry has no delete route yet. A foreign
   key from holdings to `tracked_symbols` blocks the delete; the route, when
-  added, maps it to `409` with the portfolios holding the symbol.
+  added, maps it to `409` with the portfolios holding the symbol. It will need
+  to delete the symbol's single-asset portfolio first, which always holds it.
 - **Snapshots** are addressed by holdings date, not a separate ID.
 - **Dashboard results** are read through the dashboard API
   (`/dashboard/api/calculations/:id/results`), with the same ETag caching as

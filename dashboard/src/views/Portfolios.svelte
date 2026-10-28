@@ -20,6 +20,8 @@
   let error = $state<string | null>(null);
   let message = $state<string | null>(null);
   let search = $state("");
+  /** Single-asset portfolios come one per symbol, so they can be hidden. */
+  let showSingleAsset = $state(true);
 
   let creating = $state(false);
   let saving = $state(false);
@@ -56,7 +58,11 @@
     .catch(() => undefined);
 
   const visible = $derived(
-    portfolios.filter((p) => search.trim() === "" || p.name.toLowerCase().includes(search.trim().toLowerCase())),
+    portfolios.filter(
+      (p) =>
+        (showSingleAsset || p.assetSymbol === null) &&
+        (search.trim() === "" || p.name.toLowerCase().includes(search.trim().toLowerCase())),
+    ),
   );
 
   const openForm = () => {
@@ -108,6 +114,10 @@
 {:else}
   <div class="toolbar">
     <input placeholder="Search portfolios" bind:value={search} aria-label="Search portfolios" />
+    <label class="check">
+      <input type="checkbox" bind:checked={showSingleAsset} />
+      Single-asset
+    </label>
     <span class="spacer"></span>
     <button onclick={openForm} disabled={creating}>New portfolio</button>
     <button onclick={() => load()} disabled={loading}>Refresh</button>
@@ -166,7 +176,10 @@
       <tbody>
         {#each visible as p (p.id)}
           <tr>
-            <td class="full name-cell"><a href={href("portfolios", { id: p.id })}>{p.name}</a></td>
+            <td class="full name-cell">
+              <a href={href("portfolios", { id: p.id })}>{p.name}</a>
+              {#if p.assetSymbol !== null}<span class="muted kind">single asset</span>{/if}
+            </td>
             <td data-label="Snapshots" class="num">{p.snapshotCount}</td>
             <td data-label="Latest holdings" class="mono">{p.latestHoldingsDate ?? "—"}</td>
             <td data-label="Updated" title={formatDateTime(p.updatedAt)}>{formatAgo(p.updatedAt)}</td>
@@ -221,6 +234,11 @@
   }
   .name-cell {
     font-weight: 600;
+  }
+  .kind {
+    margin-left: 0.4rem;
+    font-weight: 400;
+    font-size: 0.85rem;
   }
 
   @media (max-width: 720px) {

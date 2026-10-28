@@ -3,6 +3,9 @@ import { Context, type Effect, Schema } from "effect";
 import { MarketDateSchema, MarketSymbolSchema } from "$/market-data/schemas";
 import type { Portfolio, PortfolioSummary, Snapshot } from "$/portfolios/views";
 
+/** The holdings date of a single-asset portfolio's only snapshot. */
+export const SINGLE_ASSET_HOLDINGS_DATE = "1900-01-01";
+
 /** Most holdings one snapshot can have. */
 export const MAX_SNAPSHOT_HOLDINGS = 5000;
 
@@ -63,6 +66,8 @@ export class PortfolioError extends Schema.TaggedError<PortfolioError>()("Portfo
  * Portfolios and their holdings snapshots. Every held symbol is a tracked
  * `prices_eod` symbol (disabled ones count) and a portfolio has at most one
  * snapshot per holdings date. Snapshots are added or deleted, never edited.
+ * Single-asset portfolios come with their symbol and can't be changed: renaming
+ * one, deleting it or changing its snapshots is a conflict.
  */
 export class Portfolios extends Context.Service<
   Portfolios,
