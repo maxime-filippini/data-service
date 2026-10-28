@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "astro dev",
-		"build": "astro build && rm -rf ../dist/docs && cp -R dist ../dist/docs",
+		"build": "astro build && rm -rf ../dist/docs && mkdir -p ../dist && cp -R dist ../dist/docs",
 		"preview": "astro preview"
 	},
 	"dependencies": {
