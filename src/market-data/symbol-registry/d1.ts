@@ -6,6 +6,7 @@ import {
   type TrackedSymbol,
 } from "$/market-data/symbol-registry";
 import type { Dataset } from "$/market-data/schemas";
+import { SINGLE_ASSET_HOLDINGS_DATE } from "$/portfolios";
 
 interface SymbolRow {
   readonly dataset: Dataset;
@@ -38,39 +39,63 @@ export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry
   Layer.succeed(
     SymbolRegistry,
     SymbolRegistry.of({
-      register: (input, now) =>
-        query(() =>
-          db
-            .prepare(
-              `INSERT INTO tracked_symbols
-                 (dataset, symbol, provider, enabled, backfill_start_date, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT (dataset, symbol) DO UPDATE SET
-                 provider = excluded.provider,
-                 enabled = excluded.enabled,
-                 backfill_start_date = excluded.backfill_start_date,
-                 updated_at = excluded.updated_at
-               RETURNING *`,
-            )
-            .bind(
-              input.dataset,
-              input.symbol,
-              input.provider,
-              Number(input.enabled ?? true),
-              input.backfillStartDate,
-              now,
-              now,
-            )
-            .first<SymbolRow>(),
+      // A new prices_eod symbol also gets its single-asset portfolio, in the
+      // same batch. Re-registering leaves an existing one alone.
+      register: (input, now) => {
+        const portfolioId = crypto.randomUUID();
+        return query(() =>
+          db.batch([
+            db
+              .prepare(
+                `INSERT INTO tracked_symbols
+                   (dataset, symbol, provider, enabled, backfill_start_date, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT (dataset, symbol) DO UPDATE SET
+                   provider = excluded.provider,
+                   enabled = excluded.enabled,
+                   backfill_start_date = excluded.backfill_start_date,
+                   updated_at = excluded.updated_at
+                 RETURNING *`,
+              )
+              .bind(
+                input.dataset,
+                input.symbol,
+                input.provider,
+                Number(input.enabled ?? true),
+                input.backfillStartDate,
+                now,
+                now,
+              ),
+            db
+              .prepare(
+                `INSERT INTO portfolios (portfolio_id, name, created_at, updated_at, asset_symbol)
+                 SELECT ?1, ?2, ?3, ?3, ?2 WHERE ?4 = 'prices_eod'
+                 ON CONFLICT DO NOTHING`,
+              )
+              .bind(portfolioId, input.symbol, now, input.dataset),
+            // Only inserts when the portfolio above was created.
+            db
+              .prepare(
+                `INSERT INTO portfolio_snapshots (portfolio_id, holdings_date, created_at)
+                 SELECT portfolio_id, ?2, created_at FROM portfolios WHERE portfolio_id = ?1`,
+              )
+              .bind(portfolioId, SINGLE_ASSET_HOLDINGS_DATE),
+            db
+              .prepare(
+                `INSERT INTO portfolio_holdings (portfolio_id, holdings_date, dataset, symbol, weight)
+                 SELECT portfolio_id, ?2, 'prices_eod', asset_symbol, 1 FROM portfolios WHERE portfolio_id = ?1`,
+              )
+              .bind(portfolioId, SINGLE_ASSET_HOLDINGS_DATE),
+          ]),
         ).pipe(
-          Effect.flatMap((row) =>
-            row === null
-              ? Effect.fail(
-                  new SymbolRegistryError({ kind: "database", message: "Could not register the symbol" }),
-                )
-              : Effect.succeed({ symbol: fromRow(row), created: row.created_at === now }),
-          ),
-        ),
+          Effect.flatMap(([upserted]) => {
+            const row = (upserted?.results as SymbolRow[] | undefined)?.[0];
+            return row === undefined
+              ? Effect.fail(new SymbolRegistryError({ kind: "database", message: "Could not register the symbol" }))
+              : Effect.succeed({ symbol: fromRow(row), created: row.created_at === now });
+          }),
+        );
+      },
 
       list: ({ dataset, enabled }) =>
         query(() =>

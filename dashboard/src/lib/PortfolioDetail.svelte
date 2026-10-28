@@ -154,13 +154,21 @@
     {:else}
       <h1>{portfolio.name}</h1>
       <span class="spacer"></span>
-      <button onclick={() => ((renaming = true), (newName = portfolio?.name ?? ""))}>Rename</button>
-      <button onclick={remove} disabled={busy}>Delete</button>
+      {#if portfolio.assetSymbol === null}
+        <button onclick={() => ((renaming = true), (newName = portfolio?.name ?? ""))}>Rename</button>
+        <button onclick={remove} disabled={busy}>Delete</button>
+      {/if}
     {/if}
   </div>
   <p class="muted meta">
     Created {formatDateTime(portfolio.createdAt)} · updated {formatAgo(portfolio.updatedAt)}
   </p>
+  {#if portfolio.assetSymbol !== null}
+    <p class="muted meta">
+      The single-asset portfolio of {portfolio.assetSymbol}, created when the symbol was registered. It can't be
+      changed.
+    </p>
+  {/if}
 {:else if loading}
   <p class="notice">Loading…</p>
 {/if}
@@ -176,7 +184,7 @@
   <div class="toolbar">
     <h2>Holdings snapshots</h2>
     <span class="spacer"></span>
-    {#if !adding}
+    {#if !adding && portfolio.assetSymbol === null}
       {#if portfolio.snapshots.length > 0}
         <button onclick={() => openAdd("latest")}>Add snapshot from latest</button>
       {/if}
@@ -221,9 +229,11 @@
           </span>
           <span class="spacer"></span>
           <span class="muted added" title={formatDateTime(snapshot.createdAt)}>added {formatAgo(snapshot.createdAt)}</span>
-          <button class="link danger" onclick={() => removeSnapshot(snapshot.holdingsDate)} disabled={busy}>
-            Delete
-          </button>
+          {#if portfolio?.assetSymbol === null}
+            <button class="link danger" onclick={() => removeSnapshot(snapshot.holdingsDate)} disabled={busy}>
+              Delete
+            </button>
+          {/if}
         </div>
         {#if expanded}
           <table class="holdings">

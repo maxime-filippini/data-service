@@ -20,7 +20,7 @@ const setup = (respond?: (call: EngineCall) => Response | Promise<Response>) => 
       .run(symbol);
   }
   sqlite
-    .prepare(`INSERT INTO portfolios VALUES (?, 'Core', '2026-09-01', '2026-09-01')`)
+    .prepare(`INSERT INTO portfolios (portfolio_id, name, created_at, updated_at) VALUES (?, 'Core', '2026-09-01', '2026-09-01')`)
     .run(PORTFOLIO_ID);
   const snapshot = (date: string, holdings: [string, number][]) => {
     sqlite.prepare(`INSERT INTO portfolio_snapshots VALUES (?, ?, '2026-09-01')`).run(PORTFOLIO_ID, date);

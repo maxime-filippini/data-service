@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { URL } from "node:url";
 
 import { requireManagementToken } from "$/auth";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
@@ -100,4 +103,56 @@ test("database failures return a sanitized 500", async () => {
   const response = await request("/");
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), { error: "Could not access the symbol registry" });
+});
+
+const singleAssetPortfolios = (sqlite: ReturnType<typeof makeTestDatabase>["sqlite"]) =>
+  sqlite
+    .prepare(
+      `SELECT p.name, p.asset_symbol, h.holdings_date, h.symbol, h.weight
+       FROM portfolios p JOIN portfolio_holdings h USING (portfolio_id)
+       WHERE p.asset_symbol IS NOT NULL
+       ORDER BY p.name`,
+    )
+    .all()
+    .map((row) => ({ ...row }));
+
+test("registering a symbol creates its single-asset portfolio once", async () => {
+  const { request, sqlite } = setup();
+  await request("/", "POST", aapl);
+  await request("/", "POST", { ...aapl, backfillStartDate: "2010-01-01" });
+  await request("/prices_eod/AAPL.US/disable", "POST");
+  await request("/", "POST", { ...aapl, symbol: "MSFT.US", enabled: false });
+
+  assert.deepEqual(singleAssetPortfolios(sqlite), [
+    { name: "AAPL.US", asset_symbol: "AAPL.US", holdings_date: "1900-01-01", symbol: "AAPL.US", weight: 1 },
+    { name: "MSFT.US", asset_symbol: "MSFT.US", holdings_date: "1900-01-01", symbol: "MSFT.US", weight: 1 },
+  ]);
+  const [{ id }] = sqlite.prepare(`SELECT portfolio_id AS id FROM portfolios WHERE asset_symbol = 'AAPL.US'`).all() as {
+    id: string;
+  }[];
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+});
+
+test("the migration gives every registered prices_eod symbol a single-asset portfolio", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  const migrations = new URL("../migrations/", import.meta.url);
+  const files = readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort();
+  const apply = (file: string) => sqlite.exec(readFileSync(new URL(file, migrations), "utf8"));
+  const backfill = "0008_single_asset_portfolios.sql";
+  files.filter((file) => file < backfill).forEach(apply);
+  for (const symbol of ["AAPL.US", "MSFT.US"]) {
+    sqlite
+      .prepare(`INSERT INTO tracked_symbols VALUES ('prices_eod', ?, 'eodhd', 1, '2016-01-01', '2026-01-01', '2026-01-01')`)
+      .run(symbol);
+  }
+  sqlite.prepare(`INSERT INTO portfolios VALUES (?, 'Core', '2026-09-01', '2026-09-01')`).run(crypto.randomUUID());
+  apply(backfill);
+
+  assert.deepEqual(singleAssetPortfolios(sqlite), [
+    { name: "AAPL.US", asset_symbol: "AAPL.US", holdings_date: "1900-01-01", symbol: "AAPL.US", weight: 1 },
+    { name: "MSFT.US", asset_symbol: "MSFT.US", holdings_date: "1900-01-01", symbol: "MSFT.US", weight: 1 },
+  ]);
+  for (const { id } of sqlite.prepare(`SELECT portfolio_id AS id FROM portfolios`).all() as { id: string }[]) {
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  }
 });
