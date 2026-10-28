@@ -1,12 +1,12 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 
-// Built into dist/dashboard/ so the Worker's assets serve it at /dashboard/.
+// Built into ../dist/dashboard/ so the Worker's assets serve it at /dashboard/.
 export default defineConfig({
   base: "/dashboard/",
   plugins: [svelte()],
   build: {
-    outDir: "dist/dashboard",
+    outDir: "../dist/dashboard",
     emptyOutDir: true,
   },
   server: {

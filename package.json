@@ -13,6 +13,8 @@
 		"typecheck": "tsc --noEmit",
 		"dashboard:dev": "pnpm --filter dashboard dev",
 		"dashboard:check": "pnpm --filter dashboard check",
+		"docs:dev": "pnpm --filter docs dev",
+		"docs:build": "pnpm --filter docs build",
 		"processor:test": "uv run --directory containers/processor pytest",
 		"processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests",
 		"engine:test": "uv run --directory containers/engine pytest",

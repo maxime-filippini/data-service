@@ -12,7 +12,8 @@ processed-market-data/dataset=prices_eod/symbol=AAPL.US/data.parquet
 processed-market-data/calculation=<calculation-id>/data.parquet
 ```
 
-How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+How it works, with diagrams: the docs site at `$URL/docs/` (source in
+[`docs/`](docs/), `pnpm docs:dev` to edit).
 
 | Path | What |
 | --- | --- |
@@ -20,6 +21,7 @@ How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | `containers/processor/` | The Python processor container ([README](containers/processor/README.md)) |
 | `containers/engine/` | The Python calculation engine container ([README](containers/engine/README.md)) |
 | `dashboard/` | The Svelte dashboard, served by the Worker at `/dashboard/` |
+| `docs/` | The docs site (Astro Starlight), served by the Worker at `/docs/` |
 | `migrations/` | D1 migrations |
 
 ## Setup
@@ -343,6 +345,7 @@ localhost. For hot reload while editing the dashboard, run `pnpm dev` and
 pnpm test
 pnpm typecheck
 pnpm dashboard:check
+pnpm docs:build
 pnpm processor:test     # needs uv
 pnpm processor:lint
 pnpm engine:test        # needs uv

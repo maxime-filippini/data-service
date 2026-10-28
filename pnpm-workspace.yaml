@@ -6,3 +6,4 @@ allowBuilds:
   workerd: true
 packages:
   - dashboard
+  - docs

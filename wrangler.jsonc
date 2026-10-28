@@ -19,15 +19,15 @@
 	// Hourly: starts the daily download once its hour has passed (see
 	// download_schedule), and sweeps queued Parquet rebuilds at 02:00 UTC.
 	"triggers": { "crons": ["0 * * * *"] },
-	// The dashboard's built files (dashboard/dist/dashboard/* is served at
-	// /dashboard/*). The Worker runs first so it can check Access before
-	// serving them.
+	// The built dashboard (dist/dashboard/*, served at /dashboard/*) and docs
+	// (dist/docs/*, served at /docs/*). The Worker runs first so it can check
+	// Access before serving the dashboard; the docs are public and skip it.
 	"assets": {
-		"directory": "./dashboard/dist",
+		"directory": "./dist",
 		"binding": "ASSETS",
-		"run_worker_first": true,
+		"run_worker_first": ["/*", "!/docs", "!/docs/*"],
 	},
-	"build": { "command": "pnpm --filter dashboard build" },
+	"build": { "command": "pnpm --filter dashboard --filter docs build" },
 	// Bucket names for the containers (bindings don't expose them),
 	// and the ingestion queue name so the consumer can tell its queues apart.
 	"vars": {
@@ -120,9 +120,9 @@
 		"dev": {
 			"triggers": { "crons": [] },
 			"assets": {
-				"directory": "./dashboard/dist",
+				"directory": "./dist",
 				"binding": "ASSETS",
-				"run_worker_first": true,
+				"run_worker_first": ["/*", "!/docs", "!/docs/*"],
 			},
 			"vars": {
 				"RAW_BUCKET_NAME": "raw-market-data-dev",

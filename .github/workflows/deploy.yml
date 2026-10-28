@@ -32,6 +32,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm dashboard:check
+      - run: pnpm docs:build
 
   check-processor:
     runs-on: ubuntu-latest
