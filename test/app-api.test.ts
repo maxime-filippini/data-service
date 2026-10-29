@@ -11,7 +11,9 @@ import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import type { RunPage, SymbolStatusView } from "$/market-data/status";
 import { D1CalculationsLive } from "$/calculations/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
-import { createDashboardRoutes } from "$/routes/dashboard";
+import { Hono } from "hono";
+
+import { createAppApiRoutes } from "$/routes/app-api";
 import { makeTestDatabase } from "./support/d1";
 import { exAnteVol, makeFakeEngine } from "./support/engine";
 
@@ -35,7 +37,6 @@ const baseEnv = {
   ACCESS_TEAM_DOMAIN: TEAM,
   ACCESS_AUD: AUD,
   DASHBOARD_ALLOWED_EMAILS: ` other@example.com, ${ME.toUpperCase()} `,
-  ASSETS: { fetch: async (request: Request) => new Response(`asset ${new URL(request.url).pathname}`) },
 };
 
 const setup = (envOverrides: Record<string, unknown> = {}) => {
@@ -43,7 +44,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
   const workflowRuns: ScheduledDownloadParams[] = [];
   const queued: IngestionMessage[] = [];
   const engine = makeFakeEngine();
-  const app = createDashboardRoutes(
+  const api = createAppApiRoutes(
     {
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
@@ -65,6 +66,8 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
     },
     () => keys,
   );
+  // Mounted as in src/routes/index.ts.
+  const app = new Hono().route("/app-api", api);
   const env = {
     ...baseEnv,
     INGESTION_QUEUE: {
@@ -85,7 +88,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
       { headers: token === undefined ? headers : { ...headers, "Cf-Access-Jwt-Assertion": token } },
       env,
     );
-  /** A change sent from the dashboard's own page. */
+  /** A change sent from the app's own page. */
   const send = async (
     method: string,
     path: string,
@@ -159,20 +162,16 @@ const insertSymbol = (sqlite: ReturnType<typeof makeTestDatabase>["sqlite"], sym
     .run(symbol, enabled);
 };
 
-test("an allowlisted Access user can use the API and load the app", async () => {
+test("an allowlisted Access user can use the API", async () => {
   const { request } = setup();
   const token = await signToken();
 
-  const me = await request("/api/me", token);
+  const me = await request("/app-api/me", token);
   assert.equal(me.status, 200);
   assert.deepEqual(await me.json(), { email: ME });
   assert.equal(me.headers.get("Cache-Control"), "no-store");
 
-  const page = await request("/", token);
-  assert.equal(await page.text(), "asset /");
-  assert.match(page.headers.get("Content-Security-Policy") ?? "", /frame-ancestors 'none'/u);
-
-  assert.equal((await request("/api/unknown", token)).status, 404);
+  assert.equal((await request("/app-api/unknown", token)).status, 404);
 });
 
 test("requests without a valid Access token for an allowlisted email are refused", async () => {
@@ -189,17 +188,17 @@ test("requests without a valid Access token for an allowlisted email are refused
     ["service token (no email)", await signToken({ email: undefined }), 403],
   ];
   for (const [name, token, status] of cases) {
-    for (const path of ["/api/runs", "/"]) {
+    for (const path of ["/app-api/me", "/app-api/runs"]) {
       assert.equal((await request(path, token)).status, status, `${name} ${path}`);
     }
   }
 });
 
-test("missing Access settings close the dashboard", async () => {
+test("missing Access settings close the API", async () => {
   const token = await signToken();
   for (const missing of ["ACCESS_TEAM_DOMAIN", "ACCESS_AUD", "DASHBOARD_ALLOWED_EMAILS"]) {
     const { request } = setup({ [missing]: "" });
-    assert.equal((await request("/api/me", token)).status, 503, missing);
+    assert.equal((await request("/app-api/me", token)).status, 503, missing);
   }
 });
 
@@ -207,16 +206,16 @@ test("the team domain can be given without a scheme or with a trailing slash", a
   const token = await signToken();
   for (const domain of ["team.cloudflareaccess.com", `${TEAM}/`]) {
     const { request } = setup({ ACCESS_TEAM_DOMAIN: domain });
-    assert.equal((await request("/api/me", token)).status, 200, domain);
+    assert.equal((await request("/app-api/me", token)).status, 200, domain);
   }
 });
 
 test("the local bypass only works on localhost", async () => {
   const { request } = setup({ DASHBOARD_LOCAL_BYPASS: "true", ACCESS_TEAM_DOMAIN: "" });
-  const local = await request("/api/me", undefined, "http://localhost:8787");
+  const local = await request("/app-api/me", undefined, "http://localhost:8787");
   assert.equal(local.status, 200);
   assert.deepEqual(await local.json(), { email: "local@localhost" });
-  assert.equal((await request("/api/me")).status, 503);
+  assert.equal((await request("/app-api/me")).status, 503);
 });
 
 test("runs are listed newest first with their latest job, and page with a cursor", async () => {
@@ -230,7 +229,7 @@ test("runs are listed newest first with their latest job, and page with a cursor
   insertJob(sqlite, { id: "j2", runId: "r1", status: "completed", createdAt: "2026-10-01T04:00:00.000Z" });
 
   const list = async (query: string) => {
-    const response = await request(`/api/runs${query}`, token);
+    const response = await request(`/app-api/runs${query}`, token);
     assert.equal(response.status, 200, query);
     return (await response.json()) as RunPage;
   };
@@ -255,7 +254,7 @@ test("runs are listed newest first with their latest job, and page with a cursor
   assert.deepEqual((await list("?symbol=AAPL.US&status=completed")).runs.map((run) => run.runId), ["r1"]);
 
   for (const query of ["?limit=0", "?limit=201", "?status=queued", "?symbol=aapl", "?cursor=nope", "?extra=1"]) {
-    assert.equal((await request(`/api/runs${query}`, token)).status, 400, query);
+    assert.equal((await request(`/app-api/runs${query}`, token)).status, 400, query);
   }
 });
 
@@ -269,7 +268,7 @@ test("symbols show their latest download, last success and latest rebuild", asyn
   insertJob(sqlite, { id: "j1", runId: "r1", status: "failed", createdAt: "2026-10-01T03:00:00.000Z", error: "Bad" });
 
   const list = async (query = "") =>
-    ((await (await request(`/api/symbols${query}`, token)).json()) as { symbols: SymbolStatusView[] }).symbols;
+    ((await (await request(`/app-api/symbols${query}`, token)).json()) as { symbols: SymbolStatusView[] }).symbols;
 
   const [aapl, msft] = await list();
   assert.equal(aapl!.symbol, "AAPL.US");
@@ -295,7 +294,7 @@ test("symbols show their latest download, last success and latest rebuild", asyn
   assert.equal(msft!.latestJob, null);
 
   assert.deepEqual((await list("?enabled=true")).map((s) => s.symbol), ["AAPL.US"]);
-  assert.equal((await request("/api/symbols?enabled=yes", token)).status, 400);
+  assert.equal((await request("/app-api/symbols?enabled=yes", token)).status, 400);
 });
 
 const fakeBucket = (objects: Record<string, { bytes: Uint8Array; etag: string }>) => {
@@ -326,7 +325,7 @@ test("the dataset explorer streams a symbol's Parquet file and revalidates it by
   const { request } = setup({ PROCESSED_MARKET_DATA_BUCKET: bucket });
   const token = await signToken();
 
-  const file = await request("/api/datasets/prices_eod/AAPL.US", token);
+  const file = await request("/app-api/datasets/prices_eod/AAPL.US", token);
   assert.equal(file.status, 200);
   assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
   assert.equal(file.headers.get("Content-Type"), "application/vnd.apache.parquet");
@@ -334,7 +333,7 @@ test("the dataset explorer streams a symbol's Parquet file and revalidates it by
   assert.equal(file.headers.get("Cache-Control"), "private, no-cache");
 
   for (const ifNoneMatch of ['"abc123"', 'W/"abc123"']) {
-    const cached = await request("/api/datasets/prices_eod/AAPL.US", token, undefined, {
+    const cached = await request("/app-api/datasets/prices_eod/AAPL.US", token, undefined, {
       "If-None-Match": ifNoneMatch,
     });
     assert.equal(cached.status, 304, ifNoneMatch);
@@ -342,14 +341,14 @@ test("the dataset explorer streams a symbol's Parquet file and revalidates it by
   }
   assert.deepEqual(bucket.gets.at(-1)?.onlyIf, { etagDoesNotMatch: "abc123" });
 
-  const missing = await request("/api/datasets/prices_eod/MSFT.US", token);
+  const missing = await request("/app-api/datasets/prices_eod/MSFT.US", token);
   assert.equal(missing.status, 404);
   assert.equal(missing.headers.get("Cache-Control"), "no-store");
 
-  for (const path of ["/api/datasets/fred_rates/AAPL.US", "/api/datasets/prices_eod/aapl.us"]) {
+  for (const path of ["/app-api/datasets/fred_rates/AAPL.US", "/app-api/datasets/prices_eod/aapl.us"]) {
     assert.equal((await request(path, token)).status, 400, path);
   }
-  assert.equal((await request("/api/datasets/prices_eod/AAPL.US")).status, 401);
+  assert.equal((await request("/app-api/datasets/prices_eod/AAPL.US")).status, 401);
   assert.equal(bucket.gets.length, 4);
 });
 
@@ -360,58 +359,58 @@ test("the explorer streams a calculation's results file", async () => {
   const { request } = setup({ PROCESSED_MARKET_DATA_BUCKET: bucket });
   const token = await signToken();
 
-  const file = await request(`/api/calculations/${id}/results`, token);
+  const file = await request(`/app-api/calculations/${id}/results`, token);
   assert.equal(file.status, 200);
   assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
   assert.equal(file.headers.get("Content-Type"), "application/vnd.apache.parquet");
   assert.equal(file.headers.get("ETag"), '"def456"');
 
-  const cached = await request(`/api/calculations/${id}/results`, token, undefined, { "If-None-Match": '"def456"' });
+  const cached = await request(`/app-api/calculations/${id}/results`, token, undefined, { "If-None-Match": '"def456"' });
   assert.equal(cached.status, 304);
 
-  const missing = await request("/api/calculations/0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b/results", token);
+  const missing = await request("/app-api/calculations/0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b/results", token);
   assert.equal(missing.status, 404);
   assert.deepEqual(await missing.json(), { error: "This calculation has no results yet" });
 
-  assert.equal((await request("/api/calculations/not-a-uuid/results", token)).status, 400);
-  assert.equal((await request(`/api/calculations/${id}/results`)).status, 401);
+  assert.equal((await request("/app-api/calculations/not-a-uuid/results", token)).status, 400);
+  assert.equal((await request(`/app-api/calculations/${id}/results`)).status, 401);
 });
 
-test("the dashboard edits the registry, starts downloads and runs the schedule", async () => {
+test("the app edits the registry, starts downloads and runs the schedule", async () => {
   const { send, workflowRuns, queued } = setup();
   const token = await signToken();
   const aapl = { dataset: "prices_eod", symbol: "AAPL.US", provider: "eodhd", backfillStartDate: "2016-01-01" };
 
-  const options = await send("GET", "/api/options", { token });
+  const options = await send("GET", "/app-api/options", { token });
   assert.deepEqual(await options.json(), { datasetProviders: { prices_eod: ["eodhd"] } });
 
-  assert.equal((await send("POST", "/api/registry", { token, body: aapl })).status, 201);
-  const off = await send("POST", "/api/registry/prices_eod/AAPL.US/disable", { token });
+  assert.equal((await send("POST", "/app-api/registry", { token, body: aapl })).status, 201);
+  const off = await send("POST", "/app-api/registry/prices_eod/AAPL.US/disable", { token });
   assert.equal(((await off.json()) as { enabled: boolean }).enabled, false);
-  const on = await send("POST", "/api/registry/prices_eod/AAPL.US/enable", { token });
+  const on = await send("POST", "/app-api/registry/prices_eod/AAPL.US/enable", { token });
   assert.equal(((await on.json()) as { enabled: boolean }).enabled, true);
 
-  const download = await send("POST", "/api/ingestions", {
+  const download = await send("POST", "/app-api/ingestions", {
     token,
     body: { entries: [{ dataset: "prices_eod", symbol: "AAPL.US" }] },
   });
   assert.equal(download.status, 202);
   assert.equal(queued[0]?.symbol, "AAPL.US");
 
-  const schedule = await send("PATCH", "/api/schedule", { token, body: { paused: false, hourUtc: 7 } });
+  const schedule = await send("PATCH", "/app-api/schedule", { token, body: { paused: false, hourUtc: 7 } });
   assert.equal(schedule.status, 200);
   assert.equal(((await schedule.json()) as { hourUtc: number }).hourUtc, 7);
-  assert.equal((await send("POST", "/api/schedule/runs", { token })).status, 202);
+  assert.equal((await send("POST", "/app-api/schedule/runs", { token })).status, 202);
   assert.equal(workflowRuns.length, 1);
-  const runs = (await (await send("GET", "/api/schedule/runs", { token })).json()) as { runs: unknown[] };
+  const runs = (await (await send("GET", "/app-api/schedule/runs", { token })).json()) as { runs: unknown[] };
   assert.equal(runs.runs.length, 1);
 });
 
-test("dashboard changes need Access and must come from the dashboard's own pages", async () => {
+test("changes need Access and must come from the app's own pages", async () => {
   const { send } = setup();
   const token = await signToken();
 
-  assert.equal((await send("POST", "/api/schedule/runs")).status, 401);
+  assert.equal((await send("POST", "/app-api/schedule/runs")).status, 401);
   const cases: [string, Record<string, string>, number][] = [
     ["no Origin", {}, 403],
     ["another site", { Origin: "https://evil.example" }, 403],
@@ -419,37 +418,37 @@ test("dashboard changes need Access and must come from the dashboard's own pages
     ["same origin, fetch metadata only", { "Sec-Fetch-Site": "same-origin" }, 202],
   ];
   for (const [name, headers, status] of cases) {
-    assert.equal((await send("POST", "/api/schedule/runs", { token, headers })).status, status, name);
+    assert.equal((await send("POST", "/app-api/schedule/runs", { token, headers })).status, status, name);
   }
-  assert.equal((await send("GET", "/api/schedule", { token, headers: {} })).status, 200, "reads need no Origin");
+  assert.equal((await send("GET", "/app-api/schedule", { token, headers: {} })).status, 200, "reads need no Origin");
 });
 
-test("the dashboard lists calculation types and runs ad hoc calculations", async () => {
+test("the app lists calculation types and runs ad hoc calculations", async () => {
   const { sqlite, request, send } = setup();
   const token = await signToken();
   insertSymbol(sqlite, "AAPL.US");
 
-  const types = await request("/api/calculation-types", token);
+  const types = await request("/app-api/calculation-types", token);
   assert.equal(types.status, 200);
   assert.deepEqual(await types.json(), { types: [exAnteVol] });
 
   const body = { type: "ex_ante_vol", asOf: "2026-10-16", portfolio: { holdings: [{ symbol: "AAPL.US", weight: 1 }] } };
-  assert.equal((await send("POST", "/api/calculate", { body })).status, 401);
-  assert.equal((await send("POST", "/api/calculate", { body, token, headers: {} })).status, 403);
-  const result = await send("POST", "/api/calculate", { body, token });
+  assert.equal((await send("POST", "/app-api/calculate", { body })).status, 401);
+  assert.equal((await send("POST", "/app-api/calculate", { body, token, headers: {} })).status, 403);
+  const result = await send("POST", "/app-api/calculate", { body, token });
   assert.equal(result.status, 200);
   assert.equal(result.headers.get("Cache-Control"), "no-store");
   assert.deepEqual(await result.json(), { rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }] });
 });
 
-test("the dashboard serves the calculation routes", async () => {
+test("the app serves the calculation routes", async () => {
   const { request, send } = setup();
   const token = await signToken();
-  const list = await request("/api/calculations", token);
+  const list = await request("/app-api/calculations", token);
   assert.equal(list.status, 200);
   assert.deepEqual(await list.json(), { calculations: [] });
 
-  const path = `/api/calculations/${crypto.randomUUID()}/runs`;
+  const path = `/app-api/calculations/${crypto.randomUUID()}/runs`;
   assert.equal((await send("POST", path)).status, 401);
   assert.equal((await send("POST", path, { token, headers: {} })).status, 403);
   assert.equal((await send("POST", path, { token })).status, 404);

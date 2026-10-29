@@ -2,7 +2,7 @@
 	"name": "data-service",
 	"type": "module",
 	"scripts": {
-		"dev": "wrangler dev",
+		"dev": "wrangler dev --local-upstream localhost:8787 --var DASHBOARD_LOCAL_BYPASS:true",
 		"deploy": "wrangler deploy --minify",
 		"deploy:dev": "wrangler deploy --minify --env dev",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",

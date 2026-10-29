@@ -1,7 +1,6 @@
 import { Effect, Layer, Result, Schema } from "effect";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { secureHeaders } from "hono/secure-headers";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
 import { CalculationIdSchema, type Calculations, calculationOutputKey } from "$/calculations";
@@ -55,14 +54,14 @@ const DatasetParamsSchema = Schema.Struct({
 
 const CalculationParamsSchema = Schema.Struct({ id: CalculationIdSchema });
 
-type DashboardEnv = { Bindings: CloudflareBindings; Variables: AccessVariables };
+type AppApiEnv = { Bindings: CloudflareBindings; Variables: AccessVariables };
 
-/** Passes every request; the dashboard has already checked Access. */
+/** Passes every request; the app's API has already checked Access. */
 const accessChecked: MiddlewareHandler = (_, next) => next();
 
 /**
  * Browsers send the Access cookie with cross-site requests too, so changes
- * must come from the dashboard's own pages. JSON bodies already force a CORS
+ * must come from the app's own pages. JSON bodies already force a CORS
  * preflight, which nothing answers; this also covers bodiless POSTs.
  */
 const requireSameOrigin: MiddlewareHandler = async (c, next) => {
@@ -75,13 +74,13 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
 };
 
 /**
- * The dashboard: a Svelte app served from static assets, and an API under
- * `/api`. Every request needs a Cloudflare Access user on the allowlist.
+ * The app's JSON API, which its pages call from the browser (mounted at
+ * `/app-api`). Every request needs a Cloudflare Access user on the allowlist.
  * Besides reading pipeline status, it can edit the registry and the schedule
- * and start downloads, manage portfolios and calculations and run them, through the same routes as
- * the management API.
+ * and start downloads, manage portfolios and calculations and run them,
+ * through the same routes as the management API.
  */
-export const createDashboardRoutes = (
+export const createAppApiRoutes = (
   services: {
     readonly statusFor: (env: CloudflareBindings) => Layer.Layer<PipelineStatus>;
     readonly registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>;
@@ -95,20 +94,8 @@ export const createDashboardRoutes = (
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
   const { statusFor } = services;
-  const app = new Hono<DashboardEnv>();
+  const app = new Hono<AppApiEnv>();
 
-  app.use(
-    "*",
-    secureHeaders({
-      contentSecurityPolicy: {
-        defaultSrc: ["'self'"],
-        imgSrc: ["'self'", "data:"],
-        objectSrc: ["'none'"],
-        baseUri: ["'none'"],
-        frameAncestors: ["'none'"],
-      },
-    }),
-  );
   app.use("*", requireAccessUser(keysFor));
 
   const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, PipelineStatusError, PipelineStatus>) => {
@@ -119,16 +106,15 @@ export const createDashboardRoutes = (
     return result.success;
   };
 
-  const api = new Hono<DashboardEnv>();
-  api.use("*", requireSameOrigin);
-  api.use("*", async (c, next) => {
+  app.use("*", requireSameOrigin);
+  app.use("*", async (c, next) => {
     await next();
     if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-store");
   });
 
-  api.get("/me", (c) => c.json<DashboardUser>({ email: c.get("accessEmail") }));
+  app.get("/me", (c) => c.json<DashboardUser>({ email: c.get("accessEmail") }));
 
-  api.get("/runs", effectValidator("query", RunsQuerySchema, { onExcessProperty: "error" }), async (c) => {
+  app.get("/runs", effectValidator("query", RunsQuerySchema, { onExcessProperty: "error" }), async (c) => {
     const { limit, ...filter } = c.req.valid("query");
     const page = await run(
       c.env,
@@ -139,7 +125,7 @@ export const createDashboardRoutes = (
     return c.json<RunPage>(page);
   });
 
-  api.get("/symbols", effectValidator("query", SymbolsQuerySchema, { onExcessProperty: "error" }), async (c) => {
+  app.get("/symbols", effectValidator("query", SymbolsQuerySchema, { onExcessProperty: "error" }), async (c) => {
     const query = c.req.valid("query");
     const symbols = await run(
       c.env,
@@ -159,7 +145,7 @@ export const createDashboardRoutes = (
    * downloaded again after it changes.
    */
   const streamParquet = async (
-    c: Context<DashboardEnv>,
+    c: Context<AppApiEnv>,
     key: string,
     missing: string,
   ): Promise<Response> => {
@@ -182,7 +168,7 @@ export const createDashboardRoutes = (
     return new Response(object.body, { headers });
   };
 
-  api.get(
+  app.get(
     "/datasets/:dataset/:symbol",
     effectValidator("param", DatasetParamsSchema, { onExcessProperty: "error" }),
     (c) => {
@@ -192,7 +178,7 @@ export const createDashboardRoutes = (
   );
 
   // A calculation's results. They stay in R2 after the calculation is deleted.
-  api.get(
+  app.get(
     "/calculations/:id/results",
     effectValidator("param", CalculationParamsSchema, { onExcessProperty: "error" }),
     (c) => {
@@ -202,26 +188,17 @@ export const createDashboardRoutes = (
   );
 
   // Choices for the registry form.
-  api.get("/options", (c) => c.json({ datasetProviders }));
+  app.get("/options", (c) => c.json({ datasetProviders }));
 
-  api.route("/registry", createSymbolRoutes(services.registryFor, accessChecked));
-  api.route("/ingestions", createIngestionRoutes(services.registryFor, accessChecked));
-  api.route("/schedule", createScheduleRoutes(services, accessChecked));
-  api.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, accessChecked));
-  api.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, accessChecked));
-  api.route("/calculate", createCalculateRoutes(services, accessChecked));
-  api.route("/calculations", createCalculationRoutes(services, accessChecked));
+  app.route("/registry", createSymbolRoutes(services.registryFor, accessChecked));
+  app.route("/ingestions", createIngestionRoutes(services.registryFor, accessChecked));
+  app.route("/schedule", createScheduleRoutes(services, accessChecked));
+  app.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, accessChecked));
+  app.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, accessChecked));
+  app.route("/calculate", createCalculateRoutes(services, accessChecked));
+  app.route("/calculations", createCalculationRoutes(services, accessChecked));
 
-  api.all("*", (c) => c.json({ error: "Not found" }, 404));
-
-  app.route("/api", api);
-
-  // Everything else is the app's static files. Copy the response so the
-  // security headers can be added to it.
-  app.get("*", async (c) => {
-    const asset = await c.env.ASSETS.fetch(c.req.raw);
-    return new Response(asset.body, asset);
-  });
+  app.all("*", (c) => c.json({ error: "Not found" }, 404));
 
   return app;
 };

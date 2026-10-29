@@ -17,20 +17,22 @@
 	"workers_dev": true,
 	"preview_urls": false,
 	// Deploying creates the DNS record and certificate. Cloudflare Access
-	// protects /dashboard and /docs on this hostname.
+	// protects the whole hostname except /api (the management API).
 	"routes": [{ "pattern": "data-service.maximefilippini.me", "custom_domain": true }],
 	// Hourly: starts the daily download once its hour has passed (see
 	// download_schedule), and sweeps queued Parquet rebuilds at 02:00 UTC.
 	"triggers": { "crons": ["0 * * * *"] },
-	// The built dashboard (dist/dashboard/*, served at /dashboard/*) and docs
-	// (dist/docs/*, served at /docs/*). The Worker runs first so it can check
-	// Access before serving them.
+	// The SvelteKit app's static files (dist/_app/*) and the docs (dist/docs/*,
+	// served at /docs/*). The Worker runs first so it can check Access before
+	// serving them.
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
 		"run_worker_first": true,
 	},
-	"build": { "command": "pnpm --filter dashboard --filter docs build" },
+	// The app first: its build empties dist/ and writes the handler that
+	// src/index.ts imports. Then the docs, copied into dist/docs/.
+	"build": { "command": "pnpm --filter app build && pnpm --filter docs build" },
 	// Bucket names for the containers (bindings don't expose them),
 	// and the ingestion queue name so the consumer can tell its queues apart.
 	"vars": {
