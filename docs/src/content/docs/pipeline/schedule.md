@@ -68,16 +68,16 @@ stateDiagram-v2
 
 ```sh
 # Show it, with the next run time
-curl "$URL/schedule" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/schedule" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 
 # Run after 06:00 UTC and resume it (both fields are optional)
-curl -X PATCH "$URL/schedule" \
+curl -X PATCH "$URL/api/schedule" \
   -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"hourUtc":6,"paused":false}'
 
 # Run it now, on top of the daily run
-curl -X POST "$URL/schedule/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X POST "$URL/api/schedule/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
 :::note

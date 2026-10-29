@@ -65,8 +65,8 @@ prices = pl.read_parquet(
 )
 ```
 
-The dashboard reads the same files through `/dashboard/api/datasets/:dataset/:symbol`
-and `/dashboard/api/calculations/:id/results`, which stream them from R2 with
+The app's explorer reads the same files through `/app-api/datasets/:dataset/:symbol`
+and `/app-api/calculations/:id/results`, which stream them from R2 with
 their ETag, so the browser only downloads a file again after it changes.
 
 ## Environments

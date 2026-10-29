@@ -76,6 +76,6 @@ gantt
 To fill in a past date, use run now with an `asOf`:
 
 ```sh
-curl -X POST "$URL/calculations/$ID/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+curl -X POST "$URL/api/calculations/$ID/runs" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
   -H 'Content-Type: application/json' -d '{"asOf":"2026-10-16"}'
 ```

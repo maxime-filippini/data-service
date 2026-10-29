@@ -1,9 +1,6 @@
 import { Effect, Layer } from "effect";
-import { Hono } from "hono";
 
-import { requireManagementToken } from "$/auth";
 import { D1CalculationsLive } from "$/calculations/d1";
-import { EngineLive } from "$/calculations/engine";
 import { failStoppedRuns } from "$/calculations/runs";
 import { triggerScheduledCalculations } from "$/calculations/schedule";
 import { MarketDataError, MarketDataSource } from "$/market-data";
@@ -15,46 +12,19 @@ import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
 import { triggerScheduledRun } from "$/market-data/schedule";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
-import { D1PipelineStatusLive } from "$/market-data/status/d1";
-import { D1PortfoliosLive } from "$/portfolios/d1";
-import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
-import { createCalculationRoutes } from "$/routes/calculations";
-import { createDashboardRoutes } from "$/routes/dashboard";
-import { createDocsRoutes } from "$/routes/docs";
-import { createIngestionRoutes } from "$/routes/ingestions";
-import { createPortfolioRoutes } from "$/routes/portfolios";
-import { createScheduleRoutes } from "$/routes/schedule";
-import { createSymbolRoutes } from "$/routes/symbols";
+import { createRoutes } from "$/routes";
+import { services } from "$/services";
+// SvelteKit's handler, built by `pnpm --filter app build` (wrangler's build
+// command runs it before dev and deploy). It has no type declarations.
+// @ts-expect-error -- generated JavaScript, missing until the app is built
+import sveltekit from "../app/.svelte-kit/cloudflare/_worker.js";
 
 export { CalculationRunWorkflow } from "./calculation-run-workflow";
 export { CalculationEngine } from "./engine-container";
 export { MarketDataProcessor } from "./processor-container";
 export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
 
-/** What the management API and the dashboard share. */
-const services = {
-  statusFor: (env: CloudflareBindings) => D1PipelineStatusLive(env.MARKET_DATA_DB),
-  registryFor: (env: CloudflareBindings) => D1SymbolRegistryLive(env.MARKET_DATA_DB),
-  storeFor: (env: CloudflareBindings) => D1ScheduleStoreLive(env.MARKET_DATA_DB),
-  workflowFor: (env: CloudflareBindings) => env.SCHEDULED_DOWNLOADS,
-  portfoliosFor: (env: CloudflareBindings) => D1PortfoliosLive(env.MARKET_DATA_DB),
-  // One engine instance for now, like the processor.
-  engineFor: (env: CloudflareBindings) => EngineLive(env.CALCULATION_ENGINE.getByName("engine")),
-  calculationsFor: (env: CloudflareBindings) => D1CalculationsLive(env.MARKET_DATA_DB),
-  runWorkflowFor: (env: CloudflareBindings) => env.CALCULATION_RUNS,
-};
-
-const app = new Hono<{ Bindings: CloudflareBindings }>();
-
-app.route("/symbols", createSymbolRoutes(services.registryFor, requireManagementToken));
-app.route("/ingestions", createIngestionRoutes(services.registryFor, requireManagementToken));
-app.route("/schedule", createScheduleRoutes(services, requireManagementToken));
-app.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, requireManagementToken));
-app.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, requireManagementToken));
-app.route("/calculate", createCalculateRoutes(services, requireManagementToken));
-app.route("/calculations", createCalculationRoutes(services, requireManagementToken));
-app.route("/dashboard", createDashboardRoutes(services));
-app.route("/docs", createDocsRoutes());
+const app = createRoutes(services, sveltekit);
 
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
 const PROCESSING_SWEEP_HOUR = 2;

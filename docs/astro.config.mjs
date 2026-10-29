@@ -3,7 +3,7 @@ import { defineConfig } from "astro/config";
 import mermaid from "astro-mermaid";
 
 // Served at /docs/. `pnpm build` copies dist/ to ../dist/docs/ next to the
-// dashboard for the Worker's assets. Astro builds inside this package so its
+// app's files for the Worker's assets. Astro builds inside this package so its
 // prerender step resolves this package's dependencies, not the root's.
 export default defineConfig({
   site: "https://data-service.maximefilippini.me",
