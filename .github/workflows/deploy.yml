@@ -27,11 +27,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          # The runner's cached 22.x can be older than Astro's minimum.
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm dashboard:check
+      - run: pnpm app:check
+      - run: pnpm docs:build
 
   check-processor:
     runs-on: ubuntu-latest
@@ -67,7 +70,7 @@ jobs:
     concurrency: deploy-dev
     environment:
       name: dev
-      url: https://data-service-dev.maxime-filippini.workers.dev
+      url: https://data-service-dev.maximefilippini.me
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
@@ -78,6 +81,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          # The runner's cached 22.x can be older than Astro's minimum.
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate:dev
@@ -99,6 +104,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          # The runner's cached 22.x can be older than Astro's minimum.
+          check-latest: true
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate:remote

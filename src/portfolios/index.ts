@@ -1,6 +1,7 @@
 import { Context, type Effect, Schema } from "effect";
 
 import { MarketDateSchema, MarketSymbolSchema } from "$/market-data/schemas";
+import type { Portfolio, PortfolioSummary, Snapshot } from "$/portfolios/views";
 
 /** Most holdings one snapshot can have. */
 export const MAX_SNAPSHOT_HOLDINGS = 5000;
@@ -39,29 +40,7 @@ export type CreatePortfolio = typeof CreatePortfolioSchema.Type;
 
 export const RenamePortfolioSchema = Schema.Struct({ name: PortfolioNameSchema });
 
-export interface PortfolioSummary {
-  readonly id: string;
-  readonly name: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly snapshotCount: number;
-  readonly latestHoldingsDate: string | null;
-}
-
-export interface Snapshot {
-  readonly holdingsDate: string;
-  readonly createdAt: string;
-  readonly holdings: readonly Holding[];
-}
-
-export interface Portfolio {
-  readonly id: string;
-  readonly name: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  /** Oldest first. */
-  readonly snapshots: readonly Snapshot[];
-}
+export type * from "$/portfolios/views";
 
 /** A portfolio as the calculation engine takes it in run and ad hoc requests. */
 export interface EnginePortfolio {

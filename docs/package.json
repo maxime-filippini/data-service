@@ -1,0 +1,17 @@
+{
+	"name": "docs",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build && rm -rf ../dist/docs && mkdir -p ../dist && cp -R dist ../dist/docs",
+		"preview": "astro preview"
+	},
+	"dependencies": {
+		"@astrojs/starlight": "^0.42.7",
+		"astro": "^7.4.2",
+		"astro-mermaid": "^2.2.0",
+		"cookie": "^2.0.1",
+		"mermaid": "^12.2.0"
+	}
+}

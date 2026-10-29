@@ -2,7 +2,13 @@ import { Context, type Effect, Schema } from "effect";
 
 import { CalculationTypeNameSchema } from "$/calculations/ad-hoc";
 import { isCronError, parseCron } from "$/calculations/cron";
-import type { CalculationParams, PortfolioOutcome } from "$/calculations/engine";
+import type {
+  Calculation,
+  CalculationParams,
+  CalculationRun,
+  PortfolioOutcome,
+  RunTrigger,
+} from "$/calculations/views";
 import { MarketDateSchema } from "$/market-data/schemas";
 import { PortfolioIdSchema } from "$/portfolios";
 
@@ -62,41 +68,8 @@ export const StartRunSchema = Schema.Struct({
   asOf: Schema.optionalKey(MarketDateSchema),
 });
 
-export type RunTrigger = "schedule" | "manual";
-export type RunStatus = "running" | "completed" | "partial" | "failed" | "skipped";
-
-export interface CalculationRun {
-  readonly runId: string;
-  readonly calculationId: string;
-  readonly trigger: RunTrigger;
-  readonly asOf: string;
-  /** The params the run used. */
-  readonly params: CalculationParams;
-  readonly status: RunStatus;
-  /** Each portfolio's outcome, once the run has finished. */
-  readonly portfolios: readonly PortfolioOutcome[] | null;
-  readonly rowCount: number | null;
-  readonly outputEtag: string | null;
-  readonly error: string | null;
-  readonly createdAt: string;
-  readonly completedAt: string | null;
-}
-
-export interface Calculation {
-  readonly id: string;
-  readonly name: string;
-  readonly type: string;
-  readonly params: CalculationParams;
-  /** In the order they run. */
-  readonly portfolioIds: readonly string[];
-  readonly cron: string;
-  readonly enabled: boolean;
-  /** Where the results are in the processed bucket. */
-  readonly outputKey: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly lastRun: CalculationRun | null;
-}
+export type * from "$/calculations/views";
+export type { CalculationRunStatus as RunStatus } from "$/calculations/views";
 
 /** A calculation's results, in the processed bucket. */
 export const calculationOutputKey = (calculationId: string) => `calculation=${calculationId}/data.parquet`;
@@ -157,6 +130,11 @@ export class Calculations extends Context.Service<
     readonly update: (id: string, patch: CalculationPatch, now: string) => Effect.Effect<Calculation, CalculationError>;
     /** Delete a calculation and its runs. Its results stay in R2. */
     readonly remove: (id: string) => Effect.Effect<void, CalculationError>;
+    /**
+     * Record that the schedule is starting a run for a cron slot. False if
+     * that slot or a later one was already recorded, so a slot runs once.
+     */
+    readonly claimSlot: (id: string, slot: string) => Effect.Effect<boolean, CalculationError>;
 
     /**
      * Record a new run as `running`, or as `skipped` if the calculation already
