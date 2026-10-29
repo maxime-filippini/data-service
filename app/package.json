@@ -1,22 +1,28 @@
 {
-	"name": "dashboard",
+	"name": "app",
 	"private": true,
 	"type": "module",
+	"imports": {
+		"#lib/*": "./src/lib/*"
+	},
 	"scripts": {
-		"dev": "vite",
+		"dev": "vite dev",
 		"build": "vite build",
-		"check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
 	},
 	"devDependencies": {
+		"@sveltejs/adapter-cloudflare": "^8.0.1",
+		"@sveltejs/kit": "^3.1.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
-		"@tsconfig/svelte": "^5.0.8",
 		"svelte": "^5.57.2",
 		"svelte-check": "^4.7.7",
 		"typescript": "^6.0.3",
-		"vite": "^8.3.4"
+		"vite": "^8.3.4",
+		"wrangler": "^4.145.0"
 	},
 	"dependencies": {
 		"@tanstack/svelte-table": "^9.3.1",
+		"cookie": "^2.0.1",
 		"fzstd": "^0.1.1",
 		"hyparquet": "^1.31.4"
 	}

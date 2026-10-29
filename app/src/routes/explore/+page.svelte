@@ -12,19 +12,14 @@
   } from "@tanstack/svelte-table";
   import { untrack } from "svelte";
 
-  import {
-    type Calculation,
-    calculationResultsUrl,
-    datasetUrl,
-    fetchCalculationResults,
-    fetchCalculations,
-    fetchDatasetFile,
-    fetchSymbols,
-    type SymbolStatusView,
-  } from "../lib/api";
-  import { formatBytes, formatCount, formatRange, formatValue } from "../lib/format";
-  import { readParquet, type Column, type Dataset, type Row } from "../lib/parquet";
-  import { href, replace, route } from "../lib/router.svelte";
+  import { calculationResultsUrl, datasetUrl, fetchCalculationResults, fetchDatasetFile } from "#lib/api.ts";
+  import { formatBytes, formatCount, formatRange, formatValue } from "#lib/format.ts";
+  import { readParquet, type Column, type Dataset, type Row } from "#lib/parquet.ts";
+  import { href, replace, route } from "#lib/router.svelte.ts";
+
+  import type { PageProps } from "./$types";
+
+  let { data }: PageProps = $props();
 
   const PAGE_SIZES = [25, 50, 100, 250];
 
@@ -41,8 +36,8 @@
   /** A calculation's results, `calculation=<id>/data.parquet`, instead of a dataset. */
   const calculation = $derived(route.params.get("calculation") ?? "");
 
-  let symbols = $state<SymbolStatusView[]>([]);
-  let calculations = $state<Calculation[]>([]);
+  const symbols = $derived(data.symbols);
+  const calculations = $derived(data.calculations);
   let file = $state<Dataset | null>(null);
   let fileSize = $state(0);
   let loading = $state(false);
@@ -52,13 +47,6 @@
 
   // Only symbols with a successful download can have a Parquet file.
   const choices = $derived(symbols.filter((s) => s.lastCompletedRun !== null));
-
-  fetchSymbols({})
-    .then((result) => (symbols = result.symbols))
-    .catch((cause) => (error = cause instanceof Error ? cause.message : String(cause)));
-  fetchCalculations()
-    .then((result) => (calculations = result.calculations))
-    .catch(() => undefined);
 
   const chosenCalculation = $derived(calculations.find((c) => c.id === calculation));
   const chosen = $derived(calculation ? `calculation:${calculation}` : dataset && symbol ? `${dataset}/${symbol}` : "");

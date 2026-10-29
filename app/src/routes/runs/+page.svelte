@@ -1,50 +1,52 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { refreshAll } from "$app/navigation";
+  import { navigating } from "$app/state";
 
-  import { fetchRuns, type IngestionRunView, type RunStatus } from "../lib/api";
-  import { formatAgo, formatCount, formatDateTime, formatDuration, formatRange } from "../lib/format";
-  import { href, replace, route } from "../lib/router.svelte";
-  import StatusBadge from "../lib/StatusBadge.svelte";
+  import { fetchRuns, type RunStatus } from "#lib/api.ts";
+  import { formatAgo, formatCount, formatDateTime, formatDuration, formatRange } from "#lib/format.ts";
+  import { href, replace, route } from "#lib/router.svelte.ts";
+  import StatusBadge from "#lib/StatusBadge.svelte";
+
+  import type { PageProps } from "./$types";
+
+  let { data }: PageProps = $props();
 
   const STATUSES: RunStatus[] = ["fetching", "completed", "failed"];
 
   const symbol = $derived(route.params.get("symbol") ?? "");
   const status = $derived((route.params.get("status") ?? "") as RunStatus | "");
 
-  let runs = $state<readonly IngestionRunView[]>([]);
-  let nextCursor = $state<string | null>(null);
-  let loading = $state(false);
+  // The server loads the first page for the filters in the URL; older pages
+  // are appended here.
+  let runs = $derived(data.page.runs);
+  let nextCursor = $derived(data.page.nextCursor);
+  let loadingMore = $state(false);
   let error = $state<string | null>(null);
   let expanded = $state<string | null>(null);
-  let updatedAt = $state<Date | null>(null);
-  let symbolInput = $state("");
+  const updatedAt = $derived.by(() => (void data, new Date()));
+  let symbolInput = $derived(symbol);
 
-  // Ignore responses to requests that a newer one replaced.
-  let latestRequest = 0;
+  const loading = $derived(loadingMore || navigating.to !== null);
 
-  const load = async (cursor?: string) => {
-    const request = ++latestRequest;
-    loading = true;
+  const loadMore = async () => {
+    if (nextCursor === null) return;
+    loadingMore = true;
     error = null;
     try {
-      const page = await fetchRuns({ symbol: symbol || undefined, status: status || undefined, cursor });
-      if (request !== latestRequest) return;
-      runs = cursor === undefined ? page.runs : [...runs, ...page.runs];
+      const page = await fetchRuns({ symbol: symbol || undefined, status: status || undefined, cursor: nextCursor });
+      runs = [...runs, ...page.runs];
       nextCursor = page.nextCursor;
-      updatedAt = new Date();
     } catch (cause) {
-      if (request === latestRequest) error = cause instanceof Error ? cause.message : String(cause);
+      error = cause instanceof Error ? cause.message : String(cause);
     } finally {
-      if (request === latestRequest) loading = false;
+      loadingMore = false;
     }
   };
 
-  // Reload from the first page whenever the filters in the URL change.
-  $effect(() => {
-    symbolInput = symbol;
-    void status;
-    untrack(() => load());
-  });
+  const refresh = () => {
+    error = null;
+    return refreshAll();
+  };
 
   const setFilter = (next: { symbol?: string; status?: string }) =>
     replace("runs", { symbol, status, ...next });
@@ -75,10 +77,8 @@
     <a href={href("runs")}>Clear filters</a>
   {/if}
   <span class="spacer"></span>
-  {#if updatedAt}
-    <span class="muted">Updated {updatedAt.toLocaleTimeString()}</span>
-  {/if}
-  <button onclick={() => load()} disabled={loading}>Refresh</button>
+  <span class="muted">Updated {updatedAt.toLocaleTimeString()}</span>
+  <button onclick={refresh} disabled={loading}>Refresh</button>
 </div>
 
 {#if error}
@@ -182,7 +182,7 @@
 
 {#if nextCursor || (loading && runs.length > 0)}
   <div class="more">
-    <button onclick={() => load(nextCursor ?? undefined)} disabled={loading}>
+    <button onclick={loadMore} disabled={loading}>
       {loading ? "Loading…" : "Load older runs"}
     </button>
   </div>

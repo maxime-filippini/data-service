@@ -19,12 +19,15 @@
   import StatusBadge from "./StatusBadge.svelte";
 
   let {
-    id,
+    calculation: initialCalculation,
+    runs: initialRuns,
     types,
     portfolios,
     ondeleted,
   }: {
-    id: string;
+    /** As loaded with the page; reloaded here after each change. */
+    calculation: Calculation;
+    runs: readonly CalculationRun[];
     types: readonly CalculationTypeInfo[];
     portfolios: readonly PortfolioSummary[];
     /** Called with the calculation's name once it's deleted. */
@@ -34,8 +37,9 @@
   /** How often to check on a running run. */
   const POLL_MS = 5000;
 
-  let calculation = $state<Calculation | null>(null);
-  let runs = $state<CalculationRun[]>([]);
+  let calculation = $derived<Calculation | null>(initialCalculation);
+  let runs = $derived<readonly CalculationRun[]>(initialRuns);
+  const id = $derived(initialCalculation.id);
   let loading = $state(false);
   let busy = $state(false);
   let editing = $state(false);
@@ -59,8 +63,6 @@
       loading = false;
     }
   };
-  void load();
-
   // Check again while a run is going, so its outcome shows up on its own.
   const running = $derived(runs.some((run) => run.status === "running"));
   $effect(() => {

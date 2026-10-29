@@ -11,16 +11,21 @@
   import StatusBadge from "./StatusBadge.svelte";
 
   let {
+    schedule: initialSchedule,
+    runs: initialRuns,
     scheduledCount,
     onnotify,
   }: {
+    /** As loaded with the page; the card reloads them after each change. */
+    schedule: ScheduleView;
+    runs: readonly ScheduleRun[];
     scheduledCount: number;
     /** Show an outcome in the page's message area. */
     onnotify: (outcome: { message: string } | { error: string } | null) => void;
   } = $props();
 
-  let schedule = $state<ScheduleView | null>(null);
-  let runs = $state<ScheduleRun[]>([]);
+  let schedule = $derived<ScheduleView | null>(initialSchedule);
+  let runs = $derived<readonly ScheduleRun[]>(initialRuns);
   let busy = $state(false);
   let showHistory = $state(false);
 
@@ -46,8 +51,6 @@
       onnotify({ error: describe(cause) });
     }
   };
-  void load();
-
   const act = async (action: () => Promise<string>) => {
     busy = true;
     onnotify(null);

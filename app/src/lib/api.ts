@@ -40,7 +40,7 @@ export class ApiError extends Error {}
 export const apiUrl = (path: string, params: Record<string, string | undefined> = {}) => {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
-  return `${import.meta.env.BASE_URL}api${path}${query.size > 0 ? `?${query}` : ""}`;
+  return `/app-api${path}${query.size > 0 ? `?${query}` : ""}`;
 };
 
 type ErrorBody = {

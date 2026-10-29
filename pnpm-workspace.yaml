@@ -5,7 +5,7 @@ allowBuilds:
   esbuild: true
   workerd: true
 packages:
-  - dashboard
+  - app
   - docs
 # Matches pnpm 11's default (used in CI), so local installs resolve the same
 # versions: nothing published in the last day.

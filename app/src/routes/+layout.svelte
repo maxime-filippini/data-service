@@ -1,41 +1,40 @@
 <script lang="ts">
-  import { fetchMe } from "./lib/api";
-  import { href, route } from "./lib/router.svelte";
-  import Calculations from "./views/Calculations.svelte";
-  import Explore from "./views/Explore.svelte";
-  import Portfolios from "./views/Portfolios.svelte";
-  import Runs from "./views/Runs.svelte";
-  import Symbols from "./views/Symbols.svelte";
+  import { page } from "$app/state";
 
-  const me = fetchMe().catch(() => undefined);
+  import "../app.css";
+  import type { LayoutProps } from "./$types";
+
+  let { data, children }: LayoutProps = $props();
+
+  const SECTIONS = [
+    { path: "/runs", label: "Ingestion runs" },
+    { path: "/symbols", label: "Symbols" },
+    { path: "/portfolios", label: "Portfolios" },
+    { path: "/calculations", label: "Calculations" },
+    { path: "/explore", label: "Explore data" },
+  ];
+
+  const isActive = (path: string) => page.url.pathname === path || page.url.pathname.startsWith(`${path}/`);
 </script>
 
+<svelte:head>
+  <title>Data service</title>
+</svelte:head>
+
 <header>
-  <span class="title">Data service</span>
+  <a class="title" href="/" class:active={page.url.pathname === "/"}>Data service</a>
   <nav>
-    <a href={href("runs")} class:active={route.view === "runs"}>Ingestion runs</a>
-    <a href={href("symbols")} class:active={route.view === "symbols"}>Symbols</a>
-    <a href={href("portfolios")} class:active={route.view === "portfolios"}>Portfolios</a>
-    <a href={href("calculations")} class:active={route.view === "calculations"}>Calculations</a>
-    <a href={href("explore")} class:active={route.view === "explore"}>Explore data</a>
+    {#each SECTIONS as section (section.path)}
+      <a href={section.path} class:active={isActive(section.path)}>{section.label}</a>
+    {/each}
+    <!-- The docs are a separate (Astro) site, so leave the app to open them. -->
+    <a href="/docs/" rel="external">Docs</a>
   </nav>
-  <span class="user muted">
-    {#await me then user}<span title={user?.email}>{user?.email ?? ""}</span>{/await}
-  </span>
+  <span class="user muted"><span title={data.user.email}>{data.user.email}</span></span>
 </header>
 
 <main>
-  {#if route.view === "symbols"}
-    <Symbols />
-  {:else if route.view === "portfolios"}
-    <Portfolios />
-  {:else if route.view === "calculations"}
-    <Calculations />
-  {:else if route.view === "explore"}
-    <Explore />
-  {:else}
-    <Runs />
-  {/if}
+  {@render children()}
 </main>
 
 <style>
@@ -51,6 +50,10 @@
   .title {
     font-weight: 700;
     white-space: nowrap;
+    color: var(--text);
+  }
+  .title:hover {
+    text-decoration: none;
   }
   nav {
     display: flex;

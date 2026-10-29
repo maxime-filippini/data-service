@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   import {
@@ -15,17 +16,19 @@
   import { href } from "./router.svelte";
 
   let {
-    id,
+    portfolio: initial,
     symbols,
     ondeleted,
   }: {
-    id: string;
+    /** As loaded with the page; reloaded here after each change. */
+    portfolio: Portfolio;
     symbols: readonly string[];
     /** Called with the portfolio's name once it's deleted. */
     ondeleted: (name: string) => void;
   } = $props();
 
-  let portfolio = $state<Portfolio | null>(null);
+  let portfolio = $derived<Portfolio | null>(initial);
+  const id = $derived(initial.id);
   let loading = $state(false);
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -39,8 +42,11 @@
   let holdingsDate = $state(new Date().toISOString().slice(0, 10));
   let rows = $state<HoldingRow[]>([emptyRow()]);
 
-  /** Holdings dates whose holdings are shown. */
-  const open = new SvelteSet<string>();
+  /**
+   * Holdings dates whose holdings are shown: the latest snapshot's at first.
+   * The page re-creates this component for another portfolio.
+   */
+  const open = new SvelteSet<string>(untrack(() => initial.snapshots.slice(-1).map((s) => s.holdingsDate)));
 
   const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
@@ -48,17 +54,12 @@
     loading = true;
     try {
       portfolio = await fetchPortfolio(id);
-      // Show the latest snapshot's holdings by default.
-      const latest = portfolio.snapshots.at(-1);
-      if (open.size === 0 && latest) open.add(latest.holdingsDate);
     } catch (cause) {
       error = describe(cause);
     } finally {
       loading = false;
     }
   };
-  void load();
-
   /** Newest first. */
   const snapshots = $derived([...(portfolio?.snapshots ?? [])].reverse());
 

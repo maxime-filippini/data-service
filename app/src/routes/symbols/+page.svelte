@@ -1,25 +1,22 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
 
-  import {
-    type DatasetProviders,
-    fetchOptions,
-    fetchSymbols,
-    type RegisterInput,
-    requestDownloads,
-    setOnSchedule,
-    type SymbolStatusView,
-  } from "../lib/api";
-  import { formatAgo, formatCount, formatDateTime } from "../lib/format";
-  import { href, replace, route } from "../lib/router.svelte";
-  import ScheduleCard from "../lib/ScheduleCard.svelte";
-  import StatusBadge from "../lib/StatusBadge.svelte";
-  import SymbolForm from "../lib/SymbolForm.svelte";
+  import { fetchSymbols, type RegisterInput, requestDownloads, setOnSchedule, type SymbolStatusView } from "#lib/api.ts";
+  import { formatAgo, formatCount, formatDateTime } from "#lib/format.ts";
+  import { href, replace, route } from "#lib/router.svelte.ts";
+  import ScheduleCard from "#lib/ScheduleCard.svelte";
+  import StatusBadge from "#lib/StatusBadge.svelte";
+  import SymbolForm from "#lib/SymbolForm.svelte";
+
+  import type { PageProps } from "./$types";
+
+  let { data }: PageProps = $props();
 
   const enabled = $derived((route.params.get("enabled") ?? "") as "true" | "false" | "");
 
-  let symbols = $state<SymbolStatusView[]>([]);
-  let options = $state<DatasetProviders>({});
+  // Loaded on the server, then reloaded here after each change.
+  let symbols = $derived<readonly SymbolStatusView[]>(data.symbols);
+  const options = $derived(data.options);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let message = $state<string | null>(null);
@@ -51,10 +48,6 @@
       if (request === latestRequest) loading = false;
     }
   };
-  void load();
-  fetchOptions()
-    .then((result) => (options = result.datasetProviders))
-    .catch((cause) => (error = describe(cause)));
 
   const visible = $derived(
     symbols.filter(
@@ -142,6 +135,8 @@
 </script>
 
 <ScheduleCard
+  schedule={data.schedule}
+  runs={data.scheduleRuns}
   scheduledCount={counts.scheduled}
   onnotify={(outcome) => {
     error = outcome && "error" in outcome ? outcome.error : null;

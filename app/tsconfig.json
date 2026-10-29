@@ -1,0 +1,13 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // The pages' server-side loads use the Worker's page data. Typecheck them
+    // against its facade, not the Worker's modules (see ../src/pages/app.ts).
+    "paths": { "$/pages": ["../src/pages/app.ts"] }
+  },
+  "include": ["src", "*"],
+  "exclude": ["src/service-worker"]
+}

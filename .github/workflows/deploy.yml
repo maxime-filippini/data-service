@@ -33,7 +33,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm dashboard:check
+      - run: pnpm app:check
       - run: pnpm docs:build
 
   check-processor:

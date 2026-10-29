@@ -18,6 +18,6 @@
         "node"
     ]
   },
-  // The dashboard, the docs and the containers have their own toolchains.
-  "exclude": ["node_modules", "dashboard", "docs", "containers"],
+  // The app, the docs and the containers have their own toolchains.
+  "exclude": ["node_modules", "app", "docs", "containers"],
 }
