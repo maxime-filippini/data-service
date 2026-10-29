@@ -1,6 +1,6 @@
 ---
 title: Local development
-description: Running the Worker, dashboard, docs and containers on your machine.
+description: Running the Worker, the app, the docs and the containers on your machine.
 ---
 
 ## Setup
@@ -12,33 +12,42 @@ pnpm db:migrate:local
 pnpm dev
 ```
 
-`pnpm dev` builds the dashboard and this site, then runs the Worker on
+`pnpm dev` builds the app and this site, then runs the Worker on
 `http://localhost:8787`:
 
 | URL | What |
 | --- | --- |
-| `http://localhost:8787/` | Management API |
-| `http://localhost:8787/dashboard/` | Dashboard |
+| `http://localhost:8787/` | The app: home page and dashboard |
+| `http://localhost:8787/api/` | Management API |
 | `http://localhost:8787/docs/` | These docs |
 
-Set `DASHBOARD_LOCAL_BYPASS=true` in `.dev.vars` to skip the Access check on
-the dashboard and docs; it only works for requests to localhost.
+`pnpm dev` skips the Access check on the app and docs by passing
+`--var DASHBOARD_LOCAL_BYPASS:true`; the Worker honors it only for requests to
+localhost. It's a flag rather than a `.dev.vars` line because wrangler only
+loads the secrets declared in `wrangler.jsonc` from `.dev.vars`. `pnpm dev`
+also passes `--local-upstream localhost:8787`: without it, `wrangler dev` gives
+the Worker the custom domain from `wrangler.jsonc` as the request's host, and
+the bypass never applies.
 
 ### Hot reload
 
 ```sh
-pnpm dev               # the Worker, for the dashboard's API
-pnpm dashboard:dev     # http://localhost:5173/dashboard/
+pnpm dev               # the Worker, for the app's JSON API (/app-api)
+pnpm app:dev           # http://localhost:5173/
 pnpm docs:dev          # http://localhost:4321/docs/
 ```
+
+`pnpm app:dev` runs SvelteKit's dev server. Its pages load their data from the
+same local D1 database as `pnpm dev`, and it forwards `/app-api` to the Worker
+on 8787, so run both. It always signs you in as `local@localhost`.
 
 ## Limits of `pnpm dev`
 
 `pnpm dev` can't run the full pipeline: the containers read real R2 while the
-local Worker writes to simulated buckets. To try the dashboard without them:
+local Worker writes to simulated buckets. To try the app without them:
 
 ```sh
-pnpm exec wrangler dev --enable-containers=false
+pnpm dev --enable-containers=false
 ```
 
 Pages that need the engine (calculation types, saving params, runs) show its
@@ -62,7 +71,7 @@ On CPUs without AVX2, polars needs its compatibility runtime:
 ```sh
 pnpm test
 pnpm typecheck
-pnpm dashboard:check
+pnpm app:check
 pnpm docs:build
 pnpm processor:test     # needs uv
 pnpm processor:lint

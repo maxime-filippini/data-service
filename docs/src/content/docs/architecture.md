@@ -31,7 +31,7 @@ flowchart TB
   d1[("D1<br/>data-service-market-data")]
   raw[("R2<br/>raw-market-data")]
   proc[("R2<br/>processed-market-data")]
-  assets[["Static assets<br/>dashboard + docs"]]
+  assets[["Static assets<br/>app files + docs"]]
 
   fetch --> d1
   fetch --> assets
@@ -50,7 +50,7 @@ flowchart TB
 | **Worker** | Management API, hourly cron, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the processor container, and the calculation API that drives the engine container. |
 | **`ScheduledDownloadWorkflow`** | One instance per run of the daily schedule. Queues a download for every enabled symbol and records the outcome. |
 | **`CalculationRunWorkflow`** | One instance per calculation run. Calls the engine and records the outcome. |
-| **Dashboard** (`dashboard/`) | Svelte app for runs, symbols, the schedule, portfolios, calculations and the Parquet data, served by the Worker behind Cloudflare Access. |
+| **App** (`app/`) | SvelteKit app: a home page summing up both pipelines, and the dashboard pages for runs, symbols, the schedule, portfolios, calculations and the Parquet data. Runs inside the Worker, behind Cloudflare Access. See [The app and sign-in](/docs/operations/dashboard/). |
 | **D1** | Universe, schedule, runs, jobs, portfolios and calculations. No market data or results. See [Data model](/docs/reference/data-model/). |
 | **`raw-market-data`** (R2) | Immutable validated provider responses, one per run. |
 | **Processor container** | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
@@ -66,9 +66,10 @@ system:
 flowchart LR
   subgraph fetch
     direction TB
-    f1["/symbols, /ingestions, /schedule"]
-    f2["/portfolios, /calculations, /calculation-types, /calculate"]
-    f3["/dashboard/*"]
+    f1["/api/*<br/>management API (token)"]
+    f2["/app-api/*<br/>the app's JSON API"]
+    f3["/docs/*<br/>this site"]
+    f4["everything else<br/>SvelteKit app"]
   end
   subgraph scheduled["scheduled (every hour)"]
     direction TB

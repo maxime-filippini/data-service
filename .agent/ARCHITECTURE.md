@@ -5,7 +5,7 @@ a schedule, turns each symbol's history into one Parquet file in R2, and lets
 other apps manage the universe. On top of that data it runs calculations over
 portfolios, such as ex-ante volatility, and stores their results next to the
 datasets. Apps read the Parquet files from R2 directly; the management API
-never serves market data. Only the dashboard does, so its users can browse the
+never serves market data. Only the app does, so its users can browse the
 files.
 
 ```txt
@@ -32,7 +32,7 @@ Glossary: [CONTEXT.md](../CONTEXT.md).
 | Worker | Management API, hourly cron, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the processor container, and the calculation API that drives the engine container. |
 | `ScheduledDownloadWorkflow` | One Workflow instance per run of the daily schedule. Queues a download for every enabled symbol and records the outcome. |
 | `CalculationRunWorkflow` | One Workflow instance per calculation run. Calls the engine and records the outcome. |
-| Dashboard ([`dashboard/`](../dashboard)) | Svelte app for runs, symbols, the schedule, portfolios, calculations and the Parquet data, served by the Worker behind Cloudflare Access. It can edit the registry, the schedule, portfolios and calculations, start downloads and run calculations. |
+| App ([`app/`](../app)) | SvelteKit app: a home page summing up both pipelines, and pages for runs, symbols, the schedule, portfolios, calculations and the Parquet data. Runs inside the Worker behind Cloudflare Access. It can edit the registry, the schedule, portfolios and calculations, start downloads and run calculations. |
 | D1 | Universe (`tracked_symbols`), `download_schedule`, `schedule_runs`, `ingestion_runs`, `processing_jobs`; `portfolios`, `portfolio_snapshots`, `portfolio_holdings`; `calculations`, `calculation_portfolios`, `calculation_runs`. No market data or results. |
 | `raw-market-data` (R2) | Immutable validated provider responses, one per run. |
 | Processor container ([`containers/processor`](../containers/processor)) | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
@@ -82,7 +82,7 @@ Adding a dataset (for example FRED rates):
 
 One schedule downloads every enabled symbol once a day. `download_schedule`
 holds its UTC hour and a paused flag (it starts paused). Both the management
-API (`/schedule`) and the dashboard can change them.
+API (`/schedule`) and the app can change them.
 
 - **Trigger.** The cron fires at the top of every hour. Once the schedule's
   hour has passed and today has no scheduled run, it records the run in
@@ -191,27 +191,43 @@ how the parts fit together.
 
 ## Management API
 
-All routes need `Authorization: Bearer <MANAGEMENT_API_TOKEN>`. See the
+Served under `/api`. All routes need `Authorization: Bearer
+<MANAGEMENT_API_TOKEN>`; Cloudflare Access lets `/api` through. See the
 [README](../README.md) for examples.
 
-## Dashboard
+## App
 
-A Svelte app in `dashboard/`, built into the Worker's static assets and served
-at `/dashboard/`, with an API at `/dashboard/api/*`. The Worker runs before the
-assets (`run_worker_first`), so every dashboard request, including its files,
+A SvelteKit app in `app/` (adapter-cloudflare). Routing lives in
+`src/routes/index.ts`: `/api/*` is the management API, `/app-api/*` the app's
+JSON API, `/docs/*` the docs, and everything else goes to SvelteKit's handler,
+which `src/index.ts` imports from the app's build
+(`app/.svelte-kit/cloudflare/_worker.js`). The adapter reads
+`app/wrangler.adapter.jsonc`, not the real config, because it deletes and
+rewrites the `main` it's given. The Worker runs before the assets
+(`run_worker_first`), so every request but `/api`, static files included,
 needs a Cloudflare Access user whose email is in `DASHBOARD_ALLOWED_EMAILS`.
-The management token is never sent to the browser.
+The Worker passes the user's email to SvelteKit in `X-Access-Email`, which it
+always sets itself. The management token is never sent to the browser.
 
-- **Reads:** `/me`, `/runs`, `/symbols` (status views from `PipelineStatus`),
-  `/datasets/:dataset/:symbol` and `/calculations/:id/results` (Parquet
-  files) and `/options` (datasets and their providers, for the registry form).
-- **Changes:** `/registry`, `/ingestions`, `/schedule`, `/portfolios`,
-  `/calculation-types`, `/calculate` and `/calculations` mount the same route
-  modules as the management API's `/symbols`, `/ingestions`, `/schedule`,
-  `/portfolios`, `/calculation-types`, `/calculate` and `/calculations`, with
-  Access in place of the token. Browsers send the Access cookie on
-  cross-site requests too, so every non-GET request must come from the
-  dashboard's own origin (`Origin` or `Sec-Fetch-Site`), or it gets `403`.
+- **Pages** (`/`, `/runs`, `/symbols`, `/portfolios[/:id]`,
+  `/calculations[/:id]`, `/explore`) load their data in `+page.server.ts` from
+  `src/pages` (reads only). The app typechecks against `src/pages/app.ts`, a
+  declarations-only facade, because the Worker's modules need the Workers
+  runtime types, which clash with the DOM's. `src/pages/index.ts` checks that
+  it matches the facade.
+- **The JSON API** (`/app-api`) serves changes, "load more" and refreshes from
+  the browser:
+
+  - **Reads:** `/me`, `/runs`, `/symbols` (status views from `PipelineStatus`),
+    `/datasets/:dataset/:symbol` and `/calculations/:id/results` (Parquet
+    files) and `/options` (datasets and their providers, for the registry form).
+  - **Changes:** `/registry`, `/ingestions`, `/schedule`, `/portfolios`,
+    `/calculation-types`, `/calculate` and `/calculations` mount the same route
+    modules as the management API's `/symbols`, `/ingestions`, `/schedule`,
+    `/portfolios`, `/calculation-types`, `/calculate` and `/calculations`, with
+    Access in place of the token. Browsers send the Access cookie on
+    cross-site requests too, so every non-GET request must come from the
+    app's own origin (`Origin` or `Sec-Fetch-Site`), or it gets `403`.
 
 The portfolio and calculation pages edit portfolios, snapshots and
 calculations through the routes above. Params are edited as JSON, with the
@@ -220,8 +236,8 @@ save. Portfolio and calculation types shared with the Worker live in
 import-free `views.ts` files, like the status and schedule views.
 
 The dataset explorer fetches a symbol's whole canonical Parquet file from
-`/dashboard/api/datasets/:dataset/:symbol`, or a calculation's results from
-`/dashboard/api/calculations/:id/results`. The Worker streams it from the
+`/app-api/datasets/:dataset/:symbol`, or a calculation's results from
+`/app-api/calculations/:id/results`. The Worker streams it from the
 processed bucket with its ETag and `Cache-Control: private, no-cache`, so the
 browser only downloads it again after it changes. The browser decodes it with
 [hyparquet](https://github.com/hyparam/hyparquet) (zstd through `fzstd`, both

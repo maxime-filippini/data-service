@@ -30,8 +30,8 @@ flowchart LR
   end
 
   subgraph Worker["data-service Worker"]
-    api[Management API<br/>Bearer token]
-    dash[Dashboard + /dashboard/api<br/>Cloudflare Access]
+    api[Management API /api<br/>Bearer token]
+    dash[App + /app-api<br/>Cloudflare Access]
     cron[Hourly cron]
     ingc[Ingestion consumer]
     procc[Processing consumer]
@@ -106,6 +106,6 @@ Two pipelines share the Worker, D1 and the processed bucket:
 | `src/` | The Worker (TypeScript, Hono, Effect) |
 | `containers/processor/` | The Python processor container |
 | `containers/engine/` | The Python calculation engine container |
-| `dashboard/` | The Svelte dashboard, served at `/dashboard/` |
+| `app/` | The SvelteKit app (home page and dashboard), served at `/` |
 | `docs/` | This site (Astro Starlight), served at `/docs/` |
 | `migrations/` | D1 migrations |

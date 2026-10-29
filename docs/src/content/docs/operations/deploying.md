@@ -81,7 +81,7 @@ pnpm exec wrangler secret put R2_ACCESS_KEY_ID       # used by the processor and
 pnpm exec wrangler secret put R2_SECRET_ACCESS_KEY
 ```
 
-Plus the three [dashboard secrets](/docs/operations/dashboard/#one-time-setup).
+Plus the three [Access secrets](/docs/operations/dashboard/#one-time-setup).
 For dev, add `--env dev` and use an R2 API token scoped to the two dev buckets:
 
 ```sh

@@ -61,17 +61,17 @@ erDiagram
 
 ```sh
 # Create one, optionally with its first snapshot
-curl -X POST "$URL/portfolios" \
+curl -X POST "$URL/api/portfolios" \
   -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"Core","snapshot":{"holdingsDate":"2026-09-30","holdings":[{"symbol":"AAPL.US","weight":0.6},{"symbol":"MSFT.US","weight":0.4}]}}'
 
 # Add a snapshot, or delete the one for a date
-curl -X POST "$URL/portfolios/$ID/snapshots" \
+curl -X POST "$URL/api/portfolios/$ID/snapshots" \
   -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"holdingsDate":"2026-10-15","holdings":[{"symbol":"AAPL.US","weight":1}]}'
-curl -X DELETE "$URL/portfolios/$ID/snapshots/2026-10-15" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X DELETE "$URL/api/portfolios/$ID/snapshots/2026-10-15" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
 Untracked symbols return `400` with their list in `symbols`; a second snapshot
