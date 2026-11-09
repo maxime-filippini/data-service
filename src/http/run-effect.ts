@@ -9,15 +9,6 @@ import type { PipelineStatusError } from "$/market-data/status";
 import type { SymbolRegistryError } from "$/market-data/symbol-registry";
 import type { PortfolioError } from "$/portfolios/contracts";
 
-/** Expected failures exposed by the Worker's JSON routes. */
-type RequestError =
-  | CalculationError
-  | EngineError
-  | PortfolioError
-  | ScheduleError
-  | PipelineStatusError
-  | SymbolRegistryError;
-
 const calculationStatus = {
   not_found: 404,
   invalid: 422,
@@ -40,6 +31,15 @@ const portfolioStatus = {
   no_holdings: 422,
   database: 500,
 } as const satisfies Record<PortfolioError["kind"], ContentfulStatusCode>;
+
+/** Expected failures exposed by the Worker's JSON routes. */
+type RequestError =
+  | CalculationError
+  | EngineError
+  | PortfolioError
+  | ScheduleError
+  | PipelineStatusError
+  | SymbolRegistryError;
 
 /** Translate expected failures here so routes share status and metadata rules. */
 const httpException = (error: RequestError): HTTPException => {

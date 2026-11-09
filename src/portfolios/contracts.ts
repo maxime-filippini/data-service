@@ -42,12 +42,6 @@ export const HoldingSchema = Schema.Struct({
 });
 
 /**
- * Decoded symbol/weight pair used in snapshots and engine requests. This is
- * numeric domain input; the browser's editable row keeps its weight as text.
- */
-export type Holding = typeof HoldingSchema.Type;
-
-/**
  * A complete snapshot's exposures, with at least one holding and no repeated
  * symbols. Used for saved snapshots and ad hoc holdings; does not normalize weights.
  */
@@ -72,12 +66,6 @@ export const NewSnapshotSchema = Schema.Struct({
 });
 
 /**
- * Decoded, complete dated holdings input accepted when creating a portfolio
- * or adding a snapshot. The store supplies `createdAt` in the returned view.
- */
-export type NewSnapshot = typeof NewSnapshotSchema.Type;
-
-/**
  * HTTP input for creating a user-managed portfolio, optionally with its first
  * snapshot. Single-asset portfolios are created by symbol registration instead.
  */
@@ -87,18 +75,30 @@ export const CreatePortfolioSchema = Schema.Struct({
 });
 
 /**
- * Decoded creation input consumed by `Portfolios.create`. A portfolio without
- * an initial snapshot can be configured now and given holdings later.
- */
-export type CreatePortfolio = typeof CreatePortfolioSchema.Type;
-
-/**
  * HTTP input for changing a portfolio's display name. Does not change its ID
  * or holdings; the store rejects renaming a managed single-asset portfolio.
  */
 export const RenamePortfolioSchema = Schema.Struct({
   name: PortfolioNameSchema,
 });
+
+/**
+ * Decoded symbol/weight pair used in snapshots and engine requests. This is
+ * numeric domain input; the browser's editable row keeps its weight as text.
+ */
+export type Holding = typeof HoldingSchema.Type;
+
+/**
+ * Decoded, complete dated holdings input accepted when creating a portfolio
+ * or adding a snapshot. The store supplies `createdAt` in the returned view.
+ */
+export type NewSnapshot = typeof NewSnapshotSchema.Type;
+
+/**
+ * Decoded creation input consumed by `Portfolios.create`. A portfolio without
+ * an initial snapshot can be configured now and given holdings later.
+ */
+export type CreatePortfolio = typeof CreatePortfolioSchema.Type;
 
 export type * from "$/portfolios/views";
 

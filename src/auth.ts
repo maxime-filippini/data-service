@@ -2,6 +2,13 @@ import type { MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { createRemoteJWKSet, type JWTVerifyGetKey, jwtVerify } from "jose";
 
+const subtle = crypto.subtle as CloudflareSubtleCrypto;
+
+// One key set per team domain, so jose's key cache survives between requests.
+const remoteKeySets = new Map<string, JWTVerifyGetKey>();
+
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 type CloudflareSubtleCrypto = SubtleCrypto & {
   timingSafeEqual?: (
     a: ArrayBuffer | ArrayBufferView,
@@ -9,7 +16,43 @@ type CloudflareSubtleCrypto = SubtleCrypto & {
   ) => boolean;
 };
 
-const subtle = crypto.subtle as CloudflareSubtleCrypto;
+/**
+ * Environment settings consumed by `checkAccess` for app/docs authentication.
+ * Separate from Cloudflare bindings so tests can supply just the Access policy.
+ * Missing configuration denies access; the local bypass is hostname-restricted.
+ */
+export interface AccessSettings {
+  /** `https://<team>.cloudflareaccess.com` */
+  readonly ACCESS_TEAM_DOMAIN?: string;
+  /** The Access application's audience (AUD) tag. */
+  readonly ACCESS_AUD?: string;
+  /** Comma-separated emails allowed in, even if the Access policy is wider. */
+  readonly DASHBOARD_ALLOWED_EMAILS?: string;
+  /** "true" skips the check, but only for requests to localhost (wrangler dev). */
+  readonly DASHBOARD_LOCAL_BYPASS?: string;
+}
+
+/**
+ * Signing-key resolver dependency for verifying a team's Access JWTs.
+ * Production uses cached remote keys; tests inject a resolver for locally
+ * signed tokens without making network requests.
+ */
+export type AccessKeys = (teamDomain: string) => JWTVerifyGetKey;
+
+/**
+ * Hono request context populated only after the Access middleware authorizes
+ * a user. Downstream routes use the verified email for presentation and app handoff.
+ */
+export type AccessVariables = { accessEmail: string };
+
+/**
+ * Result of authenticating and allowlisting an Access request. A verified email
+ * allows continuation; a status/error is a denial ready for HTTP presentation.
+ * Consumed by middleware without requiring authentication failures to throw.
+ */
+export type AccessCheck =
+  | { readonly email: string }
+  | { readonly status: 401 | 403 | 503; readonly error: string };
 
 /** Compare two tokens without disclosing where they differ. */
 const tokensMatch = async (provided: string, expected: string) => {
@@ -48,32 +91,6 @@ export const requireManagementToken: MiddlewareHandler<{
   await next();
 };
 
-/**
- * Environment settings consumed by `checkAccess` for app/docs authentication.
- * Separate from Cloudflare bindings so tests can supply just the Access policy.
- * Missing configuration denies access; the local bypass is hostname-restricted.
- */
-export interface AccessSettings {
-  /** `https://<team>.cloudflareaccess.com` */
-  readonly ACCESS_TEAM_DOMAIN?: string;
-  /** The Access application's audience (AUD) tag. */
-  readonly ACCESS_AUD?: string;
-  /** Comma-separated emails allowed in, even if the Access policy is wider. */
-  readonly DASHBOARD_ALLOWED_EMAILS?: string;
-  /** "true" skips the check, but only for requests to localhost (wrangler dev). */
-  readonly DASHBOARD_LOCAL_BYPASS?: string;
-}
-
-/**
- * Signing-key resolver dependency for verifying a team's Access JWTs.
- * Production uses cached remote keys; tests inject a resolver for locally
- * signed tokens without making network requests.
- */
-export type AccessKeys = (teamDomain: string) => JWTVerifyGetKey;
-
-// One key set per team domain, so jose's key cache survives between requests.
-const remoteKeySets = new Map<string, JWTVerifyGetKey>();
-
 /** Access's public signing keys, fetched and cached by jose. */
 export const remoteAccessKeys: AccessKeys = (teamDomain) => {
   let keys = remoteKeySets.get(teamDomain);
@@ -83,8 +100,6 @@ export const remoteAccessKeys: AccessKeys = (teamDomain) => {
   }
   return keys;
 };
-
-const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** `https://team.cloudflareaccess.com/` and `team.cloudflareaccess.com` both become the issuer form. */
 const originOf = (domain: string | undefined) => {
@@ -96,21 +111,6 @@ const originOf = (domain: string | undefined) => {
     return undefined;
   }
 };
-
-/**
- * Hono request context populated only after the Access middleware authorizes
- * a user. Downstream routes use the verified email for presentation and app handoff.
- */
-export type AccessVariables = { accessEmail: string };
-
-/**
- * Result of authenticating and allowlisting an Access request. A verified email
- * allows continuation; a status/error is a denial ready for HTTP presentation.
- * Consumed by middleware without requiring authentication failures to throw.
- */
-export type AccessCheck =
-  | { readonly email: string }
-  | { readonly status: 401 | 403 | 503; readonly error: string };
 
 /**
  * Check that a request comes from a signed-in Cloudflare Access user whose

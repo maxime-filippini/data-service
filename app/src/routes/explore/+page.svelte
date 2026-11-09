@@ -34,9 +34,9 @@
 
   import type { PageProps } from "./$types";
 
-  let { data }: PageProps = $props();
-
   const PAGE_SIZES = [25, 50, 100, 250];
+
+  let { data }: PageProps = $props();
 
   const features = tableFeatures({
     rowSortingFeature,

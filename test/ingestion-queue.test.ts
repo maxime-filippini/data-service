@@ -18,6 +18,8 @@ import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { makeTestDatabase } from "./support/d1";
 
+const aapl = { dataset: "prices_eod", symbol: "AAPL.US" };
+
 const entry = (date: string) => ({
   date,
   open: 1,
@@ -136,8 +138,6 @@ const setup = () => {
     runs,
   };
 };
-
-const aapl = { dataset: "prices_eod", symbol: "AAPL.US" };
 
 test("the ingestion route requires the management token and a valid body", async () => {
   const { post, register } = setup();

@@ -16,6 +16,29 @@ import {
 } from "./contracts";
 import { ScheduleStore } from "./store";
 
+/** A run still `running` after this never reported back (it only queues messages). */
+export const STALE_RUN_MS = HOUR_MS;
+
+/**
+ * Durable payload for a download-dispatch Workflow. `runId` links to schedule
+ * history and the instance ID; `snapshotTo` freezes the upper date bound while
+ * the Workflow loads the enabled-symbol selection in its first step.
+ */
+export interface ScheduledDownloadParams {
+  readonly runId: string;
+  readonly snapshotTo: string;
+}
+
+/**
+ * Workflow-binding subset used by download scheduling to create an instance
+ * and reconcile an ambiguous launch response. Tests supply this same interface
+ * without needing a Cloudflare runtime.
+ */
+export type ScheduleWorkflow = Pick<
+  Workflow<ScheduledDownloadParams>,
+  "create" | "get"
+>;
+
 /** Whether the cron should start today's run now. Runs late if the hour was missed. */
 export const isDue = (
   schedule: DownloadSchedule,
@@ -53,26 +76,6 @@ export const scheduleView = Effect.fn("Schedule.view")(function* (now: Date) {
 });
 
 /**
- * Durable payload for a download-dispatch Workflow. `runId` links to schedule
- * history and the instance ID; `snapshotTo` freezes the upper date bound while
- * the Workflow loads the enabled-symbol selection in its first step.
- */
-export interface ScheduledDownloadParams {
-  readonly runId: string;
-  readonly snapshotTo: string;
-}
-
-/**
- * Workflow-binding subset used by download scheduling to create an instance
- * and reconcile an ambiguous launch response. Tests supply this same interface
- * without needing a Cloudflare runtime.
- */
-export type ScheduleWorkflow = Pick<
-  Workflow<ScheduledDownloadParams>,
-  "create" | "get"
->;
-
-/**
  * Start the run's Workflow instance. If creating it fails but the instance
  * exists (the create went through, or an earlier attempt did), it has started.
  */
@@ -97,9 +100,6 @@ const startWorkflow = (
         message: `Could not start the download workflow: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
   });
-
-/** A run still `running` after this never reported back (it only queues messages). */
-export const STALE_RUN_MS = HOUR_MS;
 
 /**
  * Called by the hourly cron. Fails runs that never reported back, then starts

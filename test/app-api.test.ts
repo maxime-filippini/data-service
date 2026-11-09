@@ -18,13 +18,22 @@ import { makeTestDatabase } from "./support/d1";
 import { exAnteVol, makeFakeEngine } from "./support/engine";
 
 const TEAM = "https://team.cloudflareaccess.com";
+
 const AUD = "dashboard-aud";
+
 const ME = "me@example.com";
 
 const { publicKey, privateKey } = await generateKeyPair("RS256");
+
 const keys = createLocalJWKSet({
   keys: [{ ...(await exportJWK(publicKey)), kid: "key-1", alg: "RS256" }],
 });
+
+const baseEnv = {
+  ACCESS_TEAM_DOMAIN: TEAM,
+  ACCESS_AUD: AUD,
+  DASHBOARD_ALLOWED_EMAILS: ` other@example.com, ${ME.toUpperCase()} `,
+};
 
 const signToken = (
   claims: { email?: string; aud?: string; iss?: string } = {},
@@ -41,12 +50,6 @@ const signToken = (
     .setIssuedAt()
     .setExpirationTime("5m")
     .sign(key);
-
-const baseEnv = {
-  ACCESS_TEAM_DOMAIN: TEAM,
-  ACCESS_AUD: AUD,
-  DASHBOARD_ALLOWED_EMAILS: ` other@example.com, ${ME.toUpperCase()} `,
-};
 
 const setup = (envOverrides: Record<string, unknown> = {}) => {
   const { sqlite, db } = makeTestDatabase();
@@ -204,6 +207,30 @@ const insertSymbol = (
          '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`,
     )
     .run(symbol, enabled);
+};
+
+const fakeBucket = (
+  objects: Record<string, { bytes: Uint8Array; etag: string }>,
+) => {
+  const gets: { key: string; onlyIf?: R2Conditional }[] = [];
+  const bucket = {
+    gets,
+    get: async (key: string, options: { onlyIf?: R2Conditional } = {}) => {
+      gets.push({ key, ...options });
+      const object = objects[key];
+      if (object === undefined) return null;
+      const meta = {
+        key,
+        size: object.bytes.byteLength,
+        etag: object.etag,
+        httpEtag: `"${object.etag}"`,
+        uploaded: new Date("2026-10-18T03:00:00.000Z"),
+      };
+      if (options.onlyIf?.etagDoesNotMatch === object.etag) return meta;
+      return { ...meta, body: new Blob([object.bytes]).stream() };
+    },
+  };
+  return bucket;
 };
 
 test("an allowlisted Access user can use the API", async () => {
@@ -440,30 +467,6 @@ test("symbols show their latest download, last success and latest rebuild", asyn
     400,
   );
 });
-
-const fakeBucket = (
-  objects: Record<string, { bytes: Uint8Array; etag: string }>,
-) => {
-  const gets: { key: string; onlyIf?: R2Conditional }[] = [];
-  const bucket = {
-    gets,
-    get: async (key: string, options: { onlyIf?: R2Conditional } = {}) => {
-      gets.push({ key, ...options });
-      const object = objects[key];
-      if (object === undefined) return null;
-      const meta = {
-        key,
-        size: object.bytes.byteLength,
-        etag: object.etag,
-        httpEtag: `"${object.etag}"`,
-        uploaded: new Date("2026-10-18T03:00:00.000Z"),
-      };
-      if (options.onlyIf?.etagDoesNotMatch === object.etag) return meta;
-      return { ...meta, body: new Blob([object.bytes]).stream() };
-    },
-  };
-  return bucket;
-};
 
 test("the dataset explorer streams a symbol's Parquet file and revalidates it by ETag", async () => {
   const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31]);

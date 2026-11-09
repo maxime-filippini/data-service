@@ -4,8 +4,6 @@
   import "../app.css";
   import type { LayoutProps } from "./$types";
 
-  let { data, children }: LayoutProps = $props();
-
   const SECTIONS = [
     { path: "/runs", label: "Ingestion runs" },
     { path: "/symbols", label: "Symbols" },
@@ -13,6 +11,8 @@
     { path: "/calculations", label: "Calculations" },
     { path: "/explore", label: "Explore data" },
   ];
+
+  let { data, children }: LayoutProps = $props();
 
   const isActive = (path: string) =>
     page.url.pathname === path || page.url.pathname.startsWith(`${path}/`);

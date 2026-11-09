@@ -15,6 +15,8 @@ import type { RunWorkflow } from "$/calculations/runs";
 import { triggerScheduledCalculations } from "$/calculations/schedule";
 import { makeTestDatabase } from "./support/d1";
 
+const CREATED = "2026-10-01T00:00:00.000Z";
+
 const cron = (expression: string): CronSchedule => {
   const parsed = parseCron(expression);
   assert.ok(!isCronError(parsed), expression);
@@ -26,76 +28,6 @@ const slot = (expression: string, now: string) =>
 
 const next = (expression: string, now: string) =>
   nextSlot(cron(expression), new Date(now))?.toISOString() ?? null;
-
-test("the next slot is the first whole hour after now's hour the cron fires in", () => {
-  // Later today, not the current hour, whose tick has already happened.
-  assert.equal(
-    next("0 6,18 * * *", "2026-10-28T06:30:00Z"),
-    "2026-10-28T18:00:00.000Z",
-  );
-  assert.equal(
-    next("0 6 * * *", "2026-10-28T05:59:00Z"),
-    "2026-10-28T06:00:00.000Z",
-  );
-  assert.equal(
-    next("0 6 * * *", "2026-10-28T06:00:00Z"),
-    "2026-10-29T06:00:00.000Z",
-  );
-  // Weekdays only: Friday evening goes to Monday.
-  assert.equal(
-    next("0 7 * * 1-5", "2026-10-30T20:00:00Z"),
-    "2026-11-02T07:00:00.000Z",
-  );
-  assert.equal(
-    next("0 0 29 2 *", "2026-10-28T00:00:00Z"),
-    "2028-02-29T00:00:00.000Z",
-  );
-  assert.equal(next("0 0 30 2 *", "2026-10-28T00:00:00Z"), null);
-});
-
-test("the latest slot is the most recent whole hour the cron fires in, minutes ignored", () => {
-  // 2026-10-20 is a Tuesday.
-  assert.equal(
-    slot("0 * * * *", "2026-10-20T10:59:00Z"),
-    "2026-10-20T10:00:00.000Z",
-  );
-  assert.equal(
-    slot("45 6 * * *", "2026-10-20T06:00:00Z"),
-    "2026-10-20T06:00:00.000Z",
-  );
-  assert.equal(
-    slot("0 6 * * *", "2026-10-20T05:59:00Z"),
-    "2026-10-19T06:00:00.000Z",
-  );
-  assert.equal(
-    slot("0 6,18 * * *", "2026-10-20T05:00:00Z"),
-    "2026-10-19T18:00:00.000Z",
-  );
-  assert.equal(
-    slot("0 6 * * 1-5", "2026-10-25T10:00:00Z"),
-    "2026-10-23T06:00:00.000Z",
-  );
-  assert.equal(
-    slot("0 8 1 * *", "2026-10-20T10:00:00Z"),
-    "2026-10-01T08:00:00.000Z",
-  );
-  assert.equal(
-    slot("0 8 1 JAN *", "2026-10-20T10:00:00Z"),
-    "2026-01-01T08:00:00.000Z",
-  );
-  // Day of month and day of week both set: either matches.
-  assert.equal(
-    slot("0 0 1 * MON", "2026-10-20T10:00:00Z"),
-    "2026-10-19T00:00:00.000Z",
-  );
-  assert.equal(
-    slot("0 0 29 2 *", "2026-10-20T10:00:00Z"),
-    "2024-02-29T00:00:00.000Z",
-  );
-  assert.equal(slot("0 0 30 2 *", "2026-10-20T10:00:00Z"), null);
-});
-
-const CREATED = "2026-10-01T00:00:00.000Z";
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
@@ -171,6 +103,74 @@ const setup = () => {
 
   return { sqlite, add, tick, runsOf, lastSlot, created, failing };
 };
+
+test("the next slot is the first whole hour after now's hour the cron fires in", () => {
+  // Later today, not the current hour, whose tick has already happened.
+  assert.equal(
+    next("0 6,18 * * *", "2026-10-28T06:30:00Z"),
+    "2026-10-28T18:00:00.000Z",
+  );
+  assert.equal(
+    next("0 6 * * *", "2026-10-28T05:59:00Z"),
+    "2026-10-28T06:00:00.000Z",
+  );
+  assert.equal(
+    next("0 6 * * *", "2026-10-28T06:00:00Z"),
+    "2026-10-29T06:00:00.000Z",
+  );
+  // Weekdays only: Friday evening goes to Monday.
+  assert.equal(
+    next("0 7 * * 1-5", "2026-10-30T20:00:00Z"),
+    "2026-11-02T07:00:00.000Z",
+  );
+  assert.equal(
+    next("0 0 29 2 *", "2026-10-28T00:00:00Z"),
+    "2028-02-29T00:00:00.000Z",
+  );
+  assert.equal(next("0 0 30 2 *", "2026-10-28T00:00:00Z"), null);
+});
+
+test("the latest slot is the most recent whole hour the cron fires in, minutes ignored", () => {
+  // 2026-10-20 is a Tuesday.
+  assert.equal(
+    slot("0 * * * *", "2026-10-20T10:59:00Z"),
+    "2026-10-20T10:00:00.000Z",
+  );
+  assert.equal(
+    slot("45 6 * * *", "2026-10-20T06:00:00Z"),
+    "2026-10-20T06:00:00.000Z",
+  );
+  assert.equal(
+    slot("0 6 * * *", "2026-10-20T05:59:00Z"),
+    "2026-10-19T06:00:00.000Z",
+  );
+  assert.equal(
+    slot("0 6,18 * * *", "2026-10-20T05:00:00Z"),
+    "2026-10-19T18:00:00.000Z",
+  );
+  assert.equal(
+    slot("0 6 * * 1-5", "2026-10-25T10:00:00Z"),
+    "2026-10-23T06:00:00.000Z",
+  );
+  assert.equal(
+    slot("0 8 1 * *", "2026-10-20T10:00:00Z"),
+    "2026-10-01T08:00:00.000Z",
+  );
+  assert.equal(
+    slot("0 8 1 JAN *", "2026-10-20T10:00:00Z"),
+    "2026-01-01T08:00:00.000Z",
+  );
+  // Day of month and day of week both set: either matches.
+  assert.equal(
+    slot("0 0 1 * MON", "2026-10-20T10:00:00Z"),
+    "2026-10-19T00:00:00.000Z",
+  );
+  assert.equal(
+    slot("0 0 29 2 *", "2026-10-20T10:00:00Z"),
+    "2024-02-29T00:00:00.000Z",
+  );
+  assert.equal(slot("0 0 30 2 *", "2026-10-20T10:00:00Z"), null);
+});
 
 test("a due calculation runs once per slot, as of the previous UTC day", async () => {
   const { add, tick, runsOf, lastSlot } = setup();

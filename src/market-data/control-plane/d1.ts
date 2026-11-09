@@ -11,6 +11,10 @@ import {
   type Provider,
 } from "$/market-data/schemas";
 
+const CREATE_PENDING_JOBS = pendingJobsInsert();
+
+const CREATE_JOB_FOR_RUN = `${pendingJobsInsert("AND run.run_id = ?")} RETURNING job_id`;
+
 /**
  * Private joined result after a job claim, combining its pinned ingestion
  * and raw-object metadata. `toManifest` builds the processor request from it.
@@ -40,7 +44,8 @@ const query = <A>(
 
 // The latest completed run per (dataset, symbol) that no job has used yet.
 // A failed job is not retried for the same run; the next download gets a new job.
-const pendingJobsInsert = (extraCondition = "") => `
+function pendingJobsInsert(extraCondition = "") {
+  return `
   INSERT INTO processing_jobs (job_id, dataset, symbol, run_id, status, created_at)
   SELECT lower(hex(randomblob(16))), run.dataset, run.symbol, run.run_id, 'queued', ?
   FROM ingestion_runs AS run
@@ -60,9 +65,7 @@ const pendingJobsInsert = (extraCondition = "") => `
     )
     ${extraCondition}
   ON CONFLICT DO NOTHING`;
-
-const CREATE_PENDING_JOBS = pendingJobsInsert();
-const CREATE_JOB_FOR_RUN = `${pendingJobsInsert("AND run.run_id = ?")} RETURNING job_id`;
+}
 
 const toManifest = (row: ClaimedJobRow): ProcessingManifest => ({
   jobId: row.job_id,

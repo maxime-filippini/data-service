@@ -7,6 +7,24 @@ import { Calculations } from "$/calculations/store";
 import { previousDay } from "$/datetime";
 
 /**
+ * Per-calculation outcome collected by one hourly scheduling tick. Either
+ * identifies a running/skipped run or records a launch error for logging; it
+ * describes dispatch, not the eventual engine result.
+ */
+export type ScheduledRun =
+  | {
+      readonly calculationId: string;
+      readonly slot: string;
+      readonly runId: string;
+      readonly status: "running" | "skipped";
+    }
+  | {
+      readonly calculationId: string;
+      readonly slot: string;
+      readonly error: string;
+    };
+
+/**
  * The cron slot a calculation should run for now, or null if it isn't due.
  * It's due when its most recent slot is after the last slot it ran for and
  * after it was created, so a new calculation doesn't run for a past slot.
@@ -24,24 +42,6 @@ export const dueSlot = (calculation: Calculation, now: Date): string | null => {
     return null;
   return slot > calculation.createdAt ? slot : null;
 };
-
-/**
- * Per-calculation outcome collected by one hourly scheduling tick. Either
- * identifies a running/skipped run or records a launch error for logging; it
- * describes dispatch, not the eventual engine result.
- */
-export type ScheduledRun =
-  | {
-      readonly calculationId: string;
-      readonly slot: string;
-      readonly runId: string;
-      readonly status: "running" | "skipped";
-    }
-  | {
-      readonly calculationId: string;
-      readonly slot: string;
-      readonly error: string;
-    };
 
 /**
  * Called by the hourly cron. Starts a run, as of the previous UTC day, of each

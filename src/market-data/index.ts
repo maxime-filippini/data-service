@@ -3,6 +3,15 @@ import { Context, Effect, Schema } from "effect";
 import type { DateRange, Provider } from "$/market-data/schemas";
 
 /**
+ * Minimal common shape of an already validated provider row. Shared ingestion
+ * and raw-storage code needs the date to report the observed range; concrete
+ * adapters retain dataset-specific fields such as prices and volume.
+ */
+export interface DatedEntry {
+  readonly date: string;
+}
+
+/**
  * Expected provider configuration/request/response or raw-storage failure.
  * Queue orchestration uses `kind` to decide which download failures can retry;
  * messages should describe the failure without exposing provider credentials.
@@ -15,15 +24,6 @@ export class MarketDataError extends Schema.TaggedError<MarketDataError>()(
     symbol: Schema.optionalKey(Schema.String),
   },
 ) {}
-
-/**
- * Minimal common shape of an already validated provider row. Shared ingestion
- * and raw-storage code needs the date to report the observed range; concrete
- * adapters retain dataset-specific fields such as prices and volume.
- */
-export interface DatedEntry {
-  readonly date: string;
-}
 
 /**
  * Injectable provider interface used by ingestion to fetch validated daily

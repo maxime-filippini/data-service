@@ -1,19 +1,19 @@
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 
-/**
- * Top-level app destinations accepted by navigation helpers. Detail IDs and
- * query filters are passed separately so callers share one URL-building convention.
- */
-export type View =
-  "runs" | "symbols" | "portfolios" | "calculations" | "explore";
-
 /** The query parameters of the current page, e.g. `?symbol=AAPL.US` on /runs. */
 export const route = {
   get params() {
     return page.url.searchParams;
   },
 };
+
+/**
+ * Top-level app destinations accepted by navigation helpers. Detail IDs and
+ * query filters are passed separately so callers share one URL-building convention.
+ */
+export type View =
+  "runs" | "symbols" | "portfolios" | "calculations" | "explore";
 
 /**
  * A link to a page. `id` opens a portfolio or calculation

@@ -12,6 +12,19 @@ import { Calculations } from "$/calculations/store";
 import { Portfolios } from "$/portfolios/store";
 
 /**
+ * How long a run may be `running` before its Workflow is checked. Covers the
+ * moment between recording a run and creating its Workflow.
+ */
+export const RUN_CHECK_GRACE_MS = 5 * MINUTE_MS;
+
+/** Workflow statuses after which a run can't report back any more. */
+const STOPPED: ReadonlySet<string> = new Set([
+  "errored",
+  "terminated",
+  "complete",
+]);
+
+/**
  * Durable payload sent when launching a calculation Workflow. The instance
  * ID equals `runId`; execution loads the saved run and current configuration
  * from D1 rather than carrying an entire calculation/portfolio snapshot here.
@@ -26,19 +39,6 @@ export interface RunWorkflowParams {
  * requiring callers to implement unrelated Workflow-management operations.
  */
 export type RunWorkflow = Pick<Workflow<RunWorkflowParams>, "create" | "get">;
-
-/**
- * How long a run may be `running` before its Workflow is checked. Covers the
- * moment between recording a run and creating its Workflow.
- */
-export const RUN_CHECK_GRACE_MS = 5 * MINUTE_MS;
-
-/** Workflow statuses after which a run can't report back any more. */
-const STOPPED: ReadonlySet<string> = new Set([
-  "errored",
-  "terminated",
-  "complete",
-]);
 
 /** The Workflow's status, or null when it doesn't exist. */
 const workflowStatus = (workflow: RunWorkflow, runId: string) =>

@@ -15,6 +15,11 @@ const ApiTokenSchema = Schema.Trim.check(Schema.isNonEmpty());
 
 const decodeApiToken = Schema.decodeUnknownEffect(ApiTokenSchema);
 
+interface EodhdDependencies {
+  readonly client: HttpClient.HttpClient;
+  readonly token: string;
+}
+
 const validateApiToken = (input: unknown) =>
   decodeApiToken(input).pipe(
     Effect.mapError(
@@ -25,11 +30,6 @@ const validateApiToken = (input: unknown) =>
         }),
     ),
   );
-
-interface EodhdDependencies {
-  readonly client: HttpClient.HttpClient;
-  readonly token: string;
-}
 
 const fetchSymbolRange = Effect.fn("Eodhd.fetchSymbolRange")(function* (
   dependencies: EodhdDependencies,

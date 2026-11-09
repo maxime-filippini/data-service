@@ -6,10 +6,10 @@
 
 import type { PageData } from "./views";
 
-export type * from "./views";
-
 /** The page data on a request's bindings (`env` from `cloudflare:workers`). */
 export declare const pageData: (env: never) => PageData;
+
+export type * from "./views";
 
 /** A page's data could not be loaded. `status` is the HTTP status to answer with. */
 export declare class PageDataError extends Error {

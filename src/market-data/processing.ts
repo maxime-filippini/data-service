@@ -3,6 +3,11 @@ import { Effect, Schema } from "effect";
 import { HOUR_MS } from "$/datetime";
 import { MarketDataControlPlane } from "$/market-data/control-plane";
 
+/** A job still `processing` after this long is assumed dead and failed. */
+export const STALE_JOB_MS = HOUR_MS;
+
+const QUEUE_BATCH_SIZE = 100;
+
 /**
  * Processing-queue notification pointing to a D1 job. The consumer atomically
  * claims that job to obtain its manifest; the message does not duplicate raw
@@ -11,11 +16,6 @@ import { MarketDataControlPlane } from "$/market-data/control-plane";
 export interface ProcessingMessage {
   readonly jobId: string;
 }
-
-/** A job still `processing` after this long is assumed dead and failed. */
-export const STALE_JOB_MS = HOUR_MS;
-
-const QUEUE_BATCH_SIZE = 100;
 
 /**
  * Retry signal when a claimed job cannot reach the processor. `processJob`

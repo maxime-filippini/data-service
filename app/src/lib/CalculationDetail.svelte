@@ -24,6 +24,9 @@
   import { href } from "./router.svelte";
   import StatusBadge from "./StatusBadge.svelte";
 
+  /** How often to check on a running run. */
+  const POLL_MS = 5000;
+
   let {
     calculation: initialCalculation,
     runs: initialRuns,
@@ -39,9 +42,6 @@
     /** Called with the calculation's name once it's deleted. */
     ondeleted: (name: string) => void;
   } = $props();
-
-  /** How often to check on a running run. */
-  const POLL_MS = 5000;
 
   let calculation = $derived<Calculation | null>(initialCalculation);
   let runs = $derived<readonly CalculationRun[]>(initialRuns);

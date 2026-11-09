@@ -356,6 +356,17 @@ serialization behavior; orchestration changes may need runtime integration tests
 
 ## Conventions for the next change
 
+Order module declarations as **imports → constants → types/contracts →
+functions/classes**. Schema values belong with constants; a function assigned
+to `const` belongs with implementations. Keep runtime contract classes before
+the functions using them, and keep each declaration's documentation attached.
+If a TypeScript constant calls a local helper during initialization, use a hoisted function
+declaration so it can still be defined below the contracts.
+
+In Svelte components, put static constants before props/state and retain the
+dependency order of reactive setup. Eager registrations that require completed
+definitions (such as Python calculation `TYPE`) stay after those definitions.
+
 - Give an operation a domain name and keep its steps sequential and readable.
 - Use plain functions for pure policy, Effect for fallible coordinated work,
   and async functions where Cloudflare controls the durable step lifecycle.

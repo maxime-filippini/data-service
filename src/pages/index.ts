@@ -19,10 +19,14 @@ import { Portfolios } from "$/portfolios/store";
 import type * as Facade from "./app";
 import type { PageData, SymbolCounts, UpcomingCalculation } from "./views";
 
-export type * from "./views";
-
 /** How many ingestion runs a page of the runs list holds, as in the app's API. */
 export const RUN_PAGE_SIZE = 50;
+
+const RUN_STATUSES: readonly RunStatus[] = ["fetching", "completed", "failed"];
+
+const HOME_LIST_SIZE = 5;
+
+export type * from "./views";
 
 /** A page's data could not be loaded. `status` is the HTTP status to answer with. */
 export class PageDataError extends Error {
@@ -33,8 +37,6 @@ export class PageDataError extends Error {
     super(message);
   }
 }
-
-const RUN_STATUSES: readonly RunStatus[] = ["fetching", "completed", "failed"];
 
 const isUuid = (
   schema: typeof CalculationIdSchema | typeof PortfolioIdSchema,
@@ -60,8 +62,6 @@ const runWith =
     }
     return result.success;
   };
-
-const HOME_LIST_SIZE = 5;
 
 export const countSymbols = (
   symbols: readonly SymbolStatusView[],
@@ -199,4 +199,5 @@ export const pageData = (
 
 // The app compiles against ./app.ts instead of this module; keep them in step.
 pageData satisfies typeof Facade.pageData;
+
 PageDataError satisfies typeof Facade.PageDataError;

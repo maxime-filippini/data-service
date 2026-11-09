@@ -12,6 +12,58 @@ import {
   type SymbolStatusView,
 } from "$/market-data/status";
 
+const JOB_COLUMNS = `
+  job.job_id, job.run_id AS job_run_id, job.status AS job_status,
+  job.created_at AS job_created_at, job.started_at AS job_started_at,
+  job.completed_at AS job_completed_at, job.error AS job_error`;
+
+const LIST_RUNS = `
+  SELECT run.run_id, run.dataset, run.symbol, run.provider, run.status,
+    run.requested_from, run.requested_to, run.created_at, run.completed_at, run.error,
+    run.object_key, run.row_count, run.observed_from, run.observed_to,
+    ${JOB_COLUMNS}
+  FROM ingestion_runs AS run
+  LEFT JOIN processing_jobs AS job ON job.job_id = (
+    SELECT latest.job_id FROM processing_jobs AS latest
+    WHERE latest.run_id = run.run_id
+    ORDER BY latest.created_at DESC, latest.job_id DESC LIMIT 1
+  )
+  WHERE (?1 IS NULL OR run.dataset = ?1)
+    AND (?2 IS NULL OR run.symbol = ?2)
+    AND (?3 IS NULL OR run.status = ?3)
+    AND (?4 IS NULL OR run.created_at < ?4 OR (run.created_at = ?4 AND run.run_id < ?5))
+  ORDER BY run.created_at DESC, run.run_id DESC
+  LIMIT ?6`;
+
+// Latest run, latest completed run and latest job for each tracked symbol.
+const LIST_SYMBOLS = `
+  SELECT s.dataset, s.symbol, s.provider, s.enabled, s.backfill_start_date,
+    s.created_at, s.updated_at,
+    latest.run_id AS latest_run_id, latest.status AS latest_status,
+    latest.created_at AS latest_created_at, latest.completed_at AS latest_completed_at,
+    latest.error AS latest_error,
+    done.run_id AS done_run_id, done.completed_at AS done_completed_at,
+    done.row_count AS done_row_count, done.observed_to AS done_observed_to,
+    ${JOB_COLUMNS}
+  FROM tracked_symbols AS s
+  LEFT JOIN ingestion_runs AS latest ON latest.run_id = (
+    SELECT run.run_id FROM ingestion_runs AS run
+    WHERE run.dataset = s.dataset AND run.symbol = s.symbol
+    ORDER BY run.created_at DESC, run.run_id DESC LIMIT 1
+  )
+  LEFT JOIN ingestion_runs AS done ON done.run_id = (
+    SELECT run.run_id FROM ingestion_runs AS run
+    WHERE run.dataset = s.dataset AND run.symbol = s.symbol AND run.status = 'completed'
+    ORDER BY run.created_at DESC, run.run_id DESC LIMIT 1
+  )
+  LEFT JOIN processing_jobs AS job ON job.job_id = (
+    SELECT j.job_id FROM processing_jobs AS j
+    WHERE j.dataset = s.dataset AND j.symbol = s.symbol
+    ORDER BY j.created_at DESC, j.job_id DESC LIMIT 1
+  )
+  WHERE (?1 IS NULL OR s.dataset = ?1) AND (?2 IS NULL OR s.enabled = ?2)
+  ORDER BY s.dataset, s.symbol`;
+
 /**
  * Nullable columns from a left-joined processing job in status queries.
  * A missing job_id means no job; `jobFromRow` builds the optional job view.
@@ -70,58 +122,6 @@ interface SymbolRow extends JobColumns {
   readonly done_row_count: number | null;
   readonly done_observed_to: string | null;
 }
-
-const JOB_COLUMNS = `
-  job.job_id, job.run_id AS job_run_id, job.status AS job_status,
-  job.created_at AS job_created_at, job.started_at AS job_started_at,
-  job.completed_at AS job_completed_at, job.error AS job_error`;
-
-const LIST_RUNS = `
-  SELECT run.run_id, run.dataset, run.symbol, run.provider, run.status,
-    run.requested_from, run.requested_to, run.created_at, run.completed_at, run.error,
-    run.object_key, run.row_count, run.observed_from, run.observed_to,
-    ${JOB_COLUMNS}
-  FROM ingestion_runs AS run
-  LEFT JOIN processing_jobs AS job ON job.job_id = (
-    SELECT latest.job_id FROM processing_jobs AS latest
-    WHERE latest.run_id = run.run_id
-    ORDER BY latest.created_at DESC, latest.job_id DESC LIMIT 1
-  )
-  WHERE (?1 IS NULL OR run.dataset = ?1)
-    AND (?2 IS NULL OR run.symbol = ?2)
-    AND (?3 IS NULL OR run.status = ?3)
-    AND (?4 IS NULL OR run.created_at < ?4 OR (run.created_at = ?4 AND run.run_id < ?5))
-  ORDER BY run.created_at DESC, run.run_id DESC
-  LIMIT ?6`;
-
-// Latest run, latest completed run and latest job for each tracked symbol.
-const LIST_SYMBOLS = `
-  SELECT s.dataset, s.symbol, s.provider, s.enabled, s.backfill_start_date,
-    s.created_at, s.updated_at,
-    latest.run_id AS latest_run_id, latest.status AS latest_status,
-    latest.created_at AS latest_created_at, latest.completed_at AS latest_completed_at,
-    latest.error AS latest_error,
-    done.run_id AS done_run_id, done.completed_at AS done_completed_at,
-    done.row_count AS done_row_count, done.observed_to AS done_observed_to,
-    ${JOB_COLUMNS}
-  FROM tracked_symbols AS s
-  LEFT JOIN ingestion_runs AS latest ON latest.run_id = (
-    SELECT run.run_id FROM ingestion_runs AS run
-    WHERE run.dataset = s.dataset AND run.symbol = s.symbol
-    ORDER BY run.created_at DESC, run.run_id DESC LIMIT 1
-  )
-  LEFT JOIN ingestion_runs AS done ON done.run_id = (
-    SELECT run.run_id FROM ingestion_runs AS run
-    WHERE run.dataset = s.dataset AND run.symbol = s.symbol AND run.status = 'completed'
-    ORDER BY run.created_at DESC, run.run_id DESC LIMIT 1
-  )
-  LEFT JOIN processing_jobs AS job ON job.job_id = (
-    SELECT j.job_id FROM processing_jobs AS j
-    WHERE j.dataset = s.dataset AND j.symbol = s.symbol
-    ORDER BY j.created_at DESC, j.job_id DESC LIMIT 1
-  )
-  WHERE (?1 IS NULL OR s.dataset = ?1) AND (?2 IS NULL OR s.enabled = ?2)
-  ORDER BY s.dataset, s.symbol`;
 
 const jobFromRow = (row: JobColumns): ProcessingJobView | null =>
   row.job_id === null

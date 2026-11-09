@@ -44,6 +44,19 @@ const setup = () => {
   return { sqlite, request };
 };
 
+const singleAssetPortfolios = (
+  sqlite: ReturnType<typeof makeTestDatabase>["sqlite"],
+) =>
+  sqlite
+    .prepare(
+      `SELECT p.name, p.asset_symbol, h.holdings_date, h.symbol, h.weight
+       FROM portfolios p JOIN portfolio_holdings h USING (portfolio_id)
+       WHERE p.asset_symbol IS NOT NULL
+       ORDER BY p.name`,
+    )
+    .all()
+    .map((row) => ({ ...row }));
+
 test("every route requires the management token", async () => {
   const { request } = setup();
   for (const [path, method] of [
@@ -169,19 +182,6 @@ test("database failures return a sanitized 500", async () => {
     error: "Could not access the symbol registry",
   });
 });
-
-const singleAssetPortfolios = (
-  sqlite: ReturnType<typeof makeTestDatabase>["sqlite"],
-) =>
-  sqlite
-    .prepare(
-      `SELECT p.name, p.asset_symbol, h.holdings_date, h.symbol, h.weight
-       FROM portfolios p JOIN portfolio_holdings h USING (portfolio_id)
-       WHERE p.asset_symbol IS NOT NULL
-       ORDER BY p.name`,
-    )
-    .all()
-    .map((row) => ({ ...row }));
 
 test("registering a symbol creates its single-asset portfolio once", async () => {
   const { request, sqlite } = setup();

@@ -31,19 +31,6 @@ RESERVED_COLUMNS = {"as_of": pl.Date, "portfolio_id": pl.String}
 SymbolLoader = Callable[[str, str], pl.DataFrame]
 
 
-def describe_error(error: Exception) -> str:
-    if isinstance(error, CalculationError):
-        message = str(error)
-    elif isinstance(error, ValidationError):
-        message = f"Invalid {error.title}: " + "; ".join(
-            f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}"
-            for e in error.errors()
-        )
-    else:
-        message = f"{type(error).__name__}: {error}"
-    return message[:500]
-
-
 @dataclass(frozen=True)
 class Context:
     """Per-execution input and data access supplied to a calculation type.
@@ -193,6 +180,19 @@ class CalculationType:
                 for name, dtype in self.output.items()
             ),
         )
+
+
+def describe_error(error: Exception) -> str:
+    if isinstance(error, CalculationError):
+        message = str(error)
+    elif isinstance(error, ValidationError):
+        message = f"Invalid {error.title}: " + "; ".join(
+            f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}"
+            for e in error.errors()
+        )
+    else:
+        message = f"{type(error).__name__}: {error}"
+    return message[:500]
 
 
 def _known_on(portfolio: Portfolio | None, as_of: date) -> Portfolio | None:

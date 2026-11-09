@@ -14,6 +14,14 @@ import {
   type SymbolRegistryError,
 } from "$/market-data/symbol-registry";
 
+/** Most entries one request can queue. */
+export const MAX_INGESTION_ENTRIES = 500;
+
+/** A `fetching` run older than this is assumed dead (queue consumers stop after 15 minutes). */
+export const STALE_RUN_MS = 30 * MINUTE_MS;
+
+const QUEUE_BATCH_SIZE = 100;
+
 /**
  * Durable ingestion-queue command selecting a tracked symbol and fixed end
  * date. The consumer resolves the current provider/backfill start from the
@@ -35,13 +43,12 @@ export interface IngestionEntry {
   readonly symbol: string;
 }
 
-/** Most entries one request can queue. */
-export const MAX_INGESTION_ENTRIES = 500;
-
-/** A `fetching` run older than this is assumed dead (queue consumers stop after 15 minutes). */
-export const STALE_RUN_MS = 30 * MINUTE_MS;
-
-const QUEUE_BATCH_SIZE = 100;
+/**
+ * Expected failure families returned by a queue-driven download attempt.
+ * `isRetryable` interprets these to choose message redelivery versus acknowledgement.
+ */
+export type IngestionError =
+  MarketDataError | ControlPlaneError | SymbolRegistryError;
 
 /**
  * Queue a full-history download for each registered entry. Rejects the whole
@@ -109,13 +116,6 @@ export const requestIngestions = Effect.fn("MarketData.requestIngestions")(
     return { status: "queued", queued } as const;
   },
 );
-
-/**
- * Expected failure families returned by a queue-driven download attempt.
- * `isRetryable` interprets these to choose message redelivery versus acknowledgement.
- */
-export type IngestionError =
-  MarketDataError | ControlPlaneError | SymbolRegistryError;
 
 /** Whether a failed ingestion message is worth redelivering. */
 export const isRetryable = (error: IngestionError) => {

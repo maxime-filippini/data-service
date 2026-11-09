@@ -15,9 +15,9 @@
 
   import type { PageProps } from "./$types";
 
-  let { data }: PageProps = $props();
-
   const STATUSES: RunStatus[] = ["fetching", "completed", "failed"];
+
+  let { data }: PageProps = $props();
 
   const symbol = $derived(route.params.get("symbol") ?? "");
   const status = $derived((route.params.get("status") ?? "") as RunStatus | "");

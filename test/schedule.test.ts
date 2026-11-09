@@ -37,49 +37,6 @@ const schedule = (
 
 const at = (iso: string) => new Date(iso);
 
-test("a run is due once the hour has passed, once per day, unless paused", () => {
-  assert.equal(isDue(schedule(), null, at("2026-10-19T05:00:00Z")), false);
-  assert.equal(isDue(schedule(), null, at("2026-10-19T06:00:00Z")), true);
-  assert.equal(
-    isDue(schedule(), "2026-10-18", at("2026-10-19T09:00:00Z")),
-    true,
-    "catches up on a missed hour",
-  );
-  assert.equal(
-    isDue(schedule(), "2026-10-19", at("2026-10-19T09:00:00Z")),
-    false,
-  );
-  assert.equal(
-    isDue(schedule({ paused: true }), null, at("2026-10-19T09:00:00Z")),
-    false,
-  );
-});
-
-test("the next run is today at the hour, tomorrow after today's run, or the next tick when late", () => {
-  const next = (s: DownloadSchedule, last: string | null, now: string) =>
-    nextRunAt(s, last, at(now))?.toISOString();
-  assert.equal(
-    next(schedule(), null, "2026-10-19T05:30:00Z"),
-    "2026-10-19T06:00:00.000Z",
-  );
-  assert.equal(
-    next(schedule(), "2026-10-19", "2026-10-19T06:10:00Z"),
-    "2026-10-20T06:00:00.000Z",
-  );
-  assert.equal(
-    next(schedule(), "2026-10-18", "2026-10-19T09:10:00Z"),
-    "2026-10-19T10:00:00.000Z",
-  );
-  assert.equal(
-    next(schedule({ hourUtc: 23 }), "2026-10-31", "2026-10-31T23:05:00Z"),
-    "2026-11-01T23:00:00.000Z",
-  );
-  assert.equal(
-    next(schedule({ paused: true }), null, "2026-10-19T05:30:00Z"),
-    undefined,
-  );
-});
-
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
   const layer = Layer.mergeAll(
@@ -135,6 +92,60 @@ const setup = () => {
       (failNextCreate = how),
   };
 };
+
+const immediateSteps = () => {
+  const names: string[] = [];
+  const steps: Steps = {
+    do: async (name, body) => {
+      names.push(name);
+      return body();
+    },
+  };
+  return { steps, names };
+};
+
+test("a run is due once the hour has passed, once per day, unless paused", () => {
+  assert.equal(isDue(schedule(), null, at("2026-10-19T05:00:00Z")), false);
+  assert.equal(isDue(schedule(), null, at("2026-10-19T06:00:00Z")), true);
+  assert.equal(
+    isDue(schedule(), "2026-10-18", at("2026-10-19T09:00:00Z")),
+    true,
+    "catches up on a missed hour",
+  );
+  assert.equal(
+    isDue(schedule(), "2026-10-19", at("2026-10-19T09:00:00Z")),
+    false,
+  );
+  assert.equal(
+    isDue(schedule({ paused: true }), null, at("2026-10-19T09:00:00Z")),
+    false,
+  );
+});
+
+test("the next run is today at the hour, tomorrow after today's run, or the next tick when late", () => {
+  const next = (s: DownloadSchedule, last: string | null, now: string) =>
+    nextRunAt(s, last, at(now))?.toISOString();
+  assert.equal(
+    next(schedule(), null, "2026-10-19T05:30:00Z"),
+    "2026-10-19T06:00:00.000Z",
+  );
+  assert.equal(
+    next(schedule(), "2026-10-19", "2026-10-19T06:10:00Z"),
+    "2026-10-20T06:00:00.000Z",
+  );
+  assert.equal(
+    next(schedule(), "2026-10-18", "2026-10-19T09:10:00Z"),
+    "2026-10-19T10:00:00.000Z",
+  );
+  assert.equal(
+    next(schedule({ hourUtc: 23 }), "2026-10-31", "2026-10-31T23:05:00Z"),
+    "2026-11-01T23:00:00.000Z",
+  );
+  assert.equal(
+    next(schedule({ paused: true }), null, "2026-10-19T05:30:00Z"),
+    undefined,
+  );
+});
 
 test("the schedule starts paused at 06:00 UTC and can be changed", async () => {
   const { run } = setup();
@@ -296,17 +307,6 @@ test("manual runs are extra and do not use up the day's scheduled run", async ()
   assert.match(failed?.error ?? "", /Workflows unavailable/u);
   assert.equal(created.length, 2);
 });
-
-const immediateSteps = () => {
-  const names: string[] = [];
-  const steps: Steps = {
-    do: async (name, body) => {
-      names.push(name);
-      return body();
-    },
-  };
-  return { steps, names };
-};
 
 test("the Workflow queues every enabled symbol in batches of 100 and records the outcome", async () => {
   const { run, register, runs } = setup();

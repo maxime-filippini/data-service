@@ -8,6 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..framework import CalculationError, CalculationType, Context
 
+OUTPUT = {
+    "volatility": pl.Float64,
+    "observations": pl.Int64,
+    "window_start": pl.Date,
+    "window_end": pl.Date,
+    "holdings_date": pl.Date,
+}
+
 
 class Params(BaseModel):
     """Type-specific inputs for ex-ante volatility, used by validation and run().
@@ -35,15 +43,6 @@ class Params(BaseModel):
     normalise_weights: bool = Field(
         False, description="Divide the weights by their sum before calculating."
     )
-
-
-OUTPUT = {
-    "volatility": pl.Float64,
-    "observations": pl.Int64,
-    "window_start": pl.Date,
-    "window_end": pl.Date,
-    "holdings_date": pl.Date,
-}
 
 
 def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame:
@@ -109,6 +108,7 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
     )
 
 
+# Registration needs the params model and run function defined above.
 TYPE = CalculationType(
     name="ex_ante_vol",
     description=(

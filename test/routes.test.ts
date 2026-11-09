@@ -7,23 +7,18 @@ import type { Dependencies } from "$/dependencies";
 import { createRoutes } from "$/routes";
 
 const TEAM = "https://team.cloudflareaccess.com";
+
 const AUD = "app-aud";
+
 const ME = "me@example.com";
+
 const HOST = "https://data-service.example.com";
 
 const { publicKey, privateKey } = await generateKeyPair("RS256");
+
 const keys = createLocalJWKSet({
   keys: [{ ...(await exportJWK(publicKey)), kid: "key-1", alg: "RS256" }],
 });
-
-const signToken = (email: string = ME) =>
-  new SignJWT({ email })
-    .setProtectedHeader({ alg: "RS256", kid: "key-1" })
-    .setIssuer(TEAM)
-    .setAudience(AUD)
-    .setIssuedAt()
-    .setExpirationTime("5m")
-    .sign(privateKey);
 
 /** What the fake SvelteKit handler was asked for. */
 const appRequests: Request[] = [];
@@ -58,6 +53,15 @@ const routes = createRoutes(
   },
   () => keys,
 );
+
+const signToken = (email: string = ME) =>
+  new SignJWT({ email })
+    .setProtectedHeader({ alg: "RS256", kid: "key-1" })
+    .setIssuer(TEAM)
+    .setAudience(AUD)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
 
 const request = (path: string, headers: Record<string, string> = {}) =>
   routes.request(`${HOST}${path}`, { headers }, env);

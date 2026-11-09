@@ -7,6 +7,7 @@
     type RegisterInput,
     registerSymbol,
   } from "./api";
+  const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9][A-Z0-9-]*)?$/;
 
   let {
     options,
@@ -54,7 +55,6 @@
   });
 
   const today = utcDay(new Date());
-  const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9][A-Z0-9-]*)?$/;
   const describe = (cause: unknown) =>
     cause instanceof Error ? cause.message : String(cause);
 

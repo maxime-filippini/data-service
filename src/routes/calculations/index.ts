@@ -17,8 +17,6 @@ import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
 import { previousDay } from "$/datetime";
 
-type Env = { Bindings: CloudflareBindings };
-
 /**
  * Saved-calculation identity accepted in detail and mutation route paths.
  */
@@ -47,6 +45,8 @@ const RunsQuerySchema = Schema.Struct({
     ),
   ),
 });
+
+type Env = { Bindings: CloudflareBindings };
 
 /**
  * Saved calculations and their runs: create, change and delete calculations,

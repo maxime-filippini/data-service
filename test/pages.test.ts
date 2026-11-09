@@ -13,8 +13,12 @@ import { makeTestDatabase } from "./support/d1";
 import { makeFakeEngine } from "./support/engine";
 
 const CALC_A = "0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b";
+
 const CALC_B = "1d8f9a2b-3c4e-4f6a-9b0c-2d3e4f5a6b7c";
+
 const CALC_PAUSED = "2e9a0b3c-4d5f-4a7b-8c1d-3e4f5a6b7c8d";
+
+type Sqlite = ReturnType<typeof makeTestDatabase>["sqlite"];
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
@@ -34,8 +38,6 @@ const setup = () => {
   } as unknown as Dependencies;
   return { sqlite, pages: pageData({} as CloudflareBindings, dependencies) };
 };
-
-type Sqlite = ReturnType<typeof makeTestDatabase>["sqlite"];
 
 const insertSymbol = (sqlite: Sqlite, symbol: string, enabled = 1) =>
   sqlite

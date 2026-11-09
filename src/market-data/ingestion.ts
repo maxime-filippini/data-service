@@ -27,20 +27,6 @@ export interface StoreRawMarketData {
 }
 
 /**
- * Injectable write-only interface for preserving a raw provider response.
- * `ingestMarketData` obtains it through Effect; the R2 adapter owns envelope
- * serialization and write-once storage, while tests can capture the same input.
- */
-export class RawMarketDataStore extends Context.Service<
-  RawMarketDataStore,
-  {
-    readonly store: (
-      input: StoreRawMarketData,
-    ) => Effect.Effect<RawObject, MarketDataError>;
-  }
->()("data-service/RawMarketDataStore") {}
-
-/**
  * One prepared download attempt passed to `ingestMarketData`. The queue
  * consumer resolves registration into this explicit range and supplies a fresh
  * run ID/timestamps; the operation claims the run before fetching or storing data.
@@ -53,6 +39,20 @@ export interface IngestMarketData {
   readonly createdAt: string;
   readonly staleBefore: string;
 }
+
+/**
+ * Injectable write-only interface for preserving a raw provider response.
+ * `ingestMarketData` obtains it through Effect; the R2 adapter owns envelope
+ * serialization and write-once storage, while tests can capture the same input.
+ */
+export class RawMarketDataStore extends Context.Service<
+  RawMarketDataStore,
+  {
+    readonly store: (
+      input: StoreRawMarketData,
+    ) => Effect.Effect<RawObject, MarketDataError>;
+  }
+>()("data-service/RawMarketDataStore") {}
 
 /**
  * Download one symbol's range and record it as one immutable ingestion run.

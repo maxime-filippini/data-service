@@ -96,12 +96,6 @@ export const CreateCalculationSchema = Schema.Struct({
 });
 
 /**
- * Decoded create request passed to `createCalculation`. Optional fields still
- * need their application/engine defaults; use `NewCalculation` for storage.
- */
-export type CreateCalculation = typeof CreateCalculationSchema.Type;
-
-/**
  * HTTP input for changing a saved calculation. Omitted fields stay unchanged.
  * The operation rejects a different type and validates changed params or
  * portfolio selections; this schema alone does not enforce those rules.
@@ -117,12 +111,6 @@ export const UpdateCalculationSchema = Schema.Struct({
 });
 
 /**
- * Decoded edit request for `updateCalculation`, before its engine checks.
- * Use `CalculationPatch` when passing the checked changes to the store.
- */
-export type UpdateCalculation = typeof UpdateCalculationSchema.Type;
-
-/**
  * HTTP input for executing an existing saved calculation. `asOf` is a data
  * cutoff, not a start time; the route defaults it to the previous UTC day.
  */
@@ -131,31 +119,21 @@ export const StartRunSchema = Schema.Struct({
   asOf: Schema.optionalKey(MarketDateSchema),
 });
 
-export type * from "$/calculations/views";
-export type { CalculationRunStatus as RunStatus } from "$/calculations/views";
-
-/** A calculation's results, in the processed bucket. */
-export const calculationOutputKey = (calculationId: string) =>
-  `calculation=${calculationId}/data.parquet`;
+/**
+ * Decoded create request passed to `createCalculation`. Optional fields still
+ * need their application/engine defaults; use `NewCalculation` for storage.
+ */
+export type CreateCalculation = typeof CreateCalculationSchema.Type;
 
 /**
- * Expected persistence, configuration or Workflow-launch failure reported by
- * calculation operations. HTTP mapping uses `kind`; per-portfolio execution
- * failures instead belong in `PortfolioOutcome`/`FinishedRun`.
+ * Decoded edit request for `updateCalculation`, before its engine checks.
+ * Use `CalculationPatch` when passing the checked changes to the store.
  */
-export class CalculationError extends Schema.TaggedError<CalculationError>()(
-  "CalculationError",
-  {
-    /**
-     * `invalid`: the calculation doesn't fit its type or names missing
-     * portfolios. `workflow`: a run's Workflow could not be started.
-     */
-    kind: Schema.Literals(["database", "not_found", "invalid", "workflow"]),
-    message: Schema.String,
-    /** The portfolios that don't exist, for `invalid`. */
-    portfolioIds: Schema.optionalKey(Schema.Array(Schema.String)),
-  },
-) {}
+export type UpdateCalculation = typeof UpdateCalculationSchema.Type;
+
+export type * from "$/calculations/views";
+
+export type { CalculationRunStatus as RunStatus } from "$/calculations/views";
 
 /**
  * Fully prepared record accepted by `Calculations.create`. The configuration
@@ -204,3 +182,26 @@ export interface FinishedRun {
   readonly rowCount: number;
   readonly outputEtag: string | null;
 }
+
+/**
+ * Expected persistence, configuration or Workflow-launch failure reported by
+ * calculation operations. HTTP mapping uses `kind`; per-portfolio execution
+ * failures instead belong in `PortfolioOutcome`/`FinishedRun`.
+ */
+export class CalculationError extends Schema.TaggedError<CalculationError>()(
+  "CalculationError",
+  {
+    /**
+     * `invalid`: the calculation doesn't fit its type or names missing
+     * portfolios. `workflow`: a run's Workflow could not be started.
+     */
+    kind: Schema.Literals(["database", "not_found", "invalid", "workflow"]),
+    message: Schema.String,
+    /** The portfolios that don't exist, for `invalid`. */
+    portfolioIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  },
+) {}
+
+/** A calculation's results, in the processed bucket. */
+export const calculationOutputKey = (calculationId: string) =>
+  `calculation=${calculationId}/data.parquet`;

@@ -7,7 +7,6 @@
 import { Schema } from "effect";
 
 import type { ScheduleTrigger } from "./views";
-export type * from "./views";
 
 /**
  * HTTP patch for the one daily download schedule. Omitted settings are kept;
@@ -20,24 +19,13 @@ export const UpdateScheduleSchema = Schema.Struct({
   paused: Schema.optionalKey(Schema.Boolean),
 });
 
+export type * from "./views";
+
 /**
  * Decoded settings patch accepted by `ScheduleStore.update`, separate from
  * the schedule view's derived next-run timestamp.
  */
 export type UpdateSchedule = typeof UpdateScheduleSchema.Type;
-
-/**
- * Expected D1 or Workflow-launch failure in download scheduling. Used by
- * HTTP/cron callers to report failure; individual symbol download failures
- * are recorded later as ingestion runs, outside this schedule outcome.
- */
-export class ScheduleError extends Schema.TaggedError<ScheduleError>()(
-  "ScheduleError",
-  {
-    kind: Schema.Literals(["database", "workflow"]),
-    message: Schema.String,
-  },
-) {}
 
 /**
  * Initial record saved before creating a download Workflow. `runDate` is the
@@ -51,3 +39,16 @@ export interface StartScheduleRun {
   readonly snapshotTo: string;
   readonly createdAt: string;
 }
+
+/**
+ * Expected D1 or Workflow-launch failure in download scheduling. Used by
+ * HTTP/cron callers to report failure; individual symbol download failures
+ * are recorded later as ingestion runs, outside this schedule outcome.
+ */
+export class ScheduleError extends Schema.TaggedError<ScheduleError>()(
+  "ScheduleError",
+  {
+    kind: Schema.Literals(["database", "workflow"]),
+    message: Schema.String,
+  },
+) {}

@@ -3,17 +3,8 @@ import { Schema } from "effect";
 import { utcDay } from "$/datetime";
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
-const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(?:\.[A-Z0-9][A-Z0-9-]*)?$/u;
 
-/**
- * Inclusive market-data date bounds in `YYYY-MM-DD` form, used by provider
- * requests and raw-object provenance. This TypeScript interface does not
- * validate dates or their ordering; decode external dates with `MarketDateSchema`.
- */
-export interface DateRange {
-  readonly from: string;
-  readonly to: string;
-}
+const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(?:\.[A-Z0-9][A-Z0-9-]*)?$/u;
 
 const isDateOnly = Schema.makeFilter<string>((value) => {
   if (!DATE_ONLY_PATTERN.test(value)) {
@@ -44,29 +35,13 @@ export const MarketSymbolSchema = Schema.String.check(
 /** Datasets the processor knows how to build. Each has its own Parquet schema. */
 export const DatasetSchema = Schema.Literals(["prices_eod"]);
 
-/**
- * Supported dataset key selecting the raw/canonical storage layout and processor
- * schema. It describes a kind of data, not a particular symbol or downloaded file.
- */
-export type Dataset = typeof DatasetSchema.Type;
-
 /** Providers with an ingestion adapter. */
 export const ProviderSchema = Schema.Literals(["eodhd"]);
-
-/**
- * Registered provider key used to select an ingestion adapter. Compatibility
- * with a particular dataset is described by `datasetProviders`.
- */
-export type Provider = typeof ProviderSchema.Type;
 
 /** Which providers can supply each dataset. */
 export const datasetProviders: Record<Dataset, readonly Provider[]> = {
   prices_eod: ["eodhd"],
 };
-
-/** The stable Parquet object that client apps read from the processed bucket. */
-export const canonicalKey = (dataset: Dataset, symbol: string) =>
-  `dataset=${dataset}/symbol=${symbol}/data.parquet`;
 
 /**
  * One provider end-of-day price/volume row validated before raw storage.
@@ -84,13 +59,39 @@ export const EodEntrySchema = Schema.Struct({
 });
 
 /**
+ * Provider response decoder for a full-history snapshot. Empty arrays are
+ * accepted and duplicate-date handling belongs to the processor rebuild.
+ */
+export const EodEntriesSchema = Schema.Array(EodEntrySchema);
+
+/**
+ * Inclusive market-data date bounds in `YYYY-MM-DD` form, used by provider
+ * requests and raw-object provenance. This TypeScript interface does not
+ * validate dates or their ordering; decode external dates with `MarketDateSchema`.
+ */
+export interface DateRange {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * Supported dataset key selecting the raw/canonical storage layout and processor
+ * schema. It describes a kind of data, not a particular symbol or downloaded file.
+ */
+export type Dataset = typeof DatasetSchema.Type;
+
+/**
+ * Registered provider key used to select an ingestion adapter. Compatibility
+ * with a particular dataset is described by `datasetProviders`.
+ */
+export type Provider = typeof ProviderSchema.Type;
+
+/**
  * Decoded end-of-day row consumed by provider/storage code. Prefer the smaller
  * `DatedEntry` interface when only the observation date is needed.
  */
 export type EodEntry = typeof EodEntrySchema.Type;
 
-/**
- * Provider response decoder for a full-history snapshot. Empty arrays are
- * accepted and duplicate-date handling belongs to the processor rebuild.
- */
-export const EodEntriesSchema = Schema.Array(EodEntrySchema);
+/** The stable Parquet object that client apps read from the processed bucket. */
+export const canonicalKey = (dataset: Dataset, symbol: string) =>
+  `dataset=${dataset}/symbol=${symbol}/data.parquet`;

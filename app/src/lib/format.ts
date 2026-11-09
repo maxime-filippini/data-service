@@ -2,6 +2,7 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -12,6 +13,8 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["hour", 3600],
   ["minute", 60],
 ];
+
+const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 });
 
 /** "Oct 19, 2026, 2:00 AM" */
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
@@ -42,8 +45,6 @@ export const formatCount = (value: number) => value.toLocaleString();
 /** "2016-01-04 → 2026-10-17" */
 export const formatRange = (from: string | null, to: string | null) =>
   from === null && to === null ? "—" : `${from ?? "?"} → ${to ?? "?"}`;
-
-const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 });
 
 /** A Parquet cell: numbers with grouping, empty cells as a dash. */
 export const formatValue = (

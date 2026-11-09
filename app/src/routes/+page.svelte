@@ -9,6 +9,34 @@
 
   import type { PageProps } from "./$types";
 
+  const SECTIONS = [
+    {
+      path: "/runs",
+      title: "Ingestion runs",
+      text: "Every download, with its Parquet rebuild.",
+    },
+    {
+      path: "/symbols",
+      title: "Symbols",
+      text: "The universe, and the daily download schedule.",
+    },
+    {
+      path: "/portfolios",
+      title: "Portfolios",
+      text: "Holdings snapshots that calculations run over.",
+    },
+    {
+      path: "/calculations",
+      title: "Calculations",
+      text: "Saved calculations, their crons and runs.",
+    },
+    {
+      path: "/explore",
+      title: "Explore data",
+      text: "Browse any symbol's or calculation's Parquet file.",
+    },
+  ];
+
   let { data }: PageProps = $props();
 
   const home = $derived(data.home);
@@ -41,34 +69,6 @@
       busy = false;
     }
   };
-
-  const SECTIONS = [
-    {
-      path: "/runs",
-      title: "Ingestion runs",
-      text: "Every download, with its Parquet rebuild.",
-    },
-    {
-      path: "/symbols",
-      title: "Symbols",
-      text: "The universe, and the daily download schedule.",
-    },
-    {
-      path: "/portfolios",
-      title: "Portfolios",
-      text: "Holdings snapshots that calculations run over.",
-    },
-    {
-      path: "/calculations",
-      title: "Calculations",
-      text: "Saved calculations, their crons and runs.",
-    },
-    {
-      path: "/explore",
-      title: "Explore data",
-      text: "Browse any symbol's or calculation's Parquet file.",
-    },
-  ];
 </script>
 
 <section class="intro">

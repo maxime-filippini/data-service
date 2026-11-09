@@ -1,6 +1,43 @@
 // The app's cron editor also imports this module, without the Worker's aliases.
 import { addUtcDays, atUtcHour, startOfUtcDay } from "../datetime";
 
+const MINUTE: Field = { name: "minute", min: 0, max: 59 };
+
+const HOUR: Field = { name: "hour", min: 0, max: 23 };
+
+const DAY_OF_MONTH: Field = { name: "day of month", min: 1, max: 31 };
+
+const MONTH: Field = {
+  name: "month",
+  min: 1,
+  max: 12,
+  names: [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ],
+};
+
+// 7 is accepted as Sunday and folded into 0 below.
+const DAY_OF_WEEK: Field = {
+  name: "day of week",
+  min: 0,
+  max: 7,
+  names: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"],
+};
+
+/** How far back `latestSlot` looks: long enough for a 29 February schedule. */
+const SEARCH_DAYS = 8 * 366;
+
 /**
  * Parsed UTC cron expression used by `latestSlot` and `nextSlot` to select
  * whole-hour calculation slots. Preserves the parsed minute field for syntax
@@ -27,36 +64,6 @@ interface Field {
   readonly max: number;
   readonly names?: readonly string[];
 }
-
-const MINUTE: Field = { name: "minute", min: 0, max: 59 };
-const HOUR: Field = { name: "hour", min: 0, max: 23 };
-const DAY_OF_MONTH: Field = { name: "day of month", min: 1, max: 31 };
-const MONTH: Field = {
-  name: "month",
-  min: 1,
-  max: 12,
-  names: [
-    "JAN",
-    "FEB",
-    "MAR",
-    "APR",
-    "MAY",
-    "JUN",
-    "JUL",
-    "AUG",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DEC",
-  ],
-};
-// 7 is accepted as Sunday and folded into 0 below.
-const DAY_OF_WEEK: Field = {
-  name: "day of week",
-  min: 0,
-  max: 7,
-  names: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"],
-};
 
 class CronSyntaxError extends Error {}
 
@@ -143,9 +150,6 @@ export const parseCron = (
 export const isCronError = (
   parsed: ReturnType<typeof parseCron>,
 ): parsed is { readonly error: string } => "error" in parsed;
-
-/** How far back `latestSlot` looks: long enough for a 29 February schedule. */
-const SEARCH_DAYS = 8 * 366;
 
 const matchesDay = (schedule: CronSchedule, day: Date) => {
   if (!schedule.months.has(day.getUTCMonth() + 1)) return false;

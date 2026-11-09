@@ -11,6 +11,8 @@
   import { formatAgo, formatCount, formatDateTime } from "./format";
   import StatusBadge from "./StatusBadge.svelte";
 
+  const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+
   let {
     schedule: initialSchedule,
     runs: initialRuns,
@@ -29,8 +31,6 @@
   let runs = $derived<readonly ScheduleRun[]>(initialRuns);
   let busy = $state(false);
   let showHistory = $state(false);
-
-  const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
   const localTime = new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",

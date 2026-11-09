@@ -16,6 +16,12 @@
     parseParams,
   } from "./params";
 
+  const CRON_PRESETS = [
+    { label: "Daily", cron: "0 6 * * *" },
+    { label: "Weekdays", cron: "0 6 * * 1-5" },
+    { label: "Monthly", cron: "0 6 1 * *" },
+  ];
+
   let {
     types,
     portfolios,
@@ -32,12 +38,6 @@
   } = $props();
 
   const editing = untrack(() => initial !== undefined);
-
-  const CRON_PRESETS = [
-    { label: "Daily", cron: "0 6 * * *" },
-    { label: "Weekdays", cron: "0 6 * * 1-5" },
-    { label: "Monthly", cron: "0 6 1 * *" },
-  ];
 
   let name = $state(untrack(() => initial?.name ?? ""));
   let type = $state(untrack(() => initial?.type ?? ""));

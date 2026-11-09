@@ -3,9 +3,22 @@ import { Context, Effect, Schema } from "effect";
 import type { Dataset } from "$/market-data/schemas";
 import type { RunPage, RunStatus, SymbolStatusView } from "./views";
 
-export type * from "./views";
-
 export const MAX_RUN_PAGE_SIZE = 200;
+
+const CURSOR_SEPARATOR = "_";
+
+/**
+ * Validates the opaque ingestion-history position accepted by the app API.
+ * Clients should forward `RunPage.nextCursor` unchanged, rather than build it
+ * from timestamps or use it as a database identifier.
+ */
+export const CursorSchema = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z_[A-Za-z0-9-]{1,64}$/u, {
+    message: "Invalid cursor",
+  }),
+);
+
+export type * from "./views";
 
 /**
  * Selection and cursor for a newest-first ingestion-history read. Apply the
@@ -50,8 +63,6 @@ export class PipelineStatus extends Context.Service<
   }
 >()("data-service/PipelineStatus") {}
 
-const CURSOR_SEPARATOR = "_";
-
 /** A run's position in the newest-first order. */
 export const encodeCursor = (createdAt: string, runId: string) =>
   `${createdAt}${CURSOR_SEPARATOR}${runId}`;
@@ -62,14 +73,3 @@ export const decodeCursor = (cursor: string) => {
     ? undefined
     : { createdAt: cursor.slice(0, index), runId: cursor.slice(index + 1) };
 };
-
-/**
- * Validates the opaque ingestion-history position accepted by the app API.
- * Clients should forward `RunPage.nextCursor` unchanged, rather than build it
- * from timestamps or use it as a database identifier.
- */
-export const CursorSchema = Schema.String.check(
-  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z_[A-Za-z0-9-]{1,64}$/u, {
-    message: "Invalid cursor",
-  }),
-);

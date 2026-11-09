@@ -1,12 +1,5 @@
 import { EngineLive } from "$/calculations/engine";
 
-export interface EngineCall {
-  readonly method: string;
-  readonly path: string;
-  readonly accept: string | null;
-  readonly body: unknown;
-}
-
 export const exAnteVol = {
   name: "ex_ante_vol",
   description: "Ex-ante volatility.",
@@ -17,6 +10,13 @@ export const exAnteVol = {
   },
   output: { value: "Float64" },
 };
+
+export interface EngineCall {
+  readonly method: string;
+  readonly path: string;
+  readonly accept: string | null;
+  readonly body: unknown;
+}
 
 /**
  * A stand-in for the engine container. Records each call and answers with

@@ -62,6 +62,12 @@ export interface ProcessingManifest {
 }
 
 /**
+ * Short form for a store operation with a typed control-plane failure.
+ * Dependencies are already captured by the supplied persistence adapter.
+ */
+type Op<A = void> = Effect.Effect<A, ControlPlaneError>;
+
+/**
  * Expected persistence failure while claiming or updating ingestion runs and
  * processing jobs. Optional IDs let callers correlate the failure with durable
  * work; queue consumers use this category when deciding to retry delivery.
@@ -74,12 +80,6 @@ export class ControlPlaneError extends Schema.TaggedError<ControlPlaneError>()(
     jobId: Schema.optionalKey(Schema.String),
   },
 ) {}
-
-/**
- * Short form for a store operation with a typed control-plane failure.
- * Dependencies are already captured by the supplied persistence adapter.
- */
-type Op<A = void> = Effect.Effect<A, ControlPlaneError>;
 
 /**
  * Injectable state store for ingestion runs and processing jobs. Used by

@@ -12,6 +12,22 @@ import { createPortfolioRoutes } from "$/routes/portfolios";
 
 import { makeTestDatabase } from "./support/d1";
 
+const september = {
+  holdingsDate: "2026-09-30",
+  holdings: [
+    { symbol: "MSFT.US", weight: 0.4 },
+    { symbol: "AAPL.US", weight: 0.6 },
+  ],
+};
+
+const october = {
+  holdingsDate: "2026-10-15",
+  holdings: [
+    { symbol: "AAPL.US", weight: 1.5 },
+    { symbol: "MSFT.US", weight: -0.5 },
+  ],
+};
+
 interface PortfolioBody {
   id: string;
   name: string;
@@ -21,21 +37,6 @@ interface PortfolioBody {
     holdings: { symbol: string; weight: number }[];
   }[];
 }
-
-const september = {
-  holdingsDate: "2026-09-30",
-  holdings: [
-    { symbol: "MSFT.US", weight: 0.4 },
-    { symbol: "AAPL.US", weight: 0.6 },
-  ],
-};
-const october = {
-  holdingsDate: "2026-10-15",
-  holdings: [
-    { symbol: "AAPL.US", weight: 1.5 },
-    { symbol: "MSFT.US", weight: -0.5 },
-  ],
-};
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();

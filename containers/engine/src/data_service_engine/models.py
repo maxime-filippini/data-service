@@ -172,10 +172,6 @@ class Portfolio(Contract):
             return None
 
 
-def _effective_by(snapshot: Snapshot, day: date) -> bool:
-    return snapshot.holdings_date is None or snapshot.holdings_date <= day
-
-
 class ValidateRequest(Contract):
     """POST /types/{name}/validate body containing proposed type parameters.
 
@@ -255,3 +251,7 @@ class RunResult(Contract):
     portfolios: tuple[PortfolioOutcome, ...] = ()
     row_count: int = Field(0, serialization_alias="rowCount")
     output_etag: str | None = Field(None, serialization_alias="outputEtag")
+
+
+def _effective_by(snapshot: Snapshot, day: date) -> bool:
+    return snapshot.holdings_date is None or snapshot.holdings_date <= day
