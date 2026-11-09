@@ -7,6 +7,11 @@ export type * from "./views";
 
 export const MAX_RUN_PAGE_SIZE = 200;
 
+/**
+ * Selection and cursor for a newest-first ingestion-history read. Apply the
+ * same filters when following a returned cursor; `limit` is the requested page
+ * size, with HTTP validation enforcing the public maximum.
+ */
 export interface RunFilter {
   readonly dataset?: Dataset;
   readonly symbol?: string;
@@ -16,12 +21,21 @@ export interface RunFilter {
   readonly limit: number;
 }
 
+/**
+ * Expected read failure while assembling pipeline views. Lets page/API
+ * callers report unavailable history without conflating it with a recorded
+ * provider failure or changing any ingestion/job state.
+ */
 export class PipelineStatusError extends Schema.TaggedError<PipelineStatusError>()(
   "PipelineStatusError",
   { message: Schema.String },
 ) {}
 
-/** Read-only history of runs and jobs, for the dashboard. */
+/**
+ * Injectable read-only interface assembling ingestion/job history and symbol
+ * status for pages and app JSON routes. Use the control-plane interface for
+ * state transitions; these methods only return presentation projections.
+ */
 export class PipelineStatus extends Context.Service<
   PipelineStatus,
   {
@@ -44,7 +58,11 @@ export const decodeCursor = (cursor: string) => {
   return index <= 0 ? undefined : { createdAt: cursor.slice(0, index), runId: cursor.slice(index + 1) };
 };
 
-/** ISO timestamp, then a run ID (a UUID). */
+/**
+ * Validates the opaque ingestion-history position accepted by the app API.
+ * Clients should forward `RunPage.nextCursor` unchanged, rather than build it
+ * from timestamps or use it as a database identifier.
+ */
 export const CursorSchema = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z_[A-Za-z0-9-]{1,64}$/u, { message: "Invalid cursor" }),
 );

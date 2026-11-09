@@ -5,15 +5,33 @@ import { parquetMetadata, parquetReadObjects, parquetSchema, type SchemaElement 
 // the other codecs would need decoders that load WASM, which the CSP blocks.
 const compressors = { ZSTD: (input: Uint8Array) => decompress(input) };
 
+/**
+ * Display-safe cell produced by Parquet decoding. Dates become ISO strings;
+ * integers beyond JavaScript's safe numeric range remain strings to retain precision.
+ */
 export type Value = string | number | boolean | null;
+
+/**
+ * Explorer row keyed by top-level Parquet column name. Values have been
+ * converted for table display; this is not the typed row schema of a market dataset.
+ */
 export type Row = Record<string, Value>;
 
+/**
+ * Explorer column metadata used to select sorting and date-range behavior.
+ * `kind` is a presentation classification, not the full original Parquet type.
+ */
 export type Column = {
   name: string;
   /** "date" values are ISO strings, so they sort and compare as text. */
   kind: "date" | "number" | "text";
 };
 
+/**
+ * Whole decoded file held in browser memory by the explorer. Contains display
+ * columns/rows rather than a market-data dataset key such as `prices_eod`;
+ * built by `readParquet` for table sorting, filtering and pagination.
+ */
 export type Dataset = { columns: Column[]; rows: Row[] };
 
 const kindOf = (element: SchemaElement): Column["kind"] => {

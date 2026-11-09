@@ -7,6 +7,10 @@ import { MAX_INGESTION_ENTRIES, requestIngestions } from "$/market-data/ingestio
 import { DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
 import { SymbolRegistry } from "$/market-data/symbol-registry";
 
+/**
+ * Bounded non-empty manual download selection. Registration and date-range
+ * eligibility are checked by `requestIngestions` before any messages are sent.
+ */
 const IngestionRequestSchema = Schema.Struct({
   entries: Schema.Array(Schema.Struct({ dataset: DatasetSchema, symbol: MarketSymbolSchema })).check(
     Schema.isMinLength(1),

@@ -13,7 +13,11 @@ export const ARROW_STREAM = "application/vnd.apache.arrow.stream";
 
 export type { CalculationParams, CalculationTypeInfo, PortfolioOutcome } from "$/calculations/views";
 
-/** One run of a saved calculation for one as-of date. */
+/**
+ * Worker-to-Python `/runs` payload for executing a saved calculation and
+ * writing result history. The Worker resolves portfolios first and chooses the
+ * output key; Python performs the calculation but never updates the D1 run.
+ */
 export interface RunRequest {
   readonly runId: string;
   readonly type: string;
@@ -24,7 +28,11 @@ export interface RunRequest {
   readonly outputKey: string;
 }
 
-/** What happened in a run. `partial`: some portfolios failed, the others were written. */
+/**
+ * Python `/runs` response consumed by calculation orchestration. A `failed`
+ * status is a normal response value, distinct from an `EngineError` transport
+ * failure; `partial` means successful portfolios were written and others failed.
+ */
 export interface RunResult {
   readonly status: "completed" | "partial" | "failed";
   readonly error: string | null;
@@ -33,10 +41,18 @@ export interface RunResult {
   readonly outputEtag: string | null;
 }
 
-/** An ad hoc portfolio: saved snapshots, or plain holdings held at all times. */
+/**
+ * Engine input for a one-off calculation: either a saved portfolio's resolved
+ * snapshots or plain holdings treated as held at all times. No portfolio is
+ * created or modified by sending this value.
+ */
 export type AdHocPortfolio = EnginePortfolio | { readonly holdings: readonly Holding[] };
 
-/** An ad hoc calculation. Nothing is saved. */
+/**
+ * Worker-to-Python `/calculate` payload for a one-off result returned as JSON
+ * or Arrow. `asOf` limits visible data; omit `portfolio` for types that take none.
+ * Unlike `RunRequest`, this carries no persistence destination or saved run ID.
+ */
 export interface CalculateRequest {
   readonly type: string;
   readonly params: CalculationParams;
@@ -45,6 +61,11 @@ export interface CalculateRequest {
   readonly portfolio?: AdHocPortfolio;
 }
 
+/**
+ * Expected client failure when reaching the engine or handling a rejected
+ * request. Used for HTTP status mapping and Workflow error handling; a
+ * successful response whose body says `failed` remains a `RunResult` instead.
+ */
 export class EngineError extends Schema.TaggedError<EngineError>()("EngineError", {
   /**
    * `not_found`: unknown type. `invalid`: invalid params or request (the
@@ -58,8 +79,9 @@ export class EngineError extends Schema.TaggedError<EngineError>()("EngineError"
 }) {}
 
 /**
- * The calculation engine container. It knows every calculation type; the
- * Worker treats params as plain JSON and asks the engine to check them.
+ * Injectable client interface to the Python calculation engine. Operations
+ * obtain it with `yield* Engine`; `EngineLive` supplies container HTTP calls and
+ * tests can supply a stand-in. Python owns type discovery and params validation.
  */
 export class Engine extends Context.Service<
   Engine,

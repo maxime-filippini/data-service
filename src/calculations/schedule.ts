@@ -21,6 +21,11 @@ export const dueSlot = (calculation: Calculation, now: Date): string | null => {
   return slot > calculation.createdAt ? slot : null;
 };
 
+/**
+ * Per-calculation outcome collected by one hourly scheduling tick. Either
+ * identifies a running/skipped run or records a launch error for logging; it
+ * describes dispatch, not the eventual engine result.
+ */
 export type ScheduledRun =
   | { readonly calculationId: string; readonly slot: string; readonly runId: string; readonly status: "running" | "skipped" }
   | { readonly calculationId: string; readonly slot: string; readonly error: string };

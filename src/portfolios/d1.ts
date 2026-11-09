@@ -10,6 +10,10 @@ import {
 } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 
+/**
+ * Private persisted portfolio metadata. Holdings are loaded separately and
+ * combined into the `Portfolio` detail view; `asset_symbol` marks managed records.
+ */
 interface PortfolioRow {
   readonly portfolio_id: string;
   readonly name: string;
@@ -18,11 +22,19 @@ interface PortfolioRow {
   readonly asset_symbol: string | null;
 }
 
+/**
+ * Private list-query projection adding snapshot counts/dates to metadata.
+ * Mapped to `PortfolioSummary` without loading the holdings history.
+ */
 interface SummaryRow extends PortfolioRow {
   readonly snapshot_count: number;
   readonly latest_holdings_date: string | null;
 }
 
+/**
+ * Private joined snapshot/holding result ordered by date and symbol.
+ * `toSnapshots` groups these flat rows into complete dated holdings sets.
+ */
 interface HoldingRow {
   readonly holdings_date: string;
   readonly created_at: string;

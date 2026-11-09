@@ -1,3 +1,9 @@
+"""JSON contracts for the engine and holdings helpers for calculation types.
+
+CamelCase aliases match the Worker engine client. Requests contain resolved
+inputs rather than Cloudflare bindings or instructions to change D1 state.
+"""
+
 from datetime import date
 from typing import Any, Literal
 
@@ -15,10 +21,22 @@ from .errors import CalculationError
 
 
 class Contract(BaseModel):
+    """Base for engine request/response models shared with the Worker.
+
+    Accept field-name aliases on input and freeze model fields after creation.
+    HTTP responses serialize aliases explicitly to match TypeScript wire types.
+    """
+
     model_config = ConfigDict(populate_by_name=True, frozen=True)
 
 
 class Holding(Contract):
+    """One finite, non-zero exposure in saved or inline portfolio input.
+
+    Negative weights and totals other than one are valid here. Calculation
+    types decide whether normalization is needed; the Worker checks tracking.
+    """
+
     symbol: str = Field(min_length=1)
     weight: FiniteFloat
 
@@ -31,10 +49,12 @@ class Holding(Contract):
 
 
 class Snapshot(Contract):
-    """Holdings at the close of `holdings_date`, in effect until the next one.
+    """Complete holdings effective at the close of `holdings_date`.
 
-    `holdings_date` is missing only for ad hoc holdings, which count as held
-    at all times.
+    The set remains in effect until the next snapshot. Calculation types use
+    Portfolio helpers to choose relevant sets; it does not represent trades.
+    An undated snapshot is allowed only for inline ad hoc holdings, treated
+    as held at all times.
     """
 
     holdings_date: date | None = Field(None, alias="holdingsDate")
@@ -58,10 +78,12 @@ class Snapshot(Contract):
 
 
 class Portfolio(Contract):
-    """A portfolio and its holdings snapshots, sorted by date.
+    """Engine-side holdings history used by calculation types.
 
-    `id` is missing for ad hoc portfolios. Those may send `holdings` instead
-    of `snapshots`, as one undated snapshot.
+    Saved requests include an ID and dated snapshots; ad hoc requests may
+    omit the ID and send plain `holdings`, converted to one undated snapshot.
+    Validation sorts dates and rejects duplicates. Query helpers resolve
+    which complete sets are effective at the requested calculation dates.
     """
 
     id: str | None = Field(default=None, min_length=1)
@@ -155,11 +177,22 @@ def _effective_by(snapshot: Snapshot, day: date) -> bool:
 
 
 class ValidateRequest(Contract):
+    """POST /types/{name}/validate body containing proposed type parameters.
+
+    The selected calculation type owns the Pydantic model that checks fields
+    and supplies defaults; this wrapper only establishes the params object.
+    """
+
     params: dict[str, Any]
 
 
 class CalculateRequest(Contract):
-    """An ad hoc calculation. Nothing is saved; the result is returned."""
+    """POST /calculate payload for one result returned to the caller.
+
+    Matches the Worker CalculateRequest. The as-of date limits visible data;
+    portfolio input may be saved history or inline holdings, or absent for
+    a type that takes none. Execution does not persist result history.
+    """
 
     type: str = Field(min_length=1)
     params: dict[str, Any]
@@ -168,9 +201,11 @@ class CalculateRequest(Contract):
 
 
 class RunRequest(Contract):
-    """One run of a saved calculation for one as-of date.
+    """POST /runs payload for executing a saved calculation and writing history.
 
-    The result rows replace the as-of date's rows in `output_key`.
+    Matches the Worker RunRequest. Portfolios must have IDs and dated
+    snapshots; Python calculates and writes R2 while the Worker records D1
+    state. A successful write replaces the as-of date rows at `output_key`.
     """
 
     run_id: str = Field(alias="runId", min_length=1)
@@ -194,6 +229,13 @@ class RunRequest(Contract):
 
 
 class PortfolioOutcome(Contract):
+    """Result of executing one type for one portfolio, before persistence.
+
+    Used in saved-run responses and to determine ad hoc success. A null
+    portfolio ID means the type ran without a portfolio. A completed outcome
+    counts produced rows; the subsequent R2 write can still fail.
+    """
+
     portfolio_id: str | None = Field(serialization_alias="portfolioId")
     status: Literal["completed", "failed"]
     row_count: int = Field(default=0, serialization_alias="rowCount")
@@ -201,9 +243,11 @@ class PortfolioOutcome(Contract):
 
 
 class RunResult(Contract):
-    """What happened in a run. The Worker records it in D1.
+    """POST /runs response that the Worker records against the saved D1 run.
 
-    `partial` means some portfolios failed and the others were written.
+    Mirrors the TypeScript engine RunResult. `partial` means some portfolio
+    results were written while others failed. `failed` is returned as normal
+    response data, including many runtime failures; it is not an HTTP error.
     """
 
     status: Literal["completed", "partial", "failed"]

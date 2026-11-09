@@ -11,6 +11,11 @@ import {
 } from "$/calculations/contracts";
 import { Calculations } from "$/calculations/store";
 
+/**
+ * Private SQL result for a saved calculation, including aggregated ordered
+ * portfolio IDs. `fromRow` decodes JSON/booleans into the client-facing
+ * `Calculation`; do not pass this database shape to routes or the engine.
+ */
 interface CalculationRow {
   readonly calculation_id: string;
   readonly name: string;
@@ -25,6 +30,10 @@ interface CalculationRow {
   readonly portfolio_ids: string;
 }
 
+/**
+ * Private calculation_runs row used by history reads. JSON and nullable
+ * result columns are decoded by `fromRunRow` into `CalculationRun`.
+ */
 interface RunRow {
   readonly run_id: string;
   readonly calculation_id: string;

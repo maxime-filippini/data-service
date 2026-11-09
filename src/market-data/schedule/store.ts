@@ -8,7 +8,12 @@ import type {
   UpdateSchedule,
 } from "./contracts";
 
-/** The schedule's settings and run history. */
+/**
+ * Injectable persistence interface for daily download settings and dispatch
+ * history. Scheduling operations choose when to launch; this interface only
+ * records settings/state and enforces one scheduled record per day. Supply
+ * `D1ScheduleStoreLive` at the execution edge; Workflows dispatch messages separately.
+ */
 export class ScheduleStore extends Context.Service<
   ScheduleStore,
   {

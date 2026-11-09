@@ -46,7 +46,12 @@ def describe_error(error: Exception) -> str:
 
 @dataclass(frozen=True)
 class Context:
-    """What a type gets besides its params."""
+    """Per-execution input and data access supplied to a calculation type.
+
+    Use load() to read symbol rows at/before as_of; portfolio is the selected
+    history for this invocation, or None for a type that takes no portfolio.
+    The injected loader hides R2 access so types can be tested with local frames.
+    """
 
     as_of: date
     portfolio: Portfolio | None
@@ -79,7 +84,11 @@ class Context:
 
 @dataclass(frozen=True)
 class CalculationType:
-    """One kind of calculation.
+    """Registration and execution contract implemented by each Python type.
+
+    Export an instance as module-level TYPE under data_service_engine.types.
+    The registry exposes its metadata to the Worker/app, and the framework
+    validates params, iterates portfolios and validates output rows.
 
     - `params`: a Pydantic model for the saved params.
     - `output`: the columns of each result row (`as_of` and `portfolio_id`

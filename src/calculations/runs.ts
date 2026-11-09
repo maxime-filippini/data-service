@@ -10,11 +10,20 @@ import { Engine, type PortfolioOutcome } from "$/calculations/engine";
 import { Calculations } from "$/calculations/store";
 import { Portfolios } from "$/portfolios/store";
 
-/** What a run sends to its Workflow. The Workflow instance ID is the run ID. */
+/**
+ * Durable payload sent when launching a calculation Workflow. The instance
+ * ID equals `runId`; execution loads the saved run and current configuration
+ * from D1 rather than carrying an entire calculation/portfolio snapshot here.
+ */
 export interface RunWorkflowParams {
   readonly runId: string;
 }
 
+/**
+ * Small Workflow-binding interface needed to launch runs and inspect their
+ * status. Accepts the real Cloudflare binding or a test stand-in without
+ * requiring callers to implement unrelated Workflow-management operations.
+ */
 export type RunWorkflow = Pick<Workflow<RunWorkflowParams>, "create" | "get">;
 
 /**

@@ -1,6 +1,10 @@
 import type { HoldingView } from "./api";
 
-/** A holdings row being edited. The weight stays text until it's saved. */
+/**
+ * Unvalidated portfolio-editor row. Weight remains text so empty/unfinished
+ * input is representable; `toHoldings` checks rows and converts to numeric
+ * `HoldingView` values before submission.
+ */
 export type HoldingRow = { symbol: string; weight: string };
 
 export const emptyRow = (): HoldingRow => ({ symbol: "", weight: "" });

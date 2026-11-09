@@ -12,6 +12,10 @@ import {
   type SymbolStatusView,
 } from "$/market-data/status";
 
+/**
+ * Nullable columns from a left-joined processing job in status queries.
+ * A missing job_id means no job; `jobFromRow` builds the optional job view.
+ */
 interface JobColumns {
   readonly job_id: string | null;
   readonly job_run_id: string | null;
@@ -22,6 +26,10 @@ interface JobColumns {
   readonly job_error: string | null;
 }
 
+/**
+ * Private history query projection joining an ingestion to its latest job.
+ * `runFromRow` shapes it for the API; these columns are not mutation input.
+ */
 interface RunRow extends JobColumns {
   readonly run_id: string;
   readonly dataset: string;
@@ -39,6 +47,11 @@ interface RunRow extends JobColumns {
   readonly observed_to: string | null;
 }
 
+/**
+ * Private symbol-status query projection joining registration, latest
+ * download, latest successful download and latest job. `symbolFromRow` keeps
+ * those separate in the dashboard view so their distinct progress is visible.
+ */
 interface SymbolRow extends JobColumns {
   readonly dataset: string;
   readonly symbol: string;

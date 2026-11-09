@@ -11,8 +11,11 @@ import type {
 } from "./contracts";
 
 /**
- * Saved calculations and their runs. A calculation has at most one `running`
- * run; a run started meanwhile is recorded as `skipped`.
+ * Injectable persistence interface for calculation configuration and execution
+ * history. Obtain with `yield* Calculations`; supply `D1CalculationsLive` in the
+ * Worker or a test implementation. Configuration operations validate type/params
+ * before writes; the adapter owns atomic storage and the one-running-run rule.
+ * This interface records runs but does not itself launch or call the engine.
  */
 export class Calculations extends Context.Service<
   Calculations,

@@ -11,11 +11,11 @@ import type {
 } from "./contracts";
 
 /**
- * Portfolios and their holdings snapshots. Every held symbol is a tracked
- * `prices_eod` symbol (disabled ones count) and a portfolio has at most one
- * snapshot per holdings date. Snapshots are added or deleted, never edited.
- * Single-asset portfolios come with their symbol and can't be changed: renaming
- * one, deleting it or changing its snapshots is a conflict.
+ * Injectable portfolio persistence and engine-projection interface. Operations
+ * obtain it with `yield* Portfolios`; `D1PortfoliosLive` enforces tracked symbols,
+ * unique snapshot dates and managed single-asset protections. Use `get` for
+ * presentation and `forEngine` for cutoff-filtered calculation input. Snapshot
+ * changes replace complete dated sets by deletion/addition, not individual trades.
  */
 export class Portfolios extends Context.Service<
   Portfolios,

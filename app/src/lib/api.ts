@@ -35,6 +35,10 @@ export type {
   SymbolStatusView,
 } from "../../../src/market-data/status/views";
 
+/**
+ * User-facing failure from an app JSON/data request. Forms display its message;
+ * the request helper also reloads the page when the Access session has expired.
+ */
 export class ApiError extends Error {}
 
 export const apiUrl = (path: string, params: Record<string, string | undefined> = {}) => {
@@ -43,6 +47,11 @@ export const apiUrl = (path: string, params: Record<string, string | undefined> 
   return `/app-api${path}${query.size > 0 ? `?${query}` : ""}`;
 };
 
+/**
+ * Subset of Worker JSON error responses used to build a readable form error.
+ * Includes schema issues, rejected downloads and engine validation details;
+ * it is a presentation shape, not a runtime decoder for every error response.
+ */
 type ErrorBody = {
   error?: string;
   issues?: { message: string; path?: string[] }[];
@@ -51,6 +60,10 @@ type ErrorBody = {
   detail?: unknown;
 };
 
+/**
+ * Pydantic field-error shape interpreted by the params editor. `loc` identifies
+ * the parameter path and `msg` supplies the engine's validation explanation.
+ */
 type EngineIssue = { loc?: (string | number)[]; msg?: string };
 
 /** Pydantic's errors as "window: Input should be greater than or equal to 2". */
@@ -127,10 +140,19 @@ export const fetchRuns = (filter: { symbol?: string; status?: RunStatus; cursor?
 export const fetchSymbols = (filter: { enabled?: "true" | "false" }) =>
   get<{ symbols: SymbolStatusView[] }>("/symbols", filter);
 
+/**
+ * Dataset-to-provider choices returned by `/app-api/options` for the symbol
+ * form. Keys stay strings in the browser; the Worker owns the supported registry.
+ */
 export type DatasetProviders = Record<string, readonly string[]>;
 
 export const fetchOptions = () => get<{ datasetProviders: DatasetProviders }>("/options");
 
+/**
+ * Complete symbol-form submission to the registry upsert route. Strings come
+ * from user input/options and are validated by the Worker; registration configures
+ * future downloads rather than immediately fetching history.
+ */
 export type RegisterInput = {
   dataset: string;
   symbol: string;
@@ -169,6 +191,11 @@ export const fetchPortfolios = () => get<{ portfolios: PortfolioSummary[] }>("/p
 
 export const fetchPortfolio = (id: string) => get<Portfolio>(portfolioPath(id));
 
+/**
+ * Browser submission of a complete holdings set effective on one date. Used
+ * by portfolio creation and add-snapshot actions; weights are already numeric
+ * here, while editable `HoldingRow` values can still contain unfinished text.
+ */
 export type NewSnapshot = { holdingsDate: string; holdings: HoldingView[] };
 
 export const createPortfolio = (input: { name: string; snapshot?: NewSnapshot }) =>
@@ -193,6 +220,11 @@ export const fetchCalculations = () => get<{ calculations: Calculation[] }>("/ca
 
 export const fetchCalculation = (id: string) => get<Calculation>(calculationPath(id));
 
+/**
+ * Complete calculation-form submission for saving a reusable configuration.
+ * The engine validates params; updates send only changed fields and cannot
+ * change the type. This shape is distinct from returned run/history metadata.
+ */
 export type CalculationInput = {
   name: string;
   type: string;

@@ -7,6 +7,10 @@ import {
 } from "$/market-data/control-plane";
 import { canonicalKey, type Dataset, type Provider } from "$/market-data/schemas";
 
+/**
+ * Private joined result after a job claim, combining its pinned ingestion
+ * and raw-object metadata. `toManifest` builds the processor request from it.
+ */
 interface ClaimedJobRow {
   readonly job_id: string;
   readonly dataset: Dataset;

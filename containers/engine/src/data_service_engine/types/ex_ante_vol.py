@@ -10,6 +10,13 @@ from ..framework import CalculationError, CalculationType, Context
 
 
 class Params(BaseModel):
+    """Type-specific inputs for ex-ante volatility, used by validation and run().
+
+    The window counts aligned return observations; annualisation scales the
+    variance. Decay selects EWMA instead of sample variance, and weight
+    normalization is optional. This model also supplies editor schema/defaults.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     window: int = Field(252, ge=2, description="Number of daily returns to use.")

@@ -9,12 +9,20 @@ import {
 } from "$/market-data/schedule/contracts";
 import { ScheduleStore } from "$/market-data/schedule/store";
 
+/**
+ * Private singleton download_schedule row. Convert the integer paused flag
+ * and snake_case columns before returning `DownloadSchedule`.
+ */
 interface ScheduleRow {
   readonly hour_utc: number;
   readonly paused: number;
   readonly updated_at: string;
 }
 
+/**
+ * Private schedule_runs row describing download dispatch, not ingestion
+ * completion. Converted to `ScheduleRun` for history responses.
+ */
 interface RunRow {
   readonly run_id: string;
   readonly trigger: ScheduleTrigger;

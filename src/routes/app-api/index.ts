@@ -25,6 +25,10 @@ import { createSymbolRoutes } from "$/routes/symbols";
 
 const DEFAULT_RUN_PAGE_SIZE = 50;
 
+/**
+ * Validated app history filters and opaque page cursor. URL values stay
+ * encoded as strings here; the route converts the limit for the read interface.
+ */
 const RunsQuerySchema = Schema.Struct({
   dataset: Schema.optionalKey(DatasetSchema),
   symbol: Schema.optionalKey(MarketSymbolSchema),
@@ -38,18 +42,31 @@ const RunsQuerySchema = Schema.Struct({
   ),
 });
 
+/**
+ * Optional dataset/scheduling filters for dashboard symbol-status reads.
+ */
 const SymbolsQuerySchema = Schema.Struct({
   dataset: Schema.optionalKey(DatasetSchema),
   enabled: Schema.optionalKey(Schema.Literals(["true", "false"])),
 });
 
+/**
+ * Path-safe dataset/symbol pair selecting a canonical Parquet object to stream.
+ */
 const DatasetParamsSchema = Schema.Struct({
   dataset: DatasetSchema,
   symbol: MarketSymbolSchema,
 });
 
+/**
+ * Saved-calculation identity used to locate its retained Parquet results.
+ */
 const CalculationParamsSchema = Schema.Struct({ id: CalculationIdSchema });
 
+/**
+ * Hono context for app JSON routes: Cloudflare bindings plus the identity
+ * set by Access middleware before any handler or mutation runs.
+ */
 type AppApiEnv = { Bindings: CloudflareBindings; Variables: AccessVariables };
 
 /** Passes every request; the app's API has already checked Access. */

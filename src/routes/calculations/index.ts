@@ -19,9 +19,21 @@ import { previousDay } from "$/market-data/ingestion-queue";
 
 type Env = { Bindings: CloudflareBindings };
 
+/**
+ * Saved-calculation identity accepted in detail and mutation route paths.
+ */
 const IdParamSchema = Schema.Struct({ id: CalculationIdSchema });
+
+/**
+ * Calculation/run path pair. Format validation is followed by an ownership
+ * check so a run cannot be read through a different calculation's URL.
+ */
 const RunParamSchema = Schema.Struct({ id: CalculationIdSchema, runId: RunIdSchema });
 
+/**
+ * Bounded history-page size read from URL text; the route applies its
+ * default and converts to a number before querying runs.
+ */
 const RunsQuerySchema = Schema.Struct({
   limit: Schema.optionalKey(
     Schema.String.check(

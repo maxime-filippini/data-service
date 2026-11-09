@@ -9,7 +9,11 @@ import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessU
  */
 export const ACCESS_EMAIL_HEADER = "X-Access-Email";
 
-/** SvelteKit's request handler, as built by adapter-cloudflare. */
+/**
+ * Request-handler interface supplied by the generated SvelteKit build. The
+ * Worker calls it after checking Access and setting the verified identity
+ * header; tests can provide a lightweight handler to check that handoff.
+ */
 export interface AppHandler {
   readonly fetch: (request: Request, env: CloudflareBindings) => Response | Promise<Response>;
 }

@@ -7,7 +7,11 @@ import { MarketDateSchema } from "$/market-data/schemas";
 import { HoldingsSchema, PortfolioError, PortfolioIdSchema } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 
-/** The body of `POST /calculate`. */
+/**
+ * HTTP input for a one-off calculation without a saved configuration or R2
+ * result write. A portfolio reference is resolved by the Worker; inline holdings
+ * are checked for tracked symbols before being sent to the engine.
+ */
 export const AdHocCalculationSchema = Schema.Struct({
   type: CalculationTypeNameSchema,
   /** Checked by the engine. Defaults to `{}`. */
@@ -22,6 +26,12 @@ export const AdHocCalculationSchema = Schema.Struct({
     ]),
   ),
 });
+
+/**
+ * Decoded one-off request consumed by `calculateAdHoc`. Still needs date/param
+ * defaults and saved-portfolio resolution; `CalculateRequest` is the prepared
+ * wire payload sent to Python.
+ */
 export type AdHocCalculation = typeof AdHocCalculationSchema.Type;
 
 /**

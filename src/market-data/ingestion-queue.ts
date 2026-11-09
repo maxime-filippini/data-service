@@ -7,13 +7,22 @@ import type { ProcessingMessage } from "$/market-data/processing";
 import type { Dataset, DateRange } from "$/market-data/schemas";
 import { SymbolRegistry, type SymbolRegistryError } from "$/market-data/symbol-registry";
 
-/** One symbol to download. `to` is fixed when queued so retries fetch the same range. */
+/**
+ * Durable ingestion-queue command selecting a tracked symbol and fixed end
+ * date. The consumer resolves the current provider/backfill start from the
+ * registry and creates a fresh run ID per attempt; only `to` is frozen here.
+ */
 export interface IngestionMessage {
   readonly dataset: Dataset;
   readonly symbol: string;
   readonly to: string;
 }
 
+/**
+ * Symbol identity accepted by manual download requests, before queueing adds
+ * the previous-day cutoff. The registry supplies provider and history settings;
+ * this value alone is neither an ingestion run nor a complete queue message.
+ */
 export interface IngestionEntry {
   readonly dataset: Dataset;
   readonly symbol: string;
@@ -73,6 +82,10 @@ export const requestIngestions = Effect.fn("MarketData.requestIngestions")(funct
   return { status: "queued", queued } as const;
 });
 
+/**
+ * Expected failure families returned by a queue-driven download attempt.
+ * `isRetryable` interprets these to choose message redelivery versus acknowledgement.
+ */
 export type IngestionError = MarketDataError | ControlPlaneError | SymbolRegistryError;
 
 /** Whether a failed ingestion message is worth redelivering. */

@@ -10,11 +10,18 @@ import {
   type SymbolRegistryError,
 } from "$/market-data/symbol-registry";
 
+/**
+ * URL filters for listing registry entries; the route converts the optional
+ * string enabled flag to a boolean before querying the store.
+ */
 const ListQuerySchema = Schema.Struct({
   dataset: Schema.optionalKey(DatasetSchema),
   enabled: Schema.optionalKey(Schema.Literals(["true", "false"])),
 });
 
+/**
+ * Dataset/symbol path identity used for enabling or disabling registration.
+ */
 const IdentitySchema = Schema.Struct({
   dataset: DatasetSchema,
   symbol: MarketSymbolSchema,

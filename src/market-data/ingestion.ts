@@ -4,6 +4,11 @@ import { type DatedEntry, MarketDataError, MarketDataSource } from "$/market-dat
 import { MarketDataControlPlane, type RawObject } from "$/market-data/control-plane";
 import type { Dataset, DateRange, Provider } from "$/market-data/schemas";
 
+/**
+ * Validated provider response plus request provenance passed to raw storage.
+ * The R2 adapter writes a versioned JSON envelope and returns a `RawObject`
+ * receipt; these entries are raw rows, not the canonical Parquet representation.
+ */
 export interface StoreRawMarketData {
   readonly runId: string;
   readonly dataset: Dataset;
@@ -14,6 +19,11 @@ export interface StoreRawMarketData {
   readonly receivedAt: string;
 }
 
+/**
+ * Injectable write-only interface for preserving a raw provider response.
+ * `ingestMarketData` obtains it through Effect; the R2 adapter owns envelope
+ * serialization and write-once storage, while tests can capture the same input.
+ */
 export class RawMarketDataStore extends Context.Service<
   RawMarketDataStore,
   {
@@ -21,6 +31,11 @@ export class RawMarketDataStore extends Context.Service<
   }
 >()("data-service/RawMarketDataStore") {}
 
+/**
+ * One prepared download attempt passed to `ingestMarketData`. The queue
+ * consumer resolves registration into this explicit range and supplies a fresh
+ * run ID/timestamps; the operation claims the run before fetching or storing data.
+ */
 export interface IngestMarketData {
   readonly runId: string;
   readonly dataset: Dataset;

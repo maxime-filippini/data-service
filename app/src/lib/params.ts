@@ -2,6 +2,11 @@
 // the help shown next to the params editor. The dashboard doesn't build a form
 // from it; the engine checks the params.
 
+/**
+ * Subset of the engine's JSON Schema metadata needed for defaults and editor
+ * help. This is a description of params, not the params themselves, and does
+ * not implement client-side validation of the full JSON Schema specification.
+ */
 type JsonSchema = {
   type?: string | string[];
   anyOf?: JsonSchema[];
@@ -23,6 +28,11 @@ type JsonSchema = {
   required?: string[];
 };
 
+/**
+ * Presentation model for one parameter's help text, derived from the engine
+ * schema by `describeParams`. Defaults and constraints are formatted for
+ * display; Python remains responsible for validating submitted values.
+ */
 export type ParamHelp = {
   name: string;
   type: string;

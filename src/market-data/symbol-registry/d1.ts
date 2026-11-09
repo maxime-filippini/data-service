@@ -8,6 +8,10 @@ import {
 } from "$/market-data/symbol-registry";
 import { SINGLE_ASSET_HOLDINGS_DATE } from "$/portfolios/contracts";
 
+/**
+ * Private tracked_symbols row. `fromRow` converts persisted column names
+ * and the integer enabled flag into the `TrackedSymbol` domain representation.
+ */
 interface SymbolRow {
   readonly dataset: Dataset;
   readonly symbol: string;

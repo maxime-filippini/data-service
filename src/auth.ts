@@ -40,7 +40,11 @@ export const requireManagementToken: MiddlewareHandler<{ Bindings: CloudflareBin
   await next();
 };
 
-/** Settings for the dashboard's Cloudflare Access check. */
+/**
+ * Environment settings consumed by `checkAccess` for app/docs authentication.
+ * Separate from Cloudflare bindings so tests can supply just the Access policy.
+ * Missing configuration denies access; the local bypass is hostname-restricted.
+ */
 export interface AccessSettings {
   /** `https://<team>.cloudflareaccess.com` */
   readonly ACCESS_TEAM_DOMAIN?: string;
@@ -52,6 +56,11 @@ export interface AccessSettings {
   readonly DASHBOARD_LOCAL_BYPASS?: string;
 }
 
+/**
+ * Signing-key resolver dependency for verifying a team's Access JWTs.
+ * Production uses cached remote keys; tests inject a resolver for locally
+ * signed tokens without making network requests.
+ */
 export type AccessKeys = (teamDomain: string) => JWTVerifyGetKey;
 
 // One key set per team domain, so jose's key cache survives between requests.
@@ -79,9 +88,17 @@ const originOf = (domain: string | undefined) => {
   }
 };
 
+/**
+ * Hono request context populated only after the Access middleware authorizes
+ * a user. Downstream routes use the verified email for presentation and app handoff.
+ */
 export type AccessVariables = { accessEmail: string };
 
-/** The outcome of checking a request's Cloudflare Access token. */
+/**
+ * Result of authenticating and allowlisting an Access request. A verified email
+ * allows continuation; a status/error is a denial ready for HTTP presentation.
+ * Consumed by middleware without requiring authentication failures to throw.
+ */
 export type AccessCheck =
   | { readonly email: string }
   | { readonly status: 401 | 403 | 503; readonly error: string };

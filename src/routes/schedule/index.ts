@@ -7,6 +7,10 @@ import { type ScheduleError, UpdateScheduleSchema } from "$/market-data/schedule
 import { type ScheduleWorkflow, scheduleView, startManualRun } from "$/market-data/schedule/operations";
 import { ScheduleStore } from "$/market-data/schedule/store";
 
+/**
+ * Bounded dispatch-history count accepted from URL text; the route supplies
+ * the default and converts to a number before calling the schedule store.
+ */
 const RunsQuerySchema = Schema.Struct({
   limit: Schema.optionalKey(
     Schema.String.check(

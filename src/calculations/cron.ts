@@ -1,8 +1,8 @@
 /**
- * A standard 5-field cron expression in UTC: minute, hour, day of month,
- * month, day of week. Each field is `*`, a value, a range `a-b`, a step
- * (`*\/n`, `a-b/n` or `a/n`), or a comma-separated list of those. Months and
- * days of week also take names (`JAN`, `MON`); Sunday is 0 or 7.
+ * Parsed UTC cron expression used by `latestSlot` and `nextSlot` to select
+ * whole-hour calculation slots. Preserves the parsed minute field for syntax
+ * checking, but slot selection ignores minutes. Field sets represent allowed
+ * values; when both day fields are restricted, either matching day is sufficient.
  */
 export interface CronSchedule {
   readonly minutes: ReadonlySet<number>;

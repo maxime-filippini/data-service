@@ -24,4 +24,9 @@ export const dependencies = {
   runWorkflowFor: (env: CloudflareBindings): RunWorkflow => env.CALCULATION_RUNS,
 };
 
+/**
+ * Dependency-factory shape shared by route construction and page reads.
+ * Each factory selects an adapter from request bindings; tests supply local
+ * implementations with the same shape. This is wiring, not persisted configuration.
+ */
 export type Dependencies = typeof dependencies;

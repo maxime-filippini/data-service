@@ -7,6 +7,10 @@ import type { ScheduleRun, ScheduleView } from "../market-data/schedule/views";
 import type { IngestionRunView, RunPage, SymbolStatusView } from "../market-data/status/views";
 import type { Portfolio, PortfolioSummary } from "../portfolios/views";
 
+/**
+ * Home-page summary of tracked symbols and their latest pipeline outcomes.
+ * Counts describe symbols, not the total number of failed historical runs/jobs.
+ */
 export interface SymbolCounts {
   readonly total: number;
   /** On the daily schedule. */
@@ -18,11 +22,18 @@ export interface SymbolCounts {
   readonly neverDownloaded: number;
 }
 
-/** A calculation run with its calculation's name. */
+/**
+ * Calculation-run read model enriched with a display name for mixed home-page
+ * history. The name comes from the current calculation, not a run-time snapshot.
+ */
 export interface NamedCalculationRun extends CalculationRun {
   readonly calculationName: string;
 }
 
+/**
+ * Enabled calculation paired with its next matching hourly slot for display.
+ * This is a schedule preview, not a reserved run or a Workflow instance.
+ */
 export interface UpcomingCalculation {
   readonly id: string;
   readonly name: string;
@@ -32,7 +43,11 @@ export interface UpcomingCalculation {
   readonly nextRunAt: string;
 }
 
-/** The home page: how both pipelines are doing. */
+/**
+ * Combined read model for the home page: pipeline summaries and bounded
+ * recent/upcoming lists. Assemble through `PageData.home`; it is a dashboard
+ * projection, not a transactionally consistent snapshot across every table.
+ */
 export interface HomeData {
   readonly symbols: SymbolCounts;
   readonly schedule: ScheduleView;
@@ -52,9 +67,9 @@ export interface HomeData {
 }
 
 /**
- * What the app's pages load on the server. Reads only: changes go through the
- * app's JSON API (`/app-api`) from the browser. Each method rejects with a
- * `PageDataError` if the data can't be loaded.
+ * Promise-based, read-only interface used by SvelteKit server loads. Hides
+ * Effect and Cloudflare wiring from pages; browser mutations use `/app-api`.
+ * Each async method rejects with `PageDataError` on an expected read failure.
  */
 export interface PageData {
   /** The first page of ingestion runs, filtered by symbol and status. Unknown statuses are ignored. */

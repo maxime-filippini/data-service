@@ -2,6 +2,11 @@ import { Effect, Schema } from "effect";
 
 import { MarketDataControlPlane } from "$/market-data/control-plane";
 
+/**
+ * Processing-queue notification pointing to a D1 job. The consumer atomically
+ * claims that job to obtain its manifest; the message does not duplicate raw
+ * object metadata, and duplicate deliveries can therefore be skipped.
+ */
 export interface ProcessingMessage {
   readonly jobId: string;
 }
@@ -11,6 +16,11 @@ export const STALE_JOB_MS = 60 * 60 * 1000;
 
 const QUEUE_BATCH_SIZE = 100;
 
+/**
+ * Retry signal when a claimed job cannot reach the processor. `processJob`
+ * attempts to release the claim before returning this failure; the consumer
+ * requests redelivery. An HTTP error response instead produces a failed job.
+ */
 export class ProcessorUnavailable extends Schema.TaggedError<ProcessorUnavailable>()(
   "ProcessorUnavailable",
   { jobId: Schema.String },

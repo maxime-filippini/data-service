@@ -13,7 +13,14 @@ import {
 } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 
+/**
+ * Saved-portfolio identity accepted by detail and mutation routes.
+ */
 const IdParamSchema = Schema.Struct({ id: PortfolioIdSchema });
+
+/**
+ * Identifies the complete dated holdings snapshot removed by a delete request.
+ */
 const SnapshotParamSchema = Schema.Struct({ id: PortfolioIdSchema, holdingsDate: MarketDateSchema });
 
 /**
