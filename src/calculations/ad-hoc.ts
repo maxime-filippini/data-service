@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { CalculationTypeNameSchema } from "$/calculations/contracts";
 import { type AdHocPortfolio, Engine } from "$/calculations/engine";
-import { previousDay } from "$/market-data/ingestion-queue";
+import { previousDay } from "$/datetime";
 import { MarketDateSchema } from "$/market-data/schemas";
 import {
   HoldingsSchema,

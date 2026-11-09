@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
+import { MINUTE_MS } from "$/datetime";
 import type {
   CalculationParams,
   CalculationTypeInfo,
@@ -8,7 +9,7 @@ import type {
 import type { EnginePortfolio, Holding } from "$/portfolios/contracts";
 
 /** How long an ad hoc calculation may take, including a cold start. */
-export const CALCULATE_TIMEOUT_MS = 60_000;
+export const CALCULATE_TIMEOUT_MS = MINUTE_MS;
 
 /** How long listing types or validating params may take, including a cold start. */
 const QUICK_TIMEOUT_MS = 30_000;

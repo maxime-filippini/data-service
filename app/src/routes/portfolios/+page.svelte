@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { utcDay } from "../../../../src/datetime";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
 
@@ -32,7 +33,7 @@
   let formError = $state<string | null>(null);
   let name = $state("");
   let withSnapshot = $state(true);
-  let holdingsDate = $state(new Date().toISOString().slice(0, 10));
+  let holdingsDate = $state(utcDay(new Date()));
   let rows = $state<HoldingRow[]>([emptyRow()]);
 
   const describe = (cause: unknown) =>

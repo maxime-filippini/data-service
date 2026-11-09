@@ -1,6 +1,13 @@
 import { Effect } from "effect";
 
-import { previousDay } from "$/market-data/ingestion-queue";
+import {
+  addUtcDays,
+  atUtcHour,
+  HOUR_MS,
+  nextUtcHour,
+  previousDay,
+  utcDay,
+} from "$/datetime";
 
 import {
   ScheduleError,
@@ -8,13 +15,6 @@ import {
   type ScheduleView,
 } from "./contracts";
 import { ScheduleStore } from "./store";
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-
-const utcDay = (date: Date) => date.toISOString().slice(0, 10);
-const atHour = (day: string, hour: number) =>
-  new Date(`${day}T${String(hour).padStart(2, "0")}:00:00.000Z`);
 
 /** Whether the cron should start today's run now. Runs late if the hour was missed. */
 export const isDue = (
@@ -35,11 +35,11 @@ export const nextRunAt = (
   if (schedule.paused) return null;
   const today = utcDay(now);
   if (lastScheduledRunDate === today)
-    return atHour(utcDay(new Date(now.getTime() + DAY_MS)), schedule.hourUtc);
+    return atUtcHour(addUtcDays(now, 1), schedule.hourUtc);
   if (now.getUTCHours() < schedule.hourUtc)
-    return atHour(today, schedule.hourUtc);
+    return atUtcHour(now, schedule.hourUtc);
   // Today's hour has passed without a run, so the next tick catches up.
-  return new Date(Math.floor(now.getTime() / HOUR_MS) * HOUR_MS + HOUR_MS);
+  return nextUtcHour(now);
 };
 
 export const scheduleView = Effect.fn("Schedule.view")(function* (now: Date) {

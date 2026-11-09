@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
+  import { utcDay } from "../../../src/datetime";
   import {
     addSnapshot,
     deletePortfolio,
@@ -45,7 +46,7 @@
 
   let adding = $state(false);
   let addError = $state<string | null>(null);
-  let holdingsDate = $state(new Date().toISOString().slice(0, 10));
+  let holdingsDate = $state(utcDay(new Date()));
   let rows = $state<HoldingRow[]>([emptyRow()]);
 
   /**
@@ -116,7 +117,7 @@
     message = null;
     const latest = portfolio?.snapshots.at(-1);
     rows = from === "latest" && latest ? toRows(latest.holdings) : [emptyRow()];
-    holdingsDate = new Date().toISOString().slice(0, 10);
+    holdingsDate = utcDay(new Date());
   };
 
   const submitSnapshot = async (event: SubmitEvent) => {

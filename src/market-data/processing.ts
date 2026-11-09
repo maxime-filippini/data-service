@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { HOUR_MS } from "$/datetime";
 import { MarketDataControlPlane } from "$/market-data/control-plane";
 
 /**
@@ -12,7 +13,7 @@ export interface ProcessingMessage {
 }
 
 /** A job still `processing` after this long is assumed dead and failed. */
-export const STALE_JOB_MS = 60 * 60 * 1000;
+export const STALE_JOB_MS = HOUR_MS;
 
 const QUEUE_BATCH_SIZE = 100;
 

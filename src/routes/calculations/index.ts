@@ -15,7 +15,7 @@ import { type RunWorkflow, startRun } from "$/calculations/runs";
 import { Calculations } from "$/calculations/store";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
-import { previousDay } from "$/market-data/ingestion-queue";
+import { previousDay } from "$/datetime";
 
 type Env = { Bindings: CloudflareBindings };
 

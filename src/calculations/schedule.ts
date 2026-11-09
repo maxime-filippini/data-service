@@ -4,7 +4,7 @@ import { type Calculation } from "$/calculations/contracts";
 import { isCronError, latestSlot, parseCron } from "$/calculations/cron";
 import { type RunWorkflow, startRun } from "$/calculations/runs";
 import { Calculations } from "$/calculations/store";
-import { previousDay } from "$/market-data/ingestion-queue";
+import { previousDay } from "$/datetime";
 
 /**
  * The cron slot a calculation should run for now, or null if it isn't due.

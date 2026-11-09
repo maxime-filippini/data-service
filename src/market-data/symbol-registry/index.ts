@@ -1,5 +1,6 @@
 import { Context, Effect, Schema } from "effect";
 
+import { utcDay } from "$/datetime";
 import {
   type Dataset,
   DatasetSchema,
@@ -30,7 +31,7 @@ export const RegisterSymbolSchema = Schema.Struct({
         },
   ),
   Schema.makeFilter((input) =>
-    input.backfillStartDate <= new Date().toISOString().slice(0, 10)
+    input.backfillStartDate <= utcDay(new Date())
       ? true
       : {
           path: ["backfillStartDate"],

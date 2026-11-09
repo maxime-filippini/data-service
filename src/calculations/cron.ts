@@ -1,3 +1,6 @@
+// The app's cron editor also imports this module, without the Worker's aliases.
+import { addUtcDays, atUtcHour, startOfUtcDay } from "../datetime";
+
 /**
  * Parsed UTC cron expression used by `latestSlot` and `nextSlot` to select
  * whole-hour calculation slots. Preserves the parsed minute field for syntax
@@ -141,9 +144,6 @@ export const isCronError = (
   parsed: ReturnType<typeof parseCron>,
 ): parsed is { readonly error: string } => "error" in parsed;
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-
 /** How far back `latestSlot` looks: long enough for a 29 February schedule. */
 const SEARCH_DAYS = 8 * 366;
 
@@ -161,13 +161,13 @@ const matchesDay = (schedule: CronSchedule, day: Date) => {
  */
 export const latestSlot = (schedule: CronSchedule, now: Date): Date | null => {
   const hours = [...schedule.hours].sort((a, b) => b - a);
-  const today = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
+  const today = startOfUtcDay(now);
   for (let back = 0; back <= SEARCH_DAYS; back += 1) {
-    const day = new Date(today - back * DAY_MS);
+    const day = addUtcDays(today, -back);
     if (!matchesDay(schedule, day)) continue;
     const hour =
       back === 0 ? hours.find((h) => h <= now.getUTCHours()) : hours[0];
-    if (hour !== undefined) return new Date(day.getTime() + hour * HOUR_MS);
+    if (hour !== undefined) return atUtcHour(day, hour);
   }
   return null;
 };
@@ -178,13 +178,13 @@ export const latestSlot = (schedule: CronSchedule, now: Date): Date | null => {
  */
 export const nextSlot = (schedule: CronSchedule, now: Date): Date | null => {
   const hours = [...schedule.hours].sort((a, b) => a - b);
-  const today = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
+  const today = startOfUtcDay(now);
   for (let ahead = 0; ahead <= SEARCH_DAYS; ahead += 1) {
-    const day = new Date(today + ahead * DAY_MS);
+    const day = addUtcDays(today, ahead);
     if (!matchesDay(schedule, day)) continue;
     const hour =
       ahead === 0 ? hours.find((h) => h > now.getUTCHours()) : hours[0];
-    if (hour !== undefined) return new Date(day.getTime() + hour * HOUR_MS);
+    if (hour !== undefined) return atUtcHour(day, hour);
   }
   return null;
 };

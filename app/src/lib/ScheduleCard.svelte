@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { atUtcHour } from "../../../src/datetime";
   import {
     fetchSchedule,
     fetchScheduleRuns,
@@ -38,8 +39,7 @@
   /** "06:00 UTC (08:00 local)" */
   const hourLabel = (hour: number) => {
     const utc = `${String(hour).padStart(2, "0")}:00 UTC`;
-    const date = new Date();
-    date.setUTCHours(hour, 0, 0, 0);
+    const date = atUtcHour(new Date(), hour);
     return date.getTimezoneOffset() === 0
       ? utc
       : `${utc} (${localTime.format(date)} local)`;

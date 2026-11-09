@@ -1,5 +1,6 @@
 import { Effect, type Layer } from "effect";
 
+import { MINUTE_MS, previousDay } from "$/datetime";
 import { type MarketDataError, type MarketDataSource } from "$/market-data";
 import {
   type ControlPlaneError,
@@ -38,14 +39,9 @@ export interface IngestionEntry {
 export const MAX_INGESTION_ENTRIES = 500;
 
 /** A `fetching` run older than this is assumed dead (queue consumers stop after 15 minutes). */
-export const STALE_RUN_MS = 30 * 60 * 1000;
+export const STALE_RUN_MS = 30 * MINUTE_MS;
 
 const QUEUE_BATCH_SIZE = 100;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Snapshots run up to the previous UTC day, the last one with a final close. */
-export const previousDay = (now: Date) =>
-  new Date(now.getTime() - DAY_MS).toISOString().slice(0, 10);
 
 /**
  * Queue a full-history download for each registered entry. Rejects the whole

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
 
+  import { utcDay } from "../../../src/datetime";
   import {
     type DatasetProviders,
     type RegisterInput,
@@ -52,7 +53,7 @@
       form.provider = providers[0]!;
   });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = utcDay(new Date());
   const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9][A-Z0-9-]*)?$/;
   const describe = (cause: unknown) =>
     cause instanceof Error ? cause.message : String(cause);

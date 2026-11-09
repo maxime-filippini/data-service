@@ -68,6 +68,11 @@ A store interface is a seam for supplying an implementation. A D1 adapter
 implements it. An operation coordinates the work. Prefer explicit imports from
 the owning file over a barrel that hides which role you are using.
 
+Shared UTC date arithmetic lives in `src/datetime.ts`. Import it directly for
+date cutoffs, day/hour rounding and duration constants; it is safe to share with
+the browser. Feature modules keep scheduling decisions and timeout thresholds,
+while locale-dependent display formatting stays in `app/src/lib/format.ts`.
+
 ## A useful reading order
 
 Start with one operation rather than the root Worker:

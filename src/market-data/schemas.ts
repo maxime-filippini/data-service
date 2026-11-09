@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { utcDay } from "$/datetime";
+
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(?:\.[A-Z0-9][A-Z0-9-]*)?$/u;
 
@@ -19,8 +21,7 @@ const isDateOnly = Schema.makeFilter<string>((value) => {
   }
 
   const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) &&
-    date.toISOString().slice(0, 10) === value
+  return !Number.isNaN(date.getTime()) && utcDay(date) === value
     ? true
     : "Expected a valid calendar date";
 });

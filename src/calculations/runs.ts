@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { MINUTE_MS } from "$/datetime";
 import {
   CalculationError,
   calculationOutputKey,
@@ -30,7 +31,7 @@ export type RunWorkflow = Pick<Workflow<RunWorkflowParams>, "create" | "get">;
  * How long a run may be `running` before its Workflow is checked. Covers the
  * moment between recording a run and creating its Workflow.
  */
-export const RUN_CHECK_GRACE_MS = 5 * 60 * 1000;
+export const RUN_CHECK_GRACE_MS = 5 * MINUTE_MS;
 
 /** Workflow statuses after which a run can't report back any more. */
 const STOPPED: ReadonlySet<string> = new Set([

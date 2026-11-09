@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
 
+  import { utcDay, previousDay } from "../../../src/datetime";
   import {
     type Calculation,
     type CalculationRun,
@@ -85,9 +86,7 @@
     new Map(portfolios.map((p) => [p.id, p.name])),
   );
   /** The previous UTC day, which runs default to. */
-  const yesterday = new Date(Date.now() - 24 * 3600 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const yesterday = previousDay(new Date());
 
   const act = async (action: () => Promise<string | null>) => {
     busy = true;
@@ -262,7 +261,7 @@
       <input
         type="date"
         bind:value={asOf}
-        max={new Date().toISOString().slice(0, 10)}
+        max={utcDay(new Date())}
         aria-label="As-of date"
       />
     </label>
