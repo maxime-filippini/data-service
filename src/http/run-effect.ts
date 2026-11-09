@@ -19,15 +19,26 @@ type RequestError =
   | SymbolRegistryError;
 
 const calculationStatus = {
-  not_found: 404, invalid: 422, workflow: 500, database: 500,
+  not_found: 404,
+  invalid: 422,
+  workflow: 500,
+  database: 500,
 } as const satisfies Record<CalculationError["kind"], ContentfulStatusCode>;
 
 const engineStatus = {
-  not_found: 404, invalid: 422, failed: 500, unavailable: 503, timeout: 504,
+  not_found: 404,
+  invalid: 422,
+  failed: 500,
+  unavailable: 503,
+  timeout: 504,
 } as const satisfies Record<EngineError["kind"], ContentfulStatusCode>;
 
 const portfolioStatus = {
-  not_found: 404, conflict: 409, untracked_symbols: 400, no_holdings: 422, database: 500,
+  not_found: 404,
+  conflict: 409,
+  untracked_symbols: 400,
+  no_holdings: 422,
+  database: 500,
 } as const satisfies Record<PortfolioError["kind"], ContentfulStatusCode>;
 
 /** Translate expected failures here so routes share status and metadata rules. */
@@ -37,7 +48,8 @@ const httpException = (error: RequestError): HTTPException => {
   switch (error._tag) {
     case "CalculationError":
       status = calculationStatus[error.kind];
-      if (error.portfolioIds !== undefined) extra = { portfolioIds: error.portfolioIds };
+      if (error.portfolioIds !== undefined)
+        extra = { portfolioIds: error.portfolioIds };
       break;
     case "EngineError":
       status = engineStatus[error.kind];
@@ -47,7 +59,9 @@ const httpException = (error: RequestError): HTTPException => {
       status = portfolioStatus[error.kind];
       extra = {
         ...(error.symbols === undefined ? {} : { symbols: error.symbols }),
-        ...(error.calculations === undefined ? {} : { calculations: error.calculations }),
+        ...(error.calculations === undefined
+          ? {}
+          : { calculations: error.calculations }),
       };
       break;
     case "SymbolRegistryError":
@@ -72,7 +86,11 @@ export const runHttp = async <A, E extends RequestError, R>(
   program: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R>,
 ): Promise<A> => {
-  const result = await program.pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
+  const result = await program.pipe(
+    Effect.provide(layer),
+    Effect.result,
+    Effect.runPromise,
+  );
   if (Result.isFailure(result)) throw httpException(result.failure);
   return result.success;
 };

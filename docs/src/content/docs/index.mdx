@@ -94,18 +94,34 @@ Two pipelines share the Worker, D1 and the processed bucket:
 
 ## Where to go next
 
-<LinkCard title="Concepts" description="The vocabulary: datasets, tracked symbols, runs, jobs, portfolios, calculations." href="/docs/concepts/" />
-<LinkCard title="Architecture" description="Every Cloudflare resource, what it owns, and how requests flow between them." href="/docs/architecture/" />
-<LinkCard title="Management API" description="Every route, with curl examples." href="/docs/reference/api/" />
-<LinkCard title="Writing a calculation type" description="Adding a calculation is one Python file." href="/docs/calculations/types/" />
+<LinkCard
+  title="Concepts"
+  description="The vocabulary: datasets, tracked symbols, runs, jobs, portfolios, calculations."
+  href="/docs/concepts/"
+/>
+<LinkCard
+  title="Architecture"
+  description="Every Cloudflare resource, what it owns, and how requests flow between them."
+  href="/docs/architecture/"
+/>
+<LinkCard
+  title="Management API"
+  description="Every route, with curl examples."
+  href="/docs/reference/api/"
+/>
+<LinkCard
+  title="Writing a calculation type"
+  description="Adding a calculation is one Python file."
+  href="/docs/calculations/types/"
+/>
 
 ## Repository layout
 
-| Path | What |
-| --- | --- |
-| `src/` | The Worker (TypeScript, Hono, Effect) |
-| `containers/processor/` | The Python processor container |
-| `containers/engine/` | The Python calculation engine container |
-| `app/` | The SvelteKit app (home page and dashboard), served at `/` |
-| `docs/` | This site (Astro Starlight), served at `/docs/` |
-| `migrations/` | D1 migrations |
+| Path                    | What                                                       |
+| ----------------------- | ---------------------------------------------------------- |
+| `src/`                  | The Worker (TypeScript, Hono, Effect)                      |
+| `containers/processor/` | The Python processor container                             |
+| `containers/engine/`    | The Python calculation engine container                    |
+| `app/`                  | The SvelteKit app (home page and dashboard), served at `/` |
+| `docs/`                 | This site (Astro Starlight), served at `/docs/`            |
+| `migrations/`           | D1 migrations                                              |

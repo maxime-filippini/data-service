@@ -185,9 +185,14 @@ const symbolFromRow = (row: SymbolRow): SymbolStatusView => ({
 });
 
 const query = <A>(operation: () => Promise<A>, message: string) =>
-  Effect.tryPromise({ try: operation, catch: () => new PipelineStatusError({ message }) });
+  Effect.tryPromise({
+    try: operation,
+    catch: () => new PipelineStatusError({ message }),
+  });
 
-export const D1PipelineStatusLive = (db: D1Database): Layer.Layer<PipelineStatus> =>
+export const D1PipelineStatusLive = (
+  db: D1Database,
+): Layer.Layer<PipelineStatus> =>
   Layer.succeed(
     PipelineStatus,
     PipelineStatus.of({
@@ -214,7 +219,10 @@ export const D1PipelineStatusLive = (db: D1Database): Layer.Layer<PipelineStatus
             const last = runs.at(-1);
             return {
               runs,
-              nextCursor: results.length > limit && last ? encodeCursor(last.createdAt, last.runId) : null,
+              nextCursor:
+                results.length > limit && last
+                  ? encodeCursor(last.createdAt, last.runId)
+                  : null,
             };
           }),
         );
@@ -225,7 +233,10 @@ export const D1PipelineStatusLive = (db: D1Database): Layer.Layer<PipelineStatus
           () =>
             db
               .prepare(LIST_SYMBOLS)
-              .bind(dataset ?? null, enabled === undefined ? null : Number(enabled))
+              .bind(
+                dataset ?? null,
+                enabled === undefined ? null : Number(enabled),
+              )
               .all<SymbolRow>(),
           "Could not list symbols",
         ).pipe(Effect.map(({ results }) => results.map(symbolFromRow))),

@@ -45,13 +45,13 @@ TYPE = CalculationType(
 )
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `name` | The type's ID, such as `ex_ante_vol`. Two types with the same name stop the engine from starting. |
-| `params` | A Pydantic model. `GET /types` publishes its JSON Schema, and the Worker stores params as plain JSON. |
-| `output` | The columns `run` returns, in order. The framework checks them, casts to these types and adds `as_of` and `portfolio_id`. `run` may return any number of rows. |
-| `takes_portfolio` | `True` runs the type once per portfolio. Otherwise it runs once with `ctx.portfolio` set to `None`. |
-| `run` | `run(params, ctx) -> pl.DataFrame` |
+| Field             | Meaning                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | The type's ID, such as `ex_ante_vol`. Two types with the same name stop the engine from starting.                                                              |
+| `params`          | A Pydantic model. `GET /types` publishes its JSON Schema, and the Worker stores params as plain JSON.                                                          |
+| `output`          | The columns `run` returns, in order. The framework checks them, casts to these types and adds `as_of` and `portfolio_id`. `run` may return any number of rows. |
+| `takes_portfolio` | `True` runs the type once per portfolio. Otherwise it runs once with `ctx.portfolio` set to `None`.                                                            |
+| `run`             | `run(params, ctx) -> pl.DataFrame`                                                                                                                             |
 
 Modules starting with `_` are skipped, so shared helpers can live there.
 

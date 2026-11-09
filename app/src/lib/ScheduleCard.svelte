@@ -30,21 +30,30 @@
   let showHistory = $state(false);
 
   const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-  const localTime = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+  const localTime = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   /** "06:00 UTC (08:00 local)" */
   const hourLabel = (hour: number) => {
     const utc = `${String(hour).padStart(2, "0")}:00 UTC`;
     const date = new Date();
     date.setUTCHours(hour, 0, 0, 0);
-    return date.getTimezoneOffset() === 0 ? utc : `${utc} (${localTime.format(date)} local)`;
+    return date.getTimezoneOffset() === 0
+      ? utc
+      : `${utc} (${localTime.format(date)} local)`;
   };
 
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   const load = async () => {
     try {
-      const [view, history] = await Promise.all([fetchSchedule(), fetchScheduleRuns(10)]);
+      const [view, history] = await Promise.all([
+        fetchSchedule(),
+        fetchScheduleRuns(10),
+      ]);
       schedule = view;
       runs = history.runs;
     } catch (cause) {
@@ -79,7 +88,12 @@
 
   const runNow = () => {
     const count = `${scheduledCount} symbol${scheduledCount === 1 ? "" : "s"}`;
-    if (!window.confirm(`Download the full history of all ${count} on the schedule now?`)) return;
+    if (
+      !window.confirm(
+        `Download the full history of all ${count} on the schedule now?`,
+      )
+    )
+      return;
     void act(async () => {
       await runScheduleNow();
       return `Started a run for ${count}. Downloads show up under Ingestion runs.`;
@@ -94,13 +108,17 @@
     <div class="summary">
       <strong>Daily download</strong>
       {#if schedule}
-        <span class="state" class:paused={schedule.paused}>{schedule.paused ? "Paused" : "Active"}</span>
+        <span class="state" class:paused={schedule.paused}
+          >{schedule.paused ? "Paused" : "Active"}</span
+        >
         <span class="muted">
           {#if schedule.paused}
             No downloads run until you resume.
           {:else if schedule.nextRunAt}
             Next run {formatAgo(schedule.nextRunAt)}
-            <span title={schedule.nextRunAt}>({formatDateTime(schedule.nextRunAt)})</span>
+            <span title={schedule.nextRunAt}
+              >({formatDateTime(schedule.nextRunAt)})</span
+            >
           {/if}
           · {scheduledCount} symbol{scheduledCount === 1 ? "" : "s"} on the schedule
         </span>
@@ -123,8 +141,14 @@
             {/each}
           </select>
         </label>
-        <button onclick={togglePaused} disabled={busy}>{schedule.paused ? "Resume" : "Pause"}</button>
-        <button class="primary" onclick={runNow} disabled={busy || scheduledCount === 0}>Run now</button>
+        <button onclick={togglePaused} disabled={busy}
+          >{schedule.paused ? "Resume" : "Pause"}</button
+        >
+        <button
+          class="primary"
+          onclick={runNow}
+          disabled={busy || scheduledCount === 0}>Run now</button
+        >
       </div>
     {/if}
   </div>
@@ -135,9 +159,12 @@
         Last run:
         <StatusBadge status={latest.status} title={latest.error ?? undefined} />
         {latest.trigger === "manual" ? "manual" : "scheduled"},
-        <span title={formatDateTime(latest.createdAt)}>{formatAgo(latest.createdAt)}</span>
+        <span title={formatDateTime(latest.createdAt)}
+          >{formatAgo(latest.createdAt)}</span
+        >
         {#if latest.queuedCount !== null}· {formatCount(latest.queuedCount)} queued{/if}
-        {#if latest.skippedCount}· {formatCount(latest.skippedCount)} not started yet{/if}
+        {#if latest.skippedCount}· {formatCount(latest.skippedCount)} not started
+          yet{/if}
         {#if latest.error}· <span class="bad">{latest.error}</span>{/if}
       </span>
       <button class="link" onclick={() => (showHistory = !showHistory)}>
@@ -161,14 +188,20 @@
       <tbody>
         {#each runs as run (run.runId)}
           <tr>
-            <td data-label="Started" title={run.runId}>{formatDateTime(run.createdAt)}</td>
-            <td data-label="Trigger">{run.trigger === "manual" ? "Manual" : "Schedule"}</td>
+            <td data-label="Started" title={run.runId}
+              >{formatDateTime(run.createdAt)}</td
+            >
+            <td data-label="Trigger"
+              >{run.trigger === "manual" ? "Manual" : "Schedule"}</td
+            >
             <td data-label="Status"><StatusBadge status={run.status} /></td>
             <td data-label="Data through" class="mono">{run.snapshotTo}</td>
             <td data-label="Queued" class="num">
               {run.queuedCount === null ? "—" : formatCount(run.queuedCount)}
             </td>
-            <td class="bad full" class:wide-only={!run.error}>{run.error ?? ""}</td>
+            <td class="bad full" class:wide-only={!run.error}
+              >{run.error ?? ""}</td
+            >
           </tr>
         {/each}
       </tbody>

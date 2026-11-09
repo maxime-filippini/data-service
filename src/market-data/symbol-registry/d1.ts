@@ -36,10 +36,15 @@ const query = <A>(operation: () => Promise<A>) =>
   Effect.tryPromise({
     try: operation,
     catch: () =>
-      new SymbolRegistryError({ kind: "database", message: "Could not access the symbol registry" }),
+      new SymbolRegistryError({
+        kind: "database",
+        message: "Could not access the symbol registry",
+      }),
   });
 
-export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry> =>
+export const D1SymbolRegistryLive = (
+  db: D1Database,
+): Layer.Layer<SymbolRegistry> =>
   Layer.succeed(
     SymbolRegistry,
     SymbolRegistry.of({
@@ -95,8 +100,16 @@ export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry
           Effect.flatMap(([upserted]) => {
             const row = (upserted?.results as SymbolRow[] | undefined)?.[0];
             return row === undefined
-              ? Effect.fail(new SymbolRegistryError({ kind: "database", message: "Could not register the symbol" }))
-              : Effect.succeed({ symbol: fromRow(row), created: row.created_at === now });
+              ? Effect.fail(
+                  new SymbolRegistryError({
+                    kind: "database",
+                    message: "Could not register the symbol",
+                  }),
+                )
+              : Effect.succeed({
+                  symbol: fromRow(row),
+                  created: row.created_at === now,
+                });
           }),
         );
       },
@@ -109,21 +122,29 @@ export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry
                WHERE (?1 IS NULL OR dataset = ?1) AND (?2 IS NULL OR enabled = ?2)
                ORDER BY dataset, symbol`,
             )
-            .bind(dataset ?? null, enabled === undefined ? null : Number(enabled))
+            .bind(
+              dataset ?? null,
+              enabled === undefined ? null : Number(enabled),
+            )
             .all<SymbolRow>(),
         ).pipe(Effect.map((result) => result.results.map(fromRow))),
 
       get: (dataset, symbol) =>
         query(() =>
           db
-            .prepare(`SELECT * FROM tracked_symbols WHERE dataset = ? AND symbol = ?`)
+            .prepare(
+              `SELECT * FROM tracked_symbols WHERE dataset = ? AND symbol = ?`,
+            )
             .bind(dataset, symbol)
             .first<SymbolRow>(),
         ).pipe(
           Effect.flatMap((row) =>
             row === null
               ? Effect.fail(
-                  new SymbolRegistryError({ kind: "not_found", message: "The symbol is not registered" }),
+                  new SymbolRegistryError({
+                    kind: "not_found",
+                    message: "The symbol is not registered",
+                  }),
                 )
               : Effect.succeed(fromRow(row)),
           ),
@@ -143,7 +164,10 @@ export const D1SymbolRegistryLive = (db: D1Database): Layer.Layer<SymbolRegistry
           Effect.flatMap((row) =>
             row === null
               ? Effect.fail(
-                  new SymbolRegistryError({ kind: "not_found", message: "The symbol is not registered" }),
+                  new SymbolRegistryError({
+                    kind: "not_found",
+                    message: "The symbol is not registered",
+                  }),
                 )
               : Effect.succeed(fromRow(row)),
           ),

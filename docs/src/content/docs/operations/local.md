@@ -15,11 +15,11 @@ pnpm dev
 `pnpm dev` builds the app and this site, then runs the Worker on
 `http://localhost:8787`:
 
-| URL | What |
-| --- | --- |
-| `http://localhost:8787/` | The app: home page and dashboard |
-| `http://localhost:8787/api/` | Management API |
-| `http://localhost:8787/docs/` | These docs |
+| URL                           | What                             |
+| ----------------------------- | -------------------------------- |
+| `http://localhost:8787/`      | The app: home page and dashboard |
+| `http://localhost:8787/api/`  | Management API                   |
+| `http://localhost:8787/docs/` | These docs                       |
 
 `pnpm dev` skips the Access check on the app and docs by passing
 `--var DASHBOARD_LOCAL_BYPASS:true`; the Worker honors it only for requests to

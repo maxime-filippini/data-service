@@ -1,0 +1,13 @@
+# Build output and local tool state.
+**/dist/
+**/node_modules/
+**/.svelte-kit/
+**/.astro/
+**/.venv/
+**/.pytest_cache/
+**/.ruff_cache/
+.wrangler/
+
+# Generated files are maintained by their own tools.
+pnpm-lock.yaml
+worker-configuration.d.ts

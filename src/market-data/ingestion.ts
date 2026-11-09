@@ -1,7 +1,14 @@
 import { Context, Effect } from "effect";
 
-import { type DatedEntry, MarketDataError, MarketDataSource } from "$/market-data";
-import { MarketDataControlPlane, type RawObject } from "$/market-data/control-plane";
+import {
+  type DatedEntry,
+  MarketDataError,
+  MarketDataSource,
+} from "$/market-data";
+import {
+  MarketDataControlPlane,
+  type RawObject,
+} from "$/market-data/control-plane";
 import type { Dataset, DateRange, Provider } from "$/market-data/schemas";
 
 /**
@@ -27,7 +34,9 @@ export interface StoreRawMarketData {
 export class RawMarketDataStore extends Context.Service<
   RawMarketDataStore,
   {
-    readonly store: (input: StoreRawMarketData) => Effect.Effect<RawObject, MarketDataError>;
+    readonly store: (
+      input: StoreRawMarketData,
+    ) => Effect.Effect<RawObject, MarketDataError>;
   }
 >()("data-service/RawMarketDataStore") {}
 

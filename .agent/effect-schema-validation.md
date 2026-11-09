@@ -12,26 +12,29 @@ For a synchronous framework callback such as a Hono validator, construct a
 `Schema.decodeUnknownResult` decoder once and call it for each request:
 
 ```ts
-import { Result, Schema, SchemaIssue } from "effect"
+import { Result, Schema, SchemaIssue } from "effect";
 
 const CreateItemSchema = Schema.Struct({
   name: Schema.NonEmptyString,
-  quantity: Schema.Finite.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
-})
+  quantity: Schema.Finite.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(1),
+  ),
+});
 
 const decodeCreateItem = Schema.decodeUnknownResult(CreateItemSchema, {
   errors: "all",
   onExcessProperty: "error",
-})
+});
 
-const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1()
+const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
 
-const result = decodeCreateItem(requestBody)
+const result = decodeCreateItem(requestBody);
 if (Result.isFailure(result)) {
-  const issues = formatIssues(result.failure.issue).issues
+  const issues = formatIssues(result.failure.issue).issues;
   // Translate `issues` to the framework's 400/422 HTTP error here.
 } else {
-  const item = result.success
+  const item = result.success;
 }
 ```
 
@@ -92,12 +95,12 @@ string into a finite number; checks then express the pagination constraints
 const PositivePageSchema = Schema.FiniteFromString.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(1),
-)
+);
 
 const PaginationSchema = Schema.Struct({
   page: PositivePageSchema,
   pageSize: PositivePageSchema.check(Schema.isLessThanOrEqualTo(100)),
-})
+});
 ```
 
 Use `FiniteFromString` rather than the broader `NumberFromString` when `NaN` and

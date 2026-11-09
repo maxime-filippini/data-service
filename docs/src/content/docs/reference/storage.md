@@ -71,7 +71,7 @@ their ETag, so the browser only downloads a file again after it changes.
 
 ## Environments
 
-| | Production | Dev |
-| --- | --- | --- |
-| Raw | `raw-market-data` | `raw-market-data-dev` |
+|           | Production              | Dev                         |
+| --------- | ----------------------- | --------------------------- |
+| Raw       | `raw-market-data`       | `raw-market-data-dev`       |
 | Processed | `processed-market-data` | `processed-market-data-dev` |

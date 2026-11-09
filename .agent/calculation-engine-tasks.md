@@ -7,15 +7,15 @@ before starting any of them.
 
 ## Status
 
-| # | Task | Depends on | Status |
-| --- | --- | --- | --- |
-| 1 | Engine container | | Done ([PR #17](https://github.com/maxime-filippini/data-service/pull/17)) |
-| 2 | Portfolios and snapshots in D1 | | Done ([PR #18](https://github.com/maxime-filippini/data-service/pull/18)) |
-| 3 | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`) | Done ([PR #19](https://github.com/maxime-filippini/data-service/pull/19)) |
-| 4 | Calculations and runs | 2, 3 | Done ([PR #20](https://github.com/maxime-filippini/data-service/pull/20)) |
-| 5 | Cron scheduling | 4 | Done ([PR #21](https://github.com/maxime-filippini/data-service/pull/21)) |
-| 6 | Dashboard pages | 2, 4 (results view needs only 4) | In review (`feat/calc-dashboard`) |
-| 7 | Docs pass | all | In review (`feat/calc-dashboard`) |
+| #   | Task                                                                     | Depends on                       | Status                                                                    |
+| --- | ------------------------------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------- |
+| 1   | Engine container                                                         |                                  | Done ([PR #17](https://github.com/maxime-filippini/data-service/pull/17)) |
+| 2   | Portfolios and snapshots in D1                                           |                                  | Done ([PR #18](https://github.com/maxime-filippini/data-service/pull/18)) |
+| 3   | Engine in the Worker, `GET /calculation-types`, ad hoc `POST /calculate` | 1 (2 for `portfolioId`)          | Done ([PR #19](https://github.com/maxime-filippini/data-service/pull/19)) |
+| 4   | Calculations and runs                                                    | 2, 3                             | Done ([PR #20](https://github.com/maxime-filippini/data-service/pull/20)) |
+| 5   | Cron scheduling                                                          | 4                                | Done ([PR #21](https://github.com/maxime-filippini/data-service/pull/21)) |
+| 6   | Dashboard pages                                                          | 2, 4 (results view needs only 4) | In review (`feat/calc-dashboard`)                                         |
+| 7   | Docs pass                                                                | all                              | In review (`feat/calc-dashboard`)                                         |
 
 Tasks 2 and 3 can run in parallel. Update this table when a task starts or
 lands.

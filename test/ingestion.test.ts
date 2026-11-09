@@ -4,25 +4,46 @@ import { Effect, Layer } from "effect";
 
 import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
-import { ingestMarketData, RawMarketDataStore, type StoreRawMarketData } from "$/market-data/ingestion";
+import {
+  ingestMarketData,
+  RawMarketDataStore,
+  type StoreRawMarketData,
+} from "$/market-data/ingestion";
 import { rawMarketDataKey } from "$/market-data/r2-raw-store";
 import { makeTestDatabase } from "./support/d1";
 
-const entry = (date: string) => ({ date, open: 1, close: 1, high: 1, low: 1, adjusted_close: 1, volume: 1 });
+const entry = (date: string) => ({
+  date,
+  open: 1,
+  close: 1,
+  high: 1,
+  low: 1,
+  adjusted_close: 1,
+  volume: 1,
+});
 
-const setup = (retrieve: () => Effect.Effect<readonly { date: string }[], MarketDataError>) => {
+const setup = (
+  retrieve: () => Effect.Effect<readonly { date: string }[], MarketDataError>,
+) => {
   const { sqlite, db } = makeTestDatabase();
   const stored: StoreRawMarketData[] = [];
   const layer = Layer.mergeAll(
     D1MarketDataControlPlaneLive(db),
-    Layer.succeed(MarketDataSource, MarketDataSource.of({ provider: "eodhd", retrieveDaily: retrieve })),
+    Layer.succeed(
+      MarketDataSource,
+      MarketDataSource.of({ provider: "eodhd", retrieveDaily: retrieve }),
+    ),
     Layer.succeed(
       RawMarketDataStore,
       RawMarketDataStore.of({
         store: (input) =>
           Effect.sync(() => {
             stored.push(input);
-            return { key: rawMarketDataKey(input), etag: "raw-etag", rowCount: input.entries.length };
+            return {
+              key: rawMarketDataKey(input),
+              etag: "raw-etag",
+              rowCount: input.entries.length,
+            };
           }),
       }),
     ),
@@ -36,13 +57,20 @@ const setup = (retrieve: () => Effect.Effect<readonly { date: string }[], Market
       createdAt: "2026-10-06T02:00:00Z",
       staleBefore: "2026-10-06T01:30:00Z",
     }).pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
-  const runRow = () =>
-    ({ ...(sqlite.prepare("SELECT status, object_key, row_count, error FROM ingestion_runs").get() as object) });
+  const runRow = () => ({
+    ...(sqlite
+      .prepare(
+        "SELECT status, object_key, row_count, error FROM ingestion_runs",
+      )
+      .get() as object),
+  });
   return { stored, ingest, runRow };
 };
 
 test("a successful download stores one raw object and completes the run", async () => {
-  const { stored, ingest, runRow } = setup(() => Effect.succeed([entry("2024-01-02"), entry("2024-01-03")]));
+  const { stored, ingest, runRow } = setup(() =>
+    Effect.succeed([entry("2024-01-02"), entry("2024-01-03")]),
+  );
   const result = await ingest();
 
   assert.equal(result._tag, "Success");
@@ -58,11 +86,21 @@ test("a successful download stores one raw object and completes the run", async 
 
 test("a provider failure marks the run failed", async () => {
   const { stored, ingest, runRow } = setup(() =>
-    Effect.fail(new MarketDataError({ kind: "request", message: "The EODHD request failed" })),
+    Effect.fail(
+      new MarketDataError({
+        kind: "request",
+        message: "The EODHD request failed",
+      }),
+    ),
   );
   const result = await ingest();
 
   assert.equal(result._tag, "Failure");
   assert.equal(stored.length, 0);
-  assert.deepEqual(runRow(), { status: "failed", object_key: null, row_count: null, error: "The EODHD request failed" });
+  assert.deepEqual(runRow(), {
+    status: "failed",
+    object_key: null,
+    row_count: null,
+    error: "The EODHD request failed",
+  });
 });

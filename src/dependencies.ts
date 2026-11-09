@@ -13,15 +13,23 @@ import { D1PortfoliosLive } from "$/portfolios/d1";
  * local databases and engine/Workflow stand-ins.
  */
 export const dependencies = {
-  statusFor: (env: CloudflareBindings) => D1PipelineStatusLive(env.MARKET_DATA_DB),
-  registryFor: (env: CloudflareBindings) => D1SymbolRegistryLive(env.MARKET_DATA_DB),
-  scheduleFor: (env: CloudflareBindings) => D1ScheduleStoreLive(env.MARKET_DATA_DB),
-  downloadWorkflowFor: (env: CloudflareBindings): ScheduleWorkflow => env.SCHEDULED_DOWNLOADS,
-  portfoliosFor: (env: CloudflareBindings) => D1PortfoliosLive(env.MARKET_DATA_DB),
+  statusFor: (env: CloudflareBindings) =>
+    D1PipelineStatusLive(env.MARKET_DATA_DB),
+  registryFor: (env: CloudflareBindings) =>
+    D1SymbolRegistryLive(env.MARKET_DATA_DB),
+  scheduleFor: (env: CloudflareBindings) =>
+    D1ScheduleStoreLive(env.MARKET_DATA_DB),
+  downloadWorkflowFor: (env: CloudflareBindings): ScheduleWorkflow =>
+    env.SCHEDULED_DOWNLOADS,
+  portfoliosFor: (env: CloudflareBindings) =>
+    D1PortfoliosLive(env.MARKET_DATA_DB),
   // One engine instance for now, like the processor.
-  engineFor: (env: CloudflareBindings) => EngineLive(env.CALCULATION_ENGINE.getByName("engine")),
-  calculationsFor: (env: CloudflareBindings) => D1CalculationsLive(env.MARKET_DATA_DB),
-  runWorkflowFor: (env: CloudflareBindings): RunWorkflow => env.CALCULATION_RUNS,
+  engineFor: (env: CloudflareBindings) =>
+    EngineLive(env.CALCULATION_ENGINE.getByName("engine")),
+  calculationsFor: (env: CloudflareBindings) =>
+    D1CalculationsLive(env.MARKET_DATA_DB),
+  runWorkflowFor: (env: CloudflareBindings): RunWorkflow =>
+    env.CALCULATION_RUNS,
 };
 
 /**

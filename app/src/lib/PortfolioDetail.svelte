@@ -11,7 +11,13 @@
     renamePortfolio,
   } from "./api";
   import { formatAgo, formatDateTime } from "./format";
-  import { emptyRow, type HoldingRow, toHoldings, toRows, totalWeight } from "./holdings";
+  import {
+    emptyRow,
+    type HoldingRow,
+    toHoldings,
+    toRows,
+    totalWeight,
+  } from "./holdings";
   import HoldingsEditor from "./HoldingsEditor.svelte";
   import { href } from "./router.svelte";
 
@@ -46,9 +52,12 @@
    * Holdings dates whose holdings are shown: the latest snapshot's at first.
    * The page re-creates this component for another portfolio.
    */
-  const open = new SvelteSet<string>(untrack(() => initial.snapshots.slice(-1).map((s) => s.holdingsDate)));
+  const open = new SvelteSet<string>(
+    untrack(() => initial.snapshots.slice(-1).map((s) => s.holdingsDate)),
+  );
 
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   const load = async () => {
     loading = true;
@@ -88,7 +97,12 @@
   const remove = () => {
     if (!portfolio) return;
     const { name, snapshots: all } = portfolio;
-    if (!confirm(`Delete ${name} and its ${all.length} snapshot${all.length === 1 ? "" : "s"}?`)) return;
+    if (
+      !confirm(
+        `Delete ${name} and its ${all.length} snapshot${all.length === 1 ? "" : "s"}?`,
+      )
+    )
+      return;
     return act(async () => {
       await deletePortfolio(id);
       ondeleted(name);
@@ -115,7 +129,10 @@
     }
     busy = true;
     try {
-      const added = await addSnapshot(id, { holdingsDate, holdings: parsed.holdings });
+      const added = await addSnapshot(id, {
+        holdingsDate,
+        holdings: parsed.holdings,
+      });
       adding = false;
       message = `Added the ${added.holdingsDate} snapshot.`;
       open.add(added.holdingsDate);
@@ -128,7 +145,12 @@
   };
 
   const removeSnapshot = (holdingsDate: string) => {
-    if (!confirm(`Delete the ${holdingsDate} snapshot? Earlier results aren't changed.`)) return;
+    if (
+      !confirm(
+        `Delete the ${holdingsDate} snapshot? Earlier results aren't changed.`,
+      )
+    )
+      return;
     return act(async () => {
       await deleteSnapshot(id, holdingsDate);
       open.delete(holdingsDate);
@@ -137,7 +159,8 @@
     });
   };
 
-  const toggle = (holdingsDate: string) => (open.has(holdingsDate) ? open.delete(holdingsDate) : open.add(holdingsDate));
+  const toggle = (holdingsDate: string) =>
+    open.has(holdingsDate) ? open.delete(holdingsDate) : open.add(holdingsDate);
 
   const weight = new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 });
 </script>
@@ -148,26 +171,42 @@
   <div class="title-row">
     {#if renaming}
       <form class="rename" onsubmit={rename}>
-        <input bind:value={newName} required maxlength="200" aria-label="Portfolio name" />
-        <button type="submit" class="primary" disabled={busy || newName.trim() === ""}>Save</button>
-        <button type="button" onclick={() => (renaming = false)} disabled={busy}>Cancel</button>
+        <input
+          bind:value={newName}
+          required
+          maxlength="200"
+          aria-label="Portfolio name"
+        />
+        <button
+          type="submit"
+          class="primary"
+          disabled={busy || newName.trim() === ""}>Save</button
+        >
+        <button type="button" onclick={() => (renaming = false)} disabled={busy}
+          >Cancel</button
+        >
       </form>
     {:else}
       <h1>{portfolio.name}</h1>
       <span class="spacer"></span>
       {#if portfolio.assetSymbol === null}
-        <button onclick={() => ((renaming = true), (newName = portfolio?.name ?? ""))}>Rename</button>
+        <button
+          onclick={() => ((renaming = true), (newName = portfolio?.name ?? ""))}
+          >Rename</button
+        >
         <button onclick={remove} disabled={busy}>Delete</button>
       {/if}
     {/if}
   </div>
   <p class="muted meta">
-    Created {formatDateTime(portfolio.createdAt)} · updated {formatAgo(portfolio.updatedAt)}
+    Created {formatDateTime(portfolio.createdAt)} · updated {formatAgo(
+      portfolio.updatedAt,
+    )}
   </p>
   {#if portfolio.assetSymbol !== null}
     <p class="muted meta">
-      The single-asset portfolio of {portfolio.assetSymbol}, created when the symbol was registered. It can't be
-      changed.
+      The single-asset portfolio of {portfolio.assetSymbol}, created when the
+      symbol was registered. It can't be changed.
     </p>
   {/if}
 {:else if loading}
@@ -187,7 +226,9 @@
     <span class="spacer"></span>
     {#if !adding && portfolio.assetSymbol === null}
       {#if portfolio.snapshots.length > 0}
-        <button onclick={() => openAdd("latest")}>Add snapshot from latest</button>
+        <button onclick={() => openAdd("latest")}
+          >Add snapshot from latest</button
+        >
       {/if}
       <button onclick={() => openAdd("empty")}>Add empty snapshot</button>
     {/if}
@@ -202,15 +243,20 @@
       </label>
       <HoldingsEditor bind:rows {symbols} />
       <p class="muted hint">
-        The holdings at the close of this date, in effect until the next snapshot. Snapshots can't be edited: to fix
-        one, delete it and add it again.
+        The holdings at the close of this date, in effect until the next
+        snapshot. Snapshots can't be edited: to fix one, delete it and add it
+        again.
       </p>
       {#if addError}
         <div class="error">{addError}</div>
       {/if}
       <div class="actions">
-        <button type="button" onclick={() => (adding = false)} disabled={busy}>Cancel</button>
-        <button type="submit" class="primary" disabled={busy}>Add snapshot</button>
+        <button type="button" onclick={() => (adding = false)} disabled={busy}
+          >Cancel</button
+        >
+        <button type="submit" class="primary" disabled={busy}
+          >Add snapshot</button
+        >
       </div>
     </form>
   {/if}
@@ -220,18 +266,30 @@
       {@const expanded = open.has(snapshot.holdingsDate)}
       <section class="snapshot">
         <div class="snapshot-head">
-          <button class="link date-toggle" onclick={() => toggle(snapshot.holdingsDate)} aria-expanded={expanded}>
+          <button
+            class="link date-toggle"
+            onclick={() => toggle(snapshot.holdingsDate)}
+            aria-expanded={expanded}
+          >
             <span class="caret">{expanded ? "▾" : "▸"}</span>
             <span class="mono">{snapshot.holdingsDate}</span>
           </button>
           <span class="muted">
-            {snapshot.holdings.length} holding{snapshot.holdings.length === 1 ? "" : "s"} · weights sum to
+            {snapshot.holdings.length} holding{snapshot.holdings.length === 1
+              ? ""
+              : "s"} · weights sum to
             {weight.format(totalWeight(snapshot.holdings))}
           </span>
           <span class="spacer"></span>
-          <span class="muted added" title={formatDateTime(snapshot.createdAt)}>added {formatAgo(snapshot.createdAt)}</span>
+          <span class="muted added" title={formatDateTime(snapshot.createdAt)}
+            >added {formatAgo(snapshot.createdAt)}</span
+          >
           {#if portfolio?.assetSymbol === null}
-            <button class="link danger" onclick={() => removeSnapshot(snapshot.holdingsDate)} disabled={busy}>
+            <button
+              class="link danger"
+              onclick={() => removeSnapshot(snapshot.holdingsDate)}
+              disabled={busy}
+            >
               Delete
             </button>
           {/if}
@@ -256,7 +314,9 @@
         {/if}
       </section>
     {:else}
-      <p class="notice">No snapshots yet. Calculations fail for this portfolio until it has one.</p>
+      <p class="notice">
+        No snapshots yet. Calculations fail for this portfolio until it has one.
+      </p>
     {/each}
   </div>
 {/if}

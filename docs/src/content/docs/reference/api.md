@@ -17,34 +17,34 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 
 ## Routes
 
-| Method | Path | Does |
-| --- | --- | --- |
-| `POST` | `/api/symbols` | Register or update a tracked symbol |
-| `GET` | `/api/symbols` | List tracked symbols (`?dataset=`, `?enabled=`) |
-| `POST` | `/api/symbols/:dataset/:symbol/enable` | Put a symbol on the daily schedule |
-| `POST` | `/api/symbols/:dataset/:symbol/disable` | Take a symbol off the daily schedule |
-| `POST` | `/api/ingestions` | Download symbols now |
-| `GET` | `/api/schedule` | The daily schedule, with its next run time |
-| `PATCH` | `/api/schedule` | Change the hour or pause / resume |
-| `GET` | `/api/schedule/runs` | Recent schedule runs (`?limit=`, up to 100) |
-| `POST` | `/api/schedule/runs` | Run the schedule now |
-| `GET` | `/api/portfolios` | List portfolios |
-| `POST` | `/api/portfolios` | Create a portfolio, optionally with a snapshot |
-| `GET` | `/api/portfolios/:id` | One portfolio with its snapshots |
-| `PATCH` | `/api/portfolios/:id` | Rename |
-| `DELETE` | `/api/portfolios/:id` | Delete (`409` if a calculation uses it) |
-| `POST` | `/api/portfolios/:id/snapshots` | Add a snapshot |
-| `DELETE` | `/api/portfolios/:id/snapshots/:holdingsDate` | Delete a snapshot |
-| `GET` | `/api/calculation-types` | The engine's types, params schemas and output columns |
-| `GET` | `/api/calculations` | List calculations with their latest run |
-| `POST` | `/api/calculations` | Create a calculation |
-| `GET` | `/api/calculations/:id` | One calculation |
-| `PATCH` | `/api/calculations/:id` | Change name, params, portfolios, cron or enabled |
-| `DELETE` | `/api/calculations/:id` | Delete it and its runs (results stay in R2) |
-| `POST` | `/api/calculations/:id/runs` | Run now (`asOf` optional) |
-| `GET` | `/api/calculations/:id/runs` | Its runs, newest first (`?limit=`, up to 100) |
-| `GET` | `/api/calculations/:id/runs/:runId` | One run |
-| `POST` | `/api/calculate` | Ad hoc calculation; nothing saved |
+| Method   | Path                                          | Does                                                  |
+| -------- | --------------------------------------------- | ----------------------------------------------------- |
+| `POST`   | `/api/symbols`                                | Register or update a tracked symbol                   |
+| `GET`    | `/api/symbols`                                | List tracked symbols (`?dataset=`, `?enabled=`)       |
+| `POST`   | `/api/symbols/:dataset/:symbol/enable`        | Put a symbol on the daily schedule                    |
+| `POST`   | `/api/symbols/:dataset/:symbol/disable`       | Take a symbol off the daily schedule                  |
+| `POST`   | `/api/ingestions`                             | Download symbols now                                  |
+| `GET`    | `/api/schedule`                               | The daily schedule, with its next run time            |
+| `PATCH`  | `/api/schedule`                               | Change the hour or pause / resume                     |
+| `GET`    | `/api/schedule/runs`                          | Recent schedule runs (`?limit=`, up to 100)           |
+| `POST`   | `/api/schedule/runs`                          | Run the schedule now                                  |
+| `GET`    | `/api/portfolios`                             | List portfolios                                       |
+| `POST`   | `/api/portfolios`                             | Create a portfolio, optionally with a snapshot        |
+| `GET`    | `/api/portfolios/:id`                         | One portfolio with its snapshots                      |
+| `PATCH`  | `/api/portfolios/:id`                         | Rename                                                |
+| `DELETE` | `/api/portfolios/:id`                         | Delete (`409` if a calculation uses it)               |
+| `POST`   | `/api/portfolios/:id/snapshots`               | Add a snapshot                                        |
+| `DELETE` | `/api/portfolios/:id/snapshots/:holdingsDate` | Delete a snapshot                                     |
+| `GET`    | `/api/calculation-types`                      | The engine's types, params schemas and output columns |
+| `GET`    | `/api/calculations`                           | List calculations with their latest run               |
+| `POST`   | `/api/calculations`                           | Create a calculation                                  |
+| `GET`    | `/api/calculations/:id`                       | One calculation                                       |
+| `PATCH`  | `/api/calculations/:id`                       | Change name, params, portfolios, cron or enabled      |
+| `DELETE` | `/api/calculations/:id`                       | Delete it and its runs (results stay in R2)           |
+| `POST`   | `/api/calculations/:id/runs`                  | Run now (`asOf` optional)                             |
+| `GET`    | `/api/calculations/:id/runs`                  | Its runs, newest first (`?limit=`, up to 100)         |
+| `GET`    | `/api/calculations/:id/runs/:runId`           | One run                                               |
+| `POST`   | `/api/calculate`                              | Ad hoc calculation; nothing saved                     |
 
 ## Symbols
 

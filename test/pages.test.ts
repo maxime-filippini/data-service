@@ -45,7 +45,12 @@ const insertSymbol = (sqlite: Sqlite, symbol: string, enabled = 1) =>
     )
     .run(symbol, enabled);
 
-const insertFailedRun = (sqlite: Sqlite, id: string, symbol: string, createdAt: string) =>
+const insertFailedRun = (
+  sqlite: Sqlite,
+  id: string,
+  symbol: string,
+  createdAt: string,
+) =>
   sqlite
     .prepare(
       `INSERT INTO ingestion_runs (run_id, dataset, symbol, provider, requested_from, requested_to,
@@ -54,7 +59,13 @@ const insertFailedRun = (sqlite: Sqlite, id: string, symbol: string, createdAt: 
     )
     .run(id, symbol, createdAt, createdAt);
 
-const insertCalculation = (sqlite: Sqlite, id: string, name: string, cron: string, enabled = 1) =>
+const insertCalculation = (
+  sqlite: Sqlite,
+  id: string,
+  name: string,
+  cron: string,
+  enabled = 1,
+) =>
   sqlite
     .prepare(
       `INSERT INTO calculations (calculation_id, name, type, params_json, cron, enabled, created_at, updated_at)
@@ -62,7 +73,13 @@ const insertCalculation = (sqlite: Sqlite, id: string, name: string, cron: strin
     )
     .run(id, name, cron, enabled);
 
-const insertCalculationRun = (sqlite: Sqlite, runId: string, calculationId: string, status: string, createdAt: string) =>
+const insertCalculationRun = (
+  sqlite: Sqlite,
+  runId: string,
+  calculationId: string,
+  status: string,
+  createdAt: string,
+) =>
   sqlite
     .prepare(
       `INSERT INTO calculation_runs (run_id, calculation_id, trigger, as_of, params_json, status, created_at)
@@ -80,8 +97,20 @@ test("the home page sums up both pipelines", async () => {
   insertCalculation(sqlite, CALC_A, "Daily vol", "0 6 * * *");
   insertCalculation(sqlite, CALC_B, "Hourly vol", "0 * * * *");
   insertCalculation(sqlite, CALC_PAUSED, "Paused vol", "0 * * * *", 0);
-  insertCalculationRun(sqlite, "c1", CALC_A, "completed", "2026-10-27T06:00:00.000Z");
-  insertCalculationRun(sqlite, "c2", CALC_B, "failed", "2026-10-28T09:00:00.000Z");
+  insertCalculationRun(
+    sqlite,
+    "c1",
+    CALC_A,
+    "completed",
+    "2026-10-27T06:00:00.000Z",
+  );
+  insertCalculationRun(
+    sqlite,
+    "c2",
+    CALC_B,
+    "failed",
+    "2026-10-28T09:00:00.000Z",
+  );
 
   const home = await pages.home();
 
@@ -120,7 +149,10 @@ test("the runs page filters by symbol and status, ignoring unknown statuses", as
   insertFailedRun(sqlite, "r1", "SPY.US", "2026-10-27T06:00:00.000Z");
   insertFailedRun(sqlite, "r2", "MSFT.US", "2026-10-28T06:00:00.000Z");
 
-  assert.deepEqual((await pages.runs({ symbol: " spy.us " })).runs.map((run) => run.runId), ["r1"]);
+  assert.deepEqual(
+    (await pages.runs({ symbol: " spy.us " })).runs.map((run) => run.runId),
+    ["r1"],
+  );
   assert.deepEqual((await pages.runs({ status: "failed" })).runs.length, 2);
   assert.deepEqual((await pages.runs({ status: "completed" })).runs.length, 0);
   assert.deepEqual((await pages.runs({ status: "nonsense" })).runs.length, 2);
@@ -134,15 +166,31 @@ test("an unknown portfolio or calculation is a 404", async () => {
     () => pages.calculation("not-a-uuid"),
     () => pages.calculation(CALC_A),
   ]) {
-    await assert.rejects(load, (error: unknown) => error instanceof PageDataError && error.status === 404);
+    await assert.rejects(
+      load,
+      (error: unknown) =>
+        error instanceof PageDataError && error.status === 404,
+    );
   }
 });
 
 test("a calculation page has the calculation and its runs, newest first", async () => {
   const { sqlite, pages } = setup();
   insertCalculation(sqlite, CALC_A, "Daily vol", "0 6 * * *");
-  insertCalculationRun(sqlite, "c1", CALC_A, "completed", "2026-10-26T06:00:00.000Z");
-  insertCalculationRun(sqlite, "c2", CALC_A, "failed", "2026-10-27T06:00:00.000Z");
+  insertCalculationRun(
+    sqlite,
+    "c1",
+    CALC_A,
+    "completed",
+    "2026-10-26T06:00:00.000Z",
+  );
+  insertCalculationRun(
+    sqlite,
+    "c2",
+    CALC_A,
+    "failed",
+    "2026-10-27T06:00:00.000Z",
+  );
 
   const { calculation, runs } = await pages.calculation(CALC_A);
   assert.equal(calculation.name, "Daily vol");

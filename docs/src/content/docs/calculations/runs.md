@@ -163,9 +163,9 @@ sequenceDiagram
 calculate for portfolios the service doesn't store. `asOf` defaults to the
 previous UTC day. Send `Accept: application/vnd.apache.arrow.stream` for Arrow.
 
-| Status | When |
-| --- | --- |
-| `200` | Rows returned |
-| `404` | Unknown type |
-| `422` | Invalid params, or an expected failure such as missing prices |
-| `500` | Any other failure |
+| Status | When                                                          |
+| ------ | ------------------------------------------------------------- |
+| `200`  | Rows returned                                                 |
+| `404`  | Unknown type                                                  |
+| `422`  | Invalid params, or an expected failure such as missing prices |
+| `500`  | Any other failure                                             |

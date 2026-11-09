@@ -8,16 +8,11 @@
     },
     "strict": true,
     "skipLibCheck": true,
-    "lib": [
-      "ESNext"
-    ],
+    "lib": ["ESNext"],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
-    "types": [
-        "./worker-configuration.d.ts",
-        "node"
-    ]
+    "types": ["./worker-configuration.d.ts", "node"]
   },
   // The app, the docs and the containers have their own toolchains.
-  "exclude": ["node_modules", "app", "docs", "containers"],
+  "exclude": ["node_modules", "app", "docs", "containers"]
 }

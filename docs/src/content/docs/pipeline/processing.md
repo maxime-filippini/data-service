@@ -67,10 +67,10 @@ a date-sorted Parquet file. If a date appears twice, the later row wins.
 
 `prices_eod` columns:
 
-| Column | Type |
-| --- | --- |
-| `date` | Date |
+| Column                                           | Type    |
+| ------------------------------------------------ | ------- |
+| `date`                                           | Date    |
 | `open`, `close`, `high`, `low`, `adjusted_close` | Float64 |
-| `volume` | Int64 |
+| `volume`                                         | Int64   |
 
 See [Containers](/docs/reference/containers/#processor) for the manifest format.

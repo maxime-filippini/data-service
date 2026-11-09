@@ -1,7 +1,10 @@
 import { Effect, Layer } from "effect";
 
 import { MarketDataError } from "$/market-data";
-import { RawMarketDataStore, type StoreRawMarketData } from "$/market-data/ingestion";
+import {
+  RawMarketDataStore,
+  type StoreRawMarketData,
+} from "$/market-data/ingestion";
 
 export const rawMarketDataKey = (input: {
   readonly dataset: string;
@@ -14,11 +17,15 @@ const storageError = (message: string, symbol: string) =>
 
 const observedRange = (input: StoreRawMarketData) => {
   const dates = input.entries.map((entry) => entry.date).sort();
-  return dates.length === 0 ? undefined : { from: dates[0]!, to: dates.at(-1)! };
+  return dates.length === 0
+    ? undefined
+    : { from: dates[0]!, to: dates.at(-1)! };
 };
 
 /** R2 storage for one immutable validated provider response per run. */
-export const R2RawMarketDataStoreLive = (bucket: R2Bucket): Layer.Layer<RawMarketDataStore> =>
+export const R2RawMarketDataStoreLive = (
+  bucket: R2Bucket,
+): Layer.Layer<RawMarketDataStore> =>
   Layer.succeed(
     RawMarketDataStore,
     RawMarketDataStore.of({
@@ -43,12 +50,19 @@ export const R2RawMarketDataStoreLive = (bucket: R2Bucket): Layer.Layer<RawMarke
                 onlyIf: new Headers({ "If-None-Match": "*" }),
                 httpMetadata: { contentType: "application/json" },
               }),
-            catch: () => storageError("Could not store the raw ingestion response", input.symbol),
+            catch: () =>
+              storageError(
+                "Could not store the raw ingestion response",
+                input.symbol,
+              ),
           });
 
           if (object === null) {
             return yield* Effect.fail(
-              storageError("A raw object already exists for this ingestion run", input.symbol),
+              storageError(
+                "A raw object already exists for this ingestion run",
+                input.symbol,
+              ),
             );
           }
 

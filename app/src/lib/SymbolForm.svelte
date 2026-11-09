@@ -1,7 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
 
-  import { type DatasetProviders, type RegisterInput, registerSymbol } from "./api";
+  import {
+    type DatasetProviders,
+    type RegisterInput,
+    registerSymbol,
+  } from "./api";
 
   let {
     options,
@@ -24,7 +28,15 @@
   const editing = untrack(() => initial !== undefined);
 
   let form = $state<RegisterInput>(
-    untrack(() => ({ ...(initial ?? { dataset: "", symbol: "", provider: "", backfillStartDate: "2016-01-01", enabled: true }) })),
+    untrack(() => ({
+      ...(initial ?? {
+        dataset: "",
+        symbol: "",
+        provider: "",
+        backfillStartDate: "2016-01-01",
+        enabled: true,
+      }),
+    })),
   );
   let saving = $state(false);
   let error = $state<string | null>(null);
@@ -36,15 +48,24 @@
     if (form.dataset === "" && datasets.length > 0) form.dataset = datasets[0]!;
   });
   $effect(() => {
-    if (!providers.includes(form.provider) && providers.length > 0) form.provider = providers[0]!;
+    if (!providers.includes(form.provider) && providers.length > 0)
+      form.provider = providers[0]!;
   });
 
   const today = new Date().toISOString().slice(0, 10);
   const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9][A-Z0-9-]*)?$/;
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   /** Symbols typed into the add form, uppercased and without duplicates. */
-  const parseSymbols = (text: string) => [...new Set(text.toUpperCase().split(/[\s,;]+/).filter(Boolean))];
+  const parseSymbols = (text: string) => [
+    ...new Set(
+      text
+        .toUpperCase()
+        .split(/[\s,;]+/)
+        .filter(Boolean),
+    ),
+  ];
   const typed = $derived(editing ? [] : parseSymbols(form.symbol));
   let progress = $state(0);
 
@@ -63,7 +84,9 @@
       error = `Not a valid symbol: ${invalid.join(", ")}. Use letters, digits and dashes, with an optional exchange suffix such as .US.`;
       return;
     }
-    const taken = typed.filter((symbol) => existing.has(`${form.dataset}/${symbol}`));
+    const taken = typed.filter((symbol) =>
+      existing.has(`${form.dataset}/${symbol}`),
+    );
     if (taken.length > 0) {
       error = `Already registered for ${form.dataset}: ${taken.join(", ")}. Remove them here, or use Edit on their rows.`;
       return;
@@ -82,7 +105,9 @@
     }
     if (failures.length > 0) {
       // Keep only the failed symbols so they can be fixed and retried.
-      form.symbol = typed.filter((symbol) => !added.includes(symbol)).join("\n");
+      form.symbol = typed
+        .filter((symbol) => !added.includes(symbol))
+        .join("\n");
       error = `${failures.length} of ${typed.length} could not be added. ${failures.join("; ")}`;
     }
     onsaved(added, failures.length === 0);
@@ -124,8 +149,7 @@
           placeholder={"AAPL.US MSFT.US\nBRK-B.US"}
           rows="3"
           required
-          title="Separate symbols with spaces, commas or new lines"
-        ></textarea>
+          title="Separate symbols with spaces, commas or new lines"></textarea>
       </label>
     {/if}
     <label class="field">
@@ -138,7 +162,12 @@
     </label>
     <label class="field">
       History from
-      <input type="date" bind:value={form.backfillStartDate} max={today} required />
+      <input
+        type="date"
+        bind:value={form.backfillStartDate}
+        max={today}
+        required
+      />
     </label>
     <label class="check">
       <input type="checkbox" bind:checked={form.enabled} />
@@ -147,11 +176,13 @@
   </div>
   {#if !editing}
     <p class="muted hint">
-      Separate symbols with spaces, commas or new lines. They all get the settings above.
+      Separate symbols with spaces, commas or new lines. They all get the
+      settings above.
     </p>
   {:else}
     <p class="muted hint">
-      Changing the start date or provider applies from the next download, which rebuilds the full history.
+      Changing the start date or provider applies from the next download, which
+      rebuilds the full history.
     </p>
   {/if}
   {#if error}
@@ -159,7 +190,11 @@
   {/if}
   <div class="actions">
     <button type="button" onclick={oncancel} disabled={saving}>Cancel</button>
-    <button type="submit" class="primary" disabled={saving || (!editing && typed.length === 0)}>
+    <button
+      type="submit"
+      class="primary"
+      disabled={saving || (!editing && typed.length === 0)}
+    >
       {#if editing}
         Save
       {:else if saving}

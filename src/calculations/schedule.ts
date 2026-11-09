@@ -17,7 +17,11 @@ export const dueSlot = (calculation: Calculation, now: Date): string | null => {
   if (isCronError(schedule)) return null;
   const slot = latestSlot(schedule, now)?.toISOString();
   if (slot === undefined) return null;
-  if (calculation.lastScheduledSlot !== null && slot <= calculation.lastScheduledSlot) return null;
+  if (
+    calculation.lastScheduledSlot !== null &&
+    slot <= calculation.lastScheduledSlot
+  )
+    return null;
   return slot > calculation.createdAt ? slot : null;
 };
 
@@ -27,8 +31,17 @@ export const dueSlot = (calculation: Calculation, now: Date): string | null => {
  * describes dispatch, not the eventual engine result.
  */
 export type ScheduledRun =
-  | { readonly calculationId: string; readonly slot: string; readonly runId: string; readonly status: "running" | "skipped" }
-  | { readonly calculationId: string; readonly slot: string; readonly error: string };
+  | {
+      readonly calculationId: string;
+      readonly slot: string;
+      readonly runId: string;
+      readonly status: "running" | "skipped";
+    }
+  | {
+      readonly calculationId: string;
+      readonly slot: string;
+      readonly error: string;
+    };
 
 /**
  * Called by the hourly cron. Starts a run, as of the previous UTC day, of each
@@ -36,10 +49,9 @@ export type ScheduledRun =
  * slot is recorded before the run starts, so a slot runs at most once even if
  * the tick fires twice. One calculation failing doesn't stop the others.
  */
-export const triggerScheduledCalculations = Effect.fn("Calculations.triggerScheduled")(function* (
-  now: Date,
-  workflow: RunWorkflow,
-) {
+export const triggerScheduledCalculations = Effect.fn(
+  "Calculations.triggerScheduled",
+)(function* (now: Date, workflow: RunWorkflow) {
   const store = yield* Calculations;
   const asOf = previousDay(now);
   const started: ScheduledRun[] = [];
@@ -48,10 +60,19 @@ export const triggerScheduledCalculations = Effect.fn("Calculations.triggerSched
     if (slot === null) continue;
     const result = yield* Effect.gen(function* () {
       if (!(yield* store.claimSlot(calculation.id, slot))) return null;
-      return yield* startRun(calculation.id, { trigger: "schedule", asOf }, now, workflow);
+      return yield* startRun(
+        calculation.id,
+        { trigger: "schedule", asOf },
+        now,
+        workflow,
+      );
     }).pipe(Effect.result);
     if (result._tag === "Failure") {
-      started.push({ calculationId: calculation.id, slot, error: result.failure.message });
+      started.push({
+        calculationId: calculation.id,
+        slot,
+        error: result.failure.message,
+      });
     } else if (result.success !== null) {
       started.push({ calculationId: calculation.id, slot, ...result.success });
     }

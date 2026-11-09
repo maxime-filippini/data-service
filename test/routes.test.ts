@@ -12,7 +12,9 @@ const ME = "me@example.com";
 const HOST = "https://data-service.example.com";
 
 const { publicKey, privateKey } = await generateKeyPair("RS256");
-const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), kid: "key-1", alg: "RS256" }] });
+const keys = createLocalJWKSet({
+  keys: [{ ...(await exportJWK(publicKey)), kid: "key-1", alg: "RS256" }],
+});
 
 const signToken = (email: string = ME) =>
   new SignJWT({ email })
@@ -34,19 +36,28 @@ const env = {
   ASSETS: {
     fetch: async (request: Request) =>
       // Responses from the assets binding have immutable headers.
-      new Response(`asset ${new URL(request.url).pathname}`, { headers: new Headers() }),
+      new Response(`asset ${new URL(request.url).pathname}`, {
+        headers: new Headers(),
+      }),
   },
 };
 
 // The dependencies aren't reached by these requests.
-const routes = createRoutes({} as Dependencies, {
-  fetch: async (request) => {
-    appRequests.push(request);
-    return new Response(`app ${new URL(request.url).pathname}`, {
-      headers: { "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-abc'" },
-    });
+const routes = createRoutes(
+  {} as Dependencies,
+  {
+    fetch: async (request) => {
+      appRequests.push(request);
+      return new Response(`app ${new URL(request.url).pathname}`, {
+        headers: {
+          "Content-Security-Policy":
+            "default-src 'self'; script-src 'self' 'nonce-abc'",
+        },
+      });
+    },
   },
-}, () => keys);
+  () => keys,
+);
 
 const request = (path: string, headers: Record<string, string> = {}) =>
   routes.request(`${HOST}${path}`, { headers }, env);
@@ -55,9 +66,18 @@ const asUser = async (path: string, headers: Record<string, string> = {}) =>
   request(path, { ...headers, "Cf-Access-Jwt-Assertion": await signToken() });
 
 test("everything but /api needs an allowlisted Access user", async () => {
-  for (const path of ["/", "/runs", "/portfolios/some-id", "/_app/immutable/app.js", "/app-api/me", "/docs/"]) {
+  for (const path of [
+    "/",
+    "/runs",
+    "/portfolios/some-id",
+    "/_app/immutable/app.js",
+    "/app-api/me",
+    "/docs/",
+  ]) {
     assert.equal((await request(path)).status, 401, path);
-    const stranger = await request(path, { "Cf-Access-Jwt-Assertion": await signToken("stranger@example.com") });
+    const stranger = await request(path, {
+      "Cf-Access-Jwt-Assertion": await signToken("stranger@example.com"),
+    });
     assert.equal(stranger.status, 403, path);
   }
 });
@@ -67,17 +87,29 @@ test("the management API uses its token, not Access", async () => {
   const response = await asUser("/api/symbols");
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: "Unauthorized" });
-  assert.equal((await request("/api/unknown", { Authorization: "Bearer management-token" })).status, 404);
+  assert.equal(
+    (
+      await request("/api/unknown", {
+        Authorization: "Bearer management-token",
+      })
+    ).status,
+    404,
+  );
 });
 
 test("the app gets the Access user's email, never the client's own header", async () => {
   appRequests.length = 0;
-  const response = await asUser("/calculations?x=1", { "X-Access-Email": "forged@example.com" });
+  const response = await asUser("/calculations?x=1", {
+    "X-Access-Email": "forged@example.com",
+  });
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "app /calculations");
   assert.equal(appRequests[0]?.headers.get("X-Access-Email"), ME);
   // SvelteKit's own CSP is kept; the other security headers are added.
-  assert.match(response.headers.get("Content-Security-Policy") ?? "", /nonce-abc/u);
+  assert.match(
+    response.headers.get("Content-Security-Policy") ?? "",
+    /nonce-abc/u,
+  );
   assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
 });
 

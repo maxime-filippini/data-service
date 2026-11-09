@@ -24,12 +24,18 @@ export const RegisterSymbolSchema = Schema.Struct({
   Schema.makeFilter((input) =>
     datasetProviders[input.dataset].includes(input.provider)
       ? true
-      : { path: ["provider"], issue: `Provider cannot supply dataset ${input.dataset}` },
+      : {
+          path: ["provider"],
+          issue: `Provider cannot supply dataset ${input.dataset}`,
+        },
   ),
   Schema.makeFilter((input) =>
     input.backfillStartDate <= new Date().toISOString().slice(0, 10)
       ? true
-      : { path: ["backfillStartDate"], issue: "The start date must not be in the future" },
+      : {
+          path: ["backfillStartDate"],
+          issue: "The start date must not be in the future",
+        },
   ),
 );
 
@@ -79,12 +85,18 @@ export class SymbolRegistry extends Context.Service<
     readonly register: (
       input: RegisterSymbol,
       now: string,
-    ) => Effect.Effect<{ readonly symbol: TrackedSymbol; readonly created: boolean }, SymbolRegistryError>;
+    ) => Effect.Effect<
+      { readonly symbol: TrackedSymbol; readonly created: boolean },
+      SymbolRegistryError
+    >;
     readonly list: (filter: {
       readonly dataset?: Dataset;
       readonly enabled?: boolean;
     }) => Effect.Effect<readonly TrackedSymbol[], SymbolRegistryError>;
-    readonly get: (dataset: Dataset, symbol: string) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
+    readonly get: (
+      dataset: Dataset,
+      symbol: string,
+    ) => Effect.Effect<TrackedSymbol, SymbolRegistryError>;
     /** Put a symbol on or take it off the daily schedule. Keeps history either way. */
     readonly setEnabled: (
       dataset: Dataset,

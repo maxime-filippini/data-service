@@ -15,14 +15,14 @@ processed-market-data/calculation=<calculation-id>/data.parquet
 How it works, with diagrams: the docs site at `$URL/docs/` (source in
 [`docs/`](docs/), `pnpm docs:dev` to edit).
 
-| Path | What |
-| --- | --- |
-| `src/` | The Worker (TypeScript) |
-| `containers/processor/` | The Python processor container ([README](containers/processor/README.md)) |
-| `containers/engine/` | The Python calculation engine container ([README](containers/engine/README.md)) |
-| `app/` | The SvelteKit app (home page and dashboard), served by the Worker at `/` |
-| `docs/` | The docs site (Astro Starlight), served by the Worker at `/docs/` |
-| `migrations/` | D1 migrations |
+| Path                    | What                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `src/`                  | The Worker (TypeScript)                                                         |
+| `containers/processor/` | The Python processor container ([README](containers/processor/README.md))       |
+| `containers/engine/`    | The Python calculation engine container ([README](containers/engine/README.md)) |
+| `app/`                  | The SvelteKit app (home page and dashboard), served by the Worker at `/`        |
+| `docs/`                 | The docs site (Astro Starlight), served by the Worker at `/docs/`               |
+| `migrations/`           | D1 migrations                                                                   |
 
 ## Finding your way around
 
@@ -62,9 +62,9 @@ GitHub Actions (`.github/workflows/deploy.yml`) checks the Worker and the
 processor on every push and pull request, then applies D1 migrations and
 deploys:
 
-| Branch | Target |
-| --- | --- |
-| `main` | production (`data-service`) |
+| Branch                       | Target                               |
+| ---------------------------- | ------------------------------------ |
+| `main`                       | production (`data-service`)          |
 | `develop`, `feat/*`, `fix/*` | dev environment (`data-service-dev`) |
 
 Each deploy builds the processor and engine images from `containers/processor`
@@ -206,8 +206,9 @@ See [Portfolios](docs/src/content/docs/calculations/portfolios.md).
 
 Registering a `prices_eod` symbol also creates its single-asset portfolio:
 named after the symbol, with one snapshot on `1900-01-01` holding it at weight
+
 1. These have `assetSymbol` set and can't be renamed, deleted or given other
-snapshots (`409`).
+   snapshots (`409`).
 
 ```sh
 # Create one, optionally with its first snapshot
@@ -363,7 +364,12 @@ run `pnpm dev` and `pnpm app:dev` together and open `http://localhost:5173/`.
 
 ## Checks
 
+Run `pnpm format` to format supported source, configuration and documentation
+files with the repository's Prettier version and Svelte plugin. Generated files
+are excluded. Python uses Ruff through the container lint commands below.
+
 ```sh
+pnpm format:check
 pnpm test
 pnpm typecheck
 pnpm app:check

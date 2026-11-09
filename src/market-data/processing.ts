@@ -30,22 +30,26 @@ export class ProcessorUnavailable extends Schema.TaggedError<ProcessorUnavailabl
  * Daily housekeeping: fail stuck jobs, queue jobs for new runs, and (re)send
  * every queued job. D1 is the source of truth, so lost messages are resent.
  */
-export const scheduleProcessing = Effect.fn("MarketData.scheduleProcessing")(function* (
-  queue: Pick<Queue<ProcessingMessage>, "sendBatch">,
-  now: Date,
-) {
-  const controlPlane = yield* MarketDataControlPlane;
-  const at = now.toISOString();
+export const scheduleProcessing = Effect.fn("MarketData.scheduleProcessing")(
+  function* (queue: Pick<Queue<ProcessingMessage>, "sendBatch">, now: Date) {
+    const controlPlane = yield* MarketDataControlPlane;
+    const at = now.toISOString();
 
-  yield* controlPlane.failStaleJobs(new Date(now.getTime() - STALE_JOB_MS).toISOString(), at);
-  yield* controlPlane.createPendingJobs(at);
+    yield* controlPlane.failStaleJobs(
+      new Date(now.getTime() - STALE_JOB_MS).toISOString(),
+      at,
+    );
+    yield* controlPlane.createPendingJobs(at);
 
-  const jobIds = yield* controlPlane.listQueuedJobIds();
-  for (let index = 0; index < jobIds.length; index += QUEUE_BATCH_SIZE) {
-    const batch = jobIds.slice(index, index + QUEUE_BATCH_SIZE);
-    yield* Effect.promise(() => queue.sendBatch(batch.map((jobId) => ({ body: { jobId } }))));
-  }
-});
+    const jobIds = yield* controlPlane.listQueuedJobIds();
+    for (let index = 0; index < jobIds.length; index += QUEUE_BATCH_SIZE) {
+      const batch = jobIds.slice(index, index + QUEUE_BATCH_SIZE);
+      yield* Effect.promise(() =>
+        queue.sendBatch(batch.map((jobId) => ({ body: { jobId } }))),
+      );
+    }
+  },
+);
 
 const errorDetail = async (response: Response) => {
   const text = await response.text().catch(() => "");
@@ -68,7 +72,10 @@ export const processJob = Effect.fn("MarketData.processJob")(function* (
   processor: Pick<Fetcher, "fetch">,
 ) {
   const controlPlane = yield* MarketDataControlPlane;
-  const manifest = yield* controlPlane.claimJob(jobId, new Date().toISOString());
+  const manifest = yield* controlPlane.claimJob(
+    jobId,
+    new Date().toISOString(),
+  );
   if (manifest === undefined) {
     // Already processed, failed, or being processed by another delivery.
     return "skipped" as const;
@@ -92,7 +99,11 @@ export const processJob = Effect.fn("MarketData.processJob")(function* (
       yield* controlPlane.completeJob(jobId, outputEtag, at);
       return "completed" as const;
     }
-    yield* controlPlane.failJob(jobId, "Processor response had no outputEtag", at);
+    yield* controlPlane.failJob(
+      jobId,
+      "Processor response had no outputEtag",
+      at,
+    );
     return "failed" as const;
   }
 

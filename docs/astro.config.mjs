@@ -16,23 +16,51 @@ export default defineConfig({
       title: "Data service",
       description: "How the market-data and calculation service works.",
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/maxime-filippini/data-service" },
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/maxime-filippini/data-service",
+        },
       ],
       sidebar: [
         "index",
         "concepts",
         "architecture",
         "maintaining",
-        { label: "Market data", items: ["pipeline/schedule", "pipeline/ingestion", "pipeline/processing"] },
+        {
+          label: "Market data",
+          items: [
+            "pipeline/schedule",
+            "pipeline/ingestion",
+            "pipeline/processing",
+          ],
+        },
         {
           label: "Calculations",
-          items: ["calculations/portfolios", "calculations/runs", "calculations/scheduling", "calculations/types"],
+          items: [
+            "calculations/portfolios",
+            "calculations/runs",
+            "calculations/scheduling",
+            "calculations/types",
+          ],
         },
         {
           label: "Reference",
-          items: ["reference/api", "reference/data-model", "reference/storage", "reference/containers"],
+          items: [
+            "reference/api",
+            "reference/data-model",
+            "reference/storage",
+            "reference/containers",
+          ],
         },
-        { label: "Operations", items: ["operations/dashboard", "operations/local", "operations/deploying"] },
+        {
+          label: "Operations",
+          items: [
+            "operations/dashboard",
+            "operations/local",
+            "operations/deploying",
+          ],
+        },
       ],
     }),
   ],

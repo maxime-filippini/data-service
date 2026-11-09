@@ -1,4 +1,7 @@
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const dateTime = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -17,7 +20,8 @@ export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
 export const formatAgo = (iso: string, now = Date.now()) => {
   const seconds = (new Date(iso).getTime() - now) / 1000;
   for (const [unit, size] of UNITS) {
-    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit);
+    if (Math.abs(seconds) >= size)
+      return relative.format(Math.round(seconds / size), unit);
   }
   return "just now";
 };
@@ -42,8 +46,14 @@ export const formatRange = (from: string | null, to: string | null) =>
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 });
 
 /** A Parquet cell: numbers with grouping, empty cells as a dash. */
-export const formatValue = (value: string | number | boolean | null | undefined) =>
-  value === null || value === undefined ? "—" : typeof value === "number" ? number.format(value) : String(value);
+export const formatValue = (
+  value: string | number | boolean | null | undefined,
+) =>
+  value === null || value === undefined
+    ? "—"
+    : typeof value === "number"
+      ? number.format(value)
+      : String(value);
 
 /** "512 B", "84.2 KB", "1.3 MB" */
 export const formatBytes = (bytes: number) => {

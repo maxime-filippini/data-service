@@ -49,10 +49,19 @@ interface RunRow {
   readonly completed_at: string | null;
 }
 
-const databaseError = () => new CalculationError({ kind: "database", message: "Could not access calculations" });
-const notFound = () => new CalculationError({ kind: "not_found", message: "The calculation does not exist" });
+const databaseError = () =>
+  new CalculationError({
+    kind: "database",
+    message: "Could not access calculations",
+  });
+const notFound = () =>
+  new CalculationError({
+    kind: "not_found",
+    message: "The calculation does not exist",
+  });
 
-const query = <A>(operation: () => Promise<A>) => Effect.tryPromise({ try: operation, catch: databaseError });
+const query = <A>(operation: () => Promise<A>) =>
+  Effect.tryPromise({ try: operation, catch: databaseError });
 
 const fromRunRow = (row: RunRow): CalculationRun => ({
   runId: row.run_id,
@@ -61,7 +70,8 @@ const fromRunRow = (row: RunRow): CalculationRun => ({
   asOf: row.as_of,
   params: JSON.parse(row.params_json),
   status: row.status,
-  portfolios: row.portfolios_json === null ? null : JSON.parse(row.portfolios_json),
+  portfolios:
+    row.portfolios_json === null ? null : JSON.parse(row.portfolios_json),
   rowCount: row.row_count,
   outputEtag: row.output_etag,
   error: row.error,
@@ -69,7 +79,10 @@ const fromRunRow = (row: RunRow): CalculationRun => ({
   completedAt: row.completed_at,
 });
 
-const fromRow = (row: CalculationRow, lastRun: RunRow | undefined): Calculation => ({
+const fromRow = (
+  row: CalculationRow,
+  lastRun: RunRow | undefined,
+): Calculation => ({
   id: row.calculation_id,
   name: row.name,
   type: row.type,
@@ -84,7 +97,9 @@ const fromRow = (row: CalculationRow, lastRun: RunRow | undefined): Calculation 
   lastRun: lastRun === undefined ? null : fromRunRow(lastRun),
 });
 
-export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> => {
+export const D1CalculationsLive = (
+  db: D1Database,
+): Layer.Layer<Calculations> => {
   /** Calculations (one, or all when `id` is null) with their portfolios and latest run. */
   const load = (id: string | null) =>
     query(() =>
@@ -118,7 +133,12 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
       ]),
     ).pipe(
       Effect.map(([calculations, runs]) => {
-        const lastRuns = new Map(((runs?.results ?? []) as RunRow[]).map((run) => [run.calculation_id, run]));
+        const lastRuns = new Map(
+          ((runs?.results ?? []) as RunRow[]).map((run) => [
+            run.calculation_id,
+            run,
+          ]),
+        );
         return ((calculations?.results ?? []) as CalculationRow[]).map((row) =>
           fromRow(row, lastRuns.get(row.calculation_id)),
         );
@@ -126,7 +146,13 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
     );
 
   const get = (id: string) =>
-    load(id).pipe(Effect.flatMap(([calculation]) => (calculation === undefined ? Effect.fail(notFound()) : Effect.succeed(calculation))));
+    load(id).pipe(
+      Effect.flatMap(([calculation]) =>
+        calculation === undefined
+          ? Effect.fail(notFound())
+          : Effect.succeed(calculation),
+      ),
+    );
 
   /** Fails with `invalid` unless every portfolio exists. */
   const requirePortfolios = (ids: readonly string[]) =>
@@ -154,7 +180,9 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
 
   /** Statements that set a calculation's portfolios, if the calculation exists. */
   const setPortfolios = (id: string, portfolioIds: readonly string[]) => [
-    db.prepare(`DELETE FROM calculation_portfolios WHERE calculation_id = ?`).bind(id),
+    db
+      .prepare(`DELETE FROM calculation_portfolios WHERE calculation_id = ?`)
+      .bind(id),
     db
       .prepare(
         `INSERT INTO calculation_portfolios (calculation_id, portfolio_id, position)
@@ -170,7 +198,10 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
       try: () => db.batch(statements),
       catch: (error) =>
         String(error).includes("FOREIGN KEY constraint failed")
-          ? new CalculationError({ kind: "invalid", message: "A portfolio was deleted while saving the calculation" })
+          ? new CalculationError({
+              kind: "invalid",
+              message: "A portfolio was deleted while saving the calculation",
+            })
           : databaseError(),
     });
 
@@ -216,7 +247,8 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
 
       update: (id, patch, now) =>
         Effect.gen(function* () {
-          if (patch.portfolioIds !== undefined) yield* requirePortfolios(patch.portfolioIds);
+          if (patch.portfolioIds !== undefined)
+            yield* requirePortfolios(patch.portfolioIds);
           const [updated] = yield* write([
             db
               .prepare(
@@ -231,22 +263,36 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
               )
               .bind(
                 patch.name ?? null,
-                patch.params === undefined ? null : JSON.stringify(patch.params),
+                patch.params === undefined
+                  ? null
+                  : JSON.stringify(patch.params),
                 patch.cron ?? null,
                 patch.enabled === undefined ? null : Number(patch.enabled),
                 now,
                 id,
               ),
-            ...(patch.portfolioIds === undefined ? [] : setPortfolios(id, patch.portfolioIds)),
+            ...(patch.portfolioIds === undefined
+              ? []
+              : setPortfolios(id, patch.portfolioIds)),
           ]);
-          if ((updated?.results ?? []).length === 0) return yield* Effect.fail(notFound());
+          if ((updated?.results ?? []).length === 0)
+            return yield* Effect.fail(notFound());
           return yield* get(id);
         }),
 
       remove: (id) =>
         query(() =>
-          db.prepare(`DELETE FROM calculations WHERE calculation_id = ? RETURNING calculation_id`).bind(id).first(),
-        ).pipe(Effect.flatMap((row) => (row === null ? Effect.fail(notFound()) : Effect.void))),
+          db
+            .prepare(
+              `DELETE FROM calculations WHERE calculation_id = ? RETURNING calculation_id`,
+            )
+            .bind(id)
+            .first(),
+        ).pipe(
+          Effect.flatMap((row) =>
+            row === null ? Effect.fail(notFound()) : Effect.void,
+          ),
+        ),
 
       claimSlot: (id, slot) =>
         query(() =>
@@ -262,7 +308,10 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
 
       startRun: (run) =>
         Effect.gen(function* () {
-          const insert = (status: "running" | "skipped", error: string | null) =>
+          const insert = (
+            status: "running" | "skipped",
+            error: string | null,
+          ) =>
             query(() =>
               db
                 .prepare(
@@ -284,13 +333,19 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
                 )
                 .first<{ run_id: string }>(),
             );
-          if ((yield* insert("running", null)) !== null) return "running" as const;
+          if ((yield* insert("running", null)) !== null)
+            return "running" as const;
 
           // Another run holds the calculation's one running slot.
-          const [running] = yield* runs(`calculation_id = ? AND status = 'running'`, run.calculationId);
+          const [running] = yield* runs(
+            `calculation_id = ? AND status = 'running'`,
+            run.calculationId,
+          );
           const skipped = yield* insert(
             "skipped",
-            running === undefined ? "Another run was going" : `Run ${running.runId} was still going`,
+            running === undefined
+              ? "Another run was going"
+              : `Run ${running.runId} was still going`,
           );
           if (skipped === null) return yield* Effect.fail(databaseError());
           return "skipped" as const;
@@ -329,16 +384,28 @@ export const D1CalculationsLive = (db: D1Database): Layer.Layer<Calculations> =>
         ).pipe(Effect.asVoid),
 
       runningRuns: (calculationId) =>
-        runs(`status = 'running' AND (?1 IS NULL OR calculation_id = ?1) ORDER BY created_at`, calculationId ?? null),
+        runs(
+          `status = 'running' AND (?1 IS NULL OR calculation_id = ?1) ORDER BY created_at`,
+          calculationId ?? null,
+        ),
 
       listRuns: (calculationId, limit) =>
-        runs(`calculation_id = ? ORDER BY created_at DESC, run_id DESC LIMIT ?`, calculationId, limit),
+        runs(
+          `calculation_id = ? ORDER BY created_at DESC, run_id DESC LIMIT ?`,
+          calculationId,
+          limit,
+        ),
 
       getRun: (runId) =>
         runs(`run_id = ?`, runId).pipe(
           Effect.flatMap(([run]) =>
             run === undefined
-              ? Effect.fail(new CalculationError({ kind: "not_found", message: "The run does not exist" }))
+              ? Effect.fail(
+                  new CalculationError({
+                    kind: "not_found",
+                    message: "The run does not exist",
+                  }),
+                )
               : Effect.succeed(run),
           ),
         ),

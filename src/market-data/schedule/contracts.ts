@@ -14,7 +14,9 @@ export type * from "./views";
  * pausing stops automatic launches without disabling symbols or manual runs.
  */
 export const UpdateScheduleSchema = Schema.Struct({
-  hourUtc: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 23 }))),
+  hourUtc: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 23 })),
+  ),
   paused: Schema.optionalKey(Schema.Boolean),
 });
 
@@ -29,10 +31,13 @@ export type UpdateSchedule = typeof UpdateScheduleSchema.Type;
  * HTTP/cron callers to report failure; individual symbol download failures
  * are recorded later as ingestion runs, outside this schedule outcome.
  */
-export class ScheduleError extends Schema.TaggedError<ScheduleError>()("ScheduleError", {
-  kind: Schema.Literals(["database", "workflow"]),
-  message: Schema.String,
-}) {}
+export class ScheduleError extends Schema.TaggedError<ScheduleError>()(
+  "ScheduleError",
+  {
+    kind: Schema.Literals(["database", "workflow"]),
+    message: Schema.String,
+  },
+) {}
 
 /**
  * Initial record saved before creating a download Workflow. `runDate` is the

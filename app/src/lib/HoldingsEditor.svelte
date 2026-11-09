@@ -16,11 +16,15 @@
 
   const listId = `holding-symbols-${Math.random().toString(36).slice(2)}`;
 
-  const filled = $derived(rows.filter((row) => row.symbol.trim() !== "").length);
+  const filled = $derived(
+    rows.filter((row) => row.symbol.trim() !== "").length,
+  );
   const total = $derived(
     rows.reduce((sum, row) => {
       const weight = Number(row.weight);
-      return row.weight.trim() !== "" && Number.isFinite(weight) ? sum + weight : sum;
+      return row.weight.trim() !== "" && Number.isFinite(weight)
+        ? sum + weight
+        : sum;
     }, 0),
   );
 
@@ -34,16 +38,23 @@
   };
 
   const removeRow = (index: number) => {
-    rows = rows.length === 1 ? [emptyRow()] : rows.filter((_, i) => i !== index);
+    rows =
+      rows.length === 1 ? [emptyRow()] : rows.filter((_, i) => i !== index);
   };
 </script>
 
 <div class="holdings">
   <div class="head">
     <span class="muted">
-      {filled} holding{filled === 1 ? "" : "s"} · weights sum to {Number(total.toFixed(10))}
+      {filled} holding{filled === 1 ? "" : "s"} · weights sum to {Number(
+        total.toFixed(10),
+      )}
     </span>
-    <button type="button" class="link" onclick={() => ((pasting = !pasting), (skipped = []))}>
+    <button
+      type="button"
+      class="link"
+      onclick={() => ((pasting = !pasting), (skipped = []))}
+    >
       {pasting ? "Edit rows" : "Paste rows"}
     </button>
   </div>
@@ -53,14 +64,15 @@
       bind:value={pasted}
       rows="8"
       placeholder={"AAPL.US\t0.6\nMSFT.US\t0.4"}
-      aria-label="Pasted holdings"
-    ></textarea>
+      aria-label="Pasted holdings"></textarea>
     <p class="muted hint">
-      One holding per line: a symbol and a weight, separated by a tab, comma, semicolon or space. Pasting replaces
-      the rows below.
+      One holding per line: a symbol and a weight, separated by a tab, comma,
+      semicolon or space. Pasting replaces the rows below.
     </p>
     <div class="paste-actions">
-      <button type="button" onclick={applyPaste} disabled={pasted.trim() === ""}>Use these rows</button>
+      <button type="button" onclick={applyPaste} disabled={pasted.trim() === ""}
+        >Use these rows</button
+      >
     </div>
   {:else}
     <datalist id={listId}>
@@ -89,10 +101,20 @@
               />
             </td>
             <td class="num">
-              <input bind:value={row.weight} inputmode="decimal" placeholder="0.5" aria-label={`Weight ${index + 1}`} />
+              <input
+                bind:value={row.weight}
+                inputmode="decimal"
+                placeholder="0.5"
+                aria-label={`Weight ${index + 1}`}
+              />
             </td>
             <td class="remove">
-              <button type="button" class="link" onclick={() => removeRow(index)} aria-label={`Remove row ${index + 1}`}>
+              <button
+                type="button"
+                class="link"
+                onclick={() => removeRow(index)}
+                aria-label={`Remove row ${index + 1}`}
+              >
                 Remove
               </button>
             </td>
@@ -100,11 +122,18 @@
         {/each}
       </tbody>
     </table>
-    <button type="button" class="add" onclick={() => (rows = [...rows, emptyRow()])}>Add row</button>
+    <button
+      type="button"
+      class="add"
+      onclick={() => (rows = [...rows, emptyRow()])}>Add row</button
+    >
   {/if}
 
   {#if skipped.length > 0}
-    <p class="skipped">Skipped {skipped.length} line{skipped.length === 1 ? "" : "s"} without a numeric weight: {skipped.slice(0, 5).join("; ")}{skipped.length > 5 ? "…" : ""}</p>
+    <p class="skipped">
+      Skipped {skipped.length} line{skipped.length === 1 ? "" : "s"} without a numeric
+      weight: {skipped.slice(0, 5).join("; ")}{skipped.length > 5 ? "…" : ""}
+    </p>
   {/if}
 </div>
 

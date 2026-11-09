@@ -7,5 +7,10 @@ export const load: PageServerLoad = async () => {
   const [symbols, schedule, scheduleRuns] = await loaded(
     Promise.all([pages.symbols(), pages.schedule(), pages.scheduleRuns(10)]),
   );
-  return { symbols, options: pages.options().datasetProviders, schedule, scheduleRuns };
+  return {
+    symbols,
+    options: pages.options().datasetProviders,
+    schedule,
+    scheduleRuns,
+  };
 };

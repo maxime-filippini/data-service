@@ -2,7 +2,11 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
 
-  import { createPortfolio, fetchPortfolios, type PortfolioSummary } from "#lib/api.ts";
+  import {
+    createPortfolio,
+    fetchPortfolios,
+    type PortfolioSummary,
+  } from "#lib/api.ts";
   import { formatAgo, formatDateTime } from "#lib/format.ts";
   import { emptyRow, type HoldingRow, toHoldings } from "#lib/holdings.ts";
   import HoldingsEditor from "#lib/HoldingsEditor.svelte";
@@ -31,7 +35,8 @@
   let holdingsDate = $state(new Date().toISOString().slice(0, 10));
   let rows = $state<HoldingRow[]>([emptyRow()]);
 
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   let latestRequest = 0;
   const load = async () => {
@@ -51,7 +56,8 @@
     portfolios.filter(
       (p) =>
         (showSingleAsset || p.assetSymbol === null) &&
-        (search.trim() === "" || p.name.toLowerCase().includes(search.trim().toLowerCase())),
+        (search.trim() === "" ||
+          p.name.toLowerCase().includes(search.trim().toLowerCase())),
     ),
   );
 
@@ -79,7 +85,10 @@
     }
     saving = true;
     try {
-      const created = await createPortfolio({ name, ...(snapshot ? { snapshot } : {}) });
+      const created = await createPortfolio({
+        name,
+        ...(snapshot ? { snapshot } : {}),
+      });
       creating = false;
       await goto(href("portfolios", { id: created.id }));
     } catch (cause) {
@@ -91,7 +100,11 @@
 </script>
 
 <div class="toolbar">
-  <input placeholder="Search portfolios" bind:value={search} aria-label="Search portfolios" />
+  <input
+    placeholder="Search portfolios"
+    bind:value={search}
+    aria-label="Search portfolios"
+  />
   <label class="check">
     <input type="checkbox" bind:checked={showSingleAsset} />
     Single-asset
@@ -106,7 +119,12 @@
     <h2>New portfolio</h2>
     <label class="field name">
       Name
-      <input bind:value={name} required maxlength="200" placeholder="Core equity" />
+      <input
+        bind:value={name}
+        required
+        maxlength="200"
+        placeholder="Core equity"
+      />
     </label>
     <label class="check">
       <input type="checkbox" bind:checked={withSnapshot} />
@@ -120,14 +138,21 @@
       <HoldingsEditor bind:rows {symbols} />
     {/if}
     <p class="muted hint">
-      Every symbol must be tracked in prices_eod. Weights can be any non-zero numbers; they don't need to sum to 1.
+      Every symbol must be tracked in prices_eod. Weights can be any non-zero
+      numbers; they don't need to sum to 1.
     </p>
     {#if formError}
       <div class="error">{formError}</div>
     {/if}
     <div class="actions">
-      <button type="button" onclick={() => (creating = false)} disabled={saving}>Cancel</button>
-      <button type="submit" class="primary" disabled={saving || name.trim() === ""}>
+      <button type="button" onclick={() => (creating = false)} disabled={saving}
+        >Cancel</button
+      >
+      <button
+        type="submit"
+        class="primary"
+        disabled={saving || name.trim() === ""}
+      >
         {saving ? "Creating…" : "Create portfolio"}
       </button>
     </div>
@@ -156,18 +181,26 @@
         <tr>
           <td class="full name-cell">
             <a href={href("portfolios", { id: p.id })}>{p.name}</a>
-            {#if p.assetSymbol !== null}<span class="muted kind">single asset</span>{/if}
+            {#if p.assetSymbol !== null}<span class="muted kind"
+                >single asset</span
+              >{/if}
           </td>
           <td data-label="Snapshots" class="num">{p.snapshotCount}</td>
-          <td data-label="Latest holdings" class="mono">{p.latestHoldingsDate ?? "—"}</td>
-          <td data-label="Updated" title={formatDateTime(p.updatedAt)}>{formatAgo(p.updatedAt)}</td>
+          <td data-label="Latest holdings" class="mono"
+            >{p.latestHoldingsDate ?? "—"}</td
+          >
+          <td data-label="Updated" title={formatDateTime(p.updatedAt)}
+            >{formatAgo(p.updatedAt)}</td
+          >
         </tr>
       {/each}
     </tbody>
   </table>
   {#if visible.length === 0 && !loading && !error}
     <p class="notice">
-      {portfolios.length === 0 ? "No portfolios yet. Create one to run calculations over it." : "No portfolios match."}
+      {portfolios.length === 0
+        ? "No portfolios yet. Create one to run calculations over it."
+        : "No portfolios match."}
     </p>
   {:else if loading && portfolios.length === 0}
     <p class="notice">Loading…</p>

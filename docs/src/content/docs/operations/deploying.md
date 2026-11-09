@@ -17,9 +17,9 @@ flowchart LR
   branch -- main --> prod["deploy-prod<br/>db:migrate:remote → deploy"]
 ```
 
-| Branch | Target |
-| --- | --- |
-| `main` | production (`data-service`) |
+| Branch                       | Target                               |
+| ---------------------------- | ------------------------------------ |
+| `main`                       | production (`data-service`)          |
 | `develop`, `feat/*`, `fix/*` | dev environment (`data-service-dev`) |
 
 Each deploy builds the dashboard and these docs into the Worker's static

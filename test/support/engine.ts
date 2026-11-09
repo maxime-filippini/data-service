@@ -11,7 +11,10 @@ export const exAnteVol = {
   name: "ex_ante_vol",
   description: "Ex-ante volatility.",
   takesPortfolio: true,
-  paramsSchema: { type: "object", properties: { window: { type: "integer", default: 252 } } },
+  paramsSchema: {
+    type: "object",
+    properties: { window: { type: "integer", default: 252 } },
+  },
   output: { value: "Float64" },
 };
 
@@ -19,7 +22,9 @@ export const exAnteVol = {
  * A stand-in for the engine container. Records each call and answers with
  * `respond`, which defaults to a type list and a one-row JSON result.
  */
-export const makeFakeEngine = (respond?: (call: EngineCall) => Response | Promise<Response>) => {
+export const makeFakeEngine = (
+  respond?: (call: EngineCall) => Response | Promise<Response>,
+) => {
   const calls: EngineCall[] = [];
   const fetcher = {
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -34,7 +39,9 @@ export const makeFakeEngine = (respond?: (call: EngineCall) => Response | Promis
       calls.push(call);
       if (respond !== undefined) return respond(call);
       if (call.path === "/types") return Response.json([exAnteVol]);
-      return Response.json({ rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }] });
+      return Response.json({
+        rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }],
+      });
     },
   } as Pick<Fetcher, "fetch">;
   return { calls, layer: EngineLive(fetcher) };

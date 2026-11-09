@@ -27,6 +27,8 @@
     types={calculationTypes.list}
     portfolios={data.portfolios}
     ondeleted={(name) =>
-      goto(href("calculations"), { state: { message: `Deleted ${name}. Its results stay in R2.` } })}
+      goto(href("calculations"), {
+        state: { message: `Deleted ${name}. Its results stay in R2.` },
+      })}
   />
 {/key}

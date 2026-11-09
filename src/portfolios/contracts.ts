@@ -24,7 +24,10 @@ export const PortfolioIdSchema = Schema.String.check(Schema.isUUID());
  * Trimmed display name used when creating or renaming a portfolio. Identity
  * comes from the portfolio ID, so callers must not resolve portfolios by name.
  */
-export const PortfolioNameSchema = Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(200));
+export const PortfolioNameSchema = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(200),
+);
 
 /**
  * One portfolio exposure: a tracked-symbol identifier and a finite, non-zero
@@ -33,7 +36,9 @@ export const PortfolioNameSchema = Schema.Trim.check(Schema.isNonEmpty(), Schema
  */
 export const HoldingSchema = Schema.Struct({
   symbol: MarketSymbolSchema,
-  weight: Schema.Finite.check(Schema.makeFilter((weight) => weight !== 0 || "Weight must be non-zero")),
+  weight: Schema.Finite.check(
+    Schema.makeFilter((weight) => weight !== 0 || "Weight must be non-zero"),
+  ),
 });
 
 /**
@@ -49,9 +54,10 @@ export type Holding = typeof HoldingSchema.Type;
 export const HoldingsSchema = Schema.Array(HoldingSchema).check(
   Schema.isMinLength(1),
   Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS),
-  Schema.makeFilter((holdings) =>
-    new Set(holdings.map((holding) => holding.symbol)).size === holdings.length ||
-    "Each symbol can appear only once",
+  Schema.makeFilter(
+    (holdings) =>
+      new Set(holdings.map((holding) => holding.symbol)).size ===
+        holdings.length || "Each symbol can appear only once",
   ),
 );
 
@@ -90,7 +96,9 @@ export type CreatePortfolio = typeof CreatePortfolioSchema.Type;
  * HTTP input for changing a portfolio's display name. Does not change its ID
  * or holdings; the store rejects renaming a managed single-asset portfolio.
  */
-export const RenamePortfolioSchema = Schema.Struct({ name: PortfolioNameSchema });
+export const RenamePortfolioSchema = Schema.Struct({
+  name: PortfolioNameSchema,
+});
 
 export type * from "$/portfolios/views";
 
@@ -102,7 +110,10 @@ export type * from "$/portfolios/views";
 export interface EnginePortfolio {
   readonly id: string;
   readonly name: string;
-  readonly snapshots: readonly { readonly holdingsDate: string; readonly holdings: readonly Holding[] }[];
+  readonly snapshots: readonly {
+    readonly holdingsDate: string;
+    readonly holdings: readonly Holding[];
+  }[];
 }
 
 /**
@@ -110,12 +121,23 @@ export interface EnginePortfolio {
  * calculation. `symbols` identifies untracked exposures; `calculations` explains
  * a deletion conflict. The HTTP adapter maps these reasons to client responses.
  */
-export class PortfolioError extends Schema.TaggedError<PortfolioError>()("PortfolioError", {
-  /** `no_holdings`: no snapshot on or before the as-of date of a calculation. */
-  kind: Schema.Literals(["database", "not_found", "conflict", "untracked_symbols", "no_holdings"]),
-  message: Schema.String,
-  /** The untracked symbols, for `untracked_symbols`. */
-  symbols: Schema.optionalKey(Schema.Array(Schema.String)),
-  /** The calculations using a portfolio that can't be deleted, for `conflict`. */
-  calculations: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String }))),
-}) {}
+export class PortfolioError extends Schema.TaggedError<PortfolioError>()(
+  "PortfolioError",
+  {
+    /** `no_holdings`: no snapshot on or before the as-of date of a calculation. */
+    kind: Schema.Literals([
+      "database",
+      "not_found",
+      "conflict",
+      "untracked_symbols",
+      "no_holdings",
+    ]),
+    message: Schema.String,
+    /** The untracked symbols, for `untracked_symbols`. */
+    symbols: Schema.optionalKey(Schema.Array(Schema.String)),
+    /** The calculations using a portfolio that can't be deleted, for `conflict`. */
+    calculations: Schema.optionalKey(
+      Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+    ),
+  },
+) {}

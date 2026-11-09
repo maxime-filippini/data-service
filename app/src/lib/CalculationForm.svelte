@@ -9,7 +9,12 @@
     type PortfolioSummary,
     updateCalculation,
   } from "./api";
-  import { defaultParams, describeParams, formatParams, parseParams } from "./params";
+  import {
+    defaultParams,
+    describeParams,
+    formatParams,
+    parseParams,
+  } from "./params";
 
   let {
     types,
@@ -39,8 +44,12 @@
   let cron = $state(untrack(() => initial?.cron ?? "0 6 * * *"));
   let enabled = $state(untrack(() => initial?.enabled ?? true));
   /** In the order they run. */
-  let portfolioIds = $state<string[]>(untrack(() => [...(initial?.portfolioIds ?? [])]));
-  let paramsText = $state(untrack(() => (initial ? formatParams(initial.params) : "{}")));
+  let portfolioIds = $state<string[]>(
+    untrack(() => [...(initial?.portfolioIds ?? [])]),
+  );
+  let paramsText = $state(
+    untrack(() => (initial ? formatParams(initial.params) : "{}")),
+  );
   let saving = $state(false);
   let error = $state<string | null>(null);
 
@@ -56,7 +65,9 @@
     const parsed = parseCron(cron.trim());
     return isCronError(parsed) ? parsed.error : null;
   });
-  const portfolioNames = $derived(new Map(portfolios.map((p) => [p.id, p.name])));
+  const portfolioNames = $derived(
+    new Map(portfolios.map((p) => [p.id, p.name])),
+  );
 
   function chooseType(next: string) {
     type = next;
@@ -66,19 +77,27 @@
   }
 
   const togglePortfolio = (id: string) => {
-    portfolioIds = portfolioIds.includes(id) ? portfolioIds.filter((p) => p !== id) : [...portfolioIds, id];
+    portfolioIds = portfolioIds.includes(id)
+      ? portfolioIds.filter((p) => p !== id)
+      : [...portfolioIds, id];
   };
 
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   /**
    * Only what changed, so the engine is only asked about params or portfolios
    * that did. Renaming or pausing then works even if the type is gone.
    */
-  const changedFields = <T extends Record<string, unknown>>(current: Calculation, fields: T): Partial<T> =>
+  const changedFields = <T extends Record<string, unknown>>(
+    current: Calculation,
+    fields: T,
+  ): Partial<T> =>
     Object.fromEntries(
       Object.entries(fields).filter(
-        ([key, value]) => JSON.stringify(value) !== JSON.stringify(current[key as keyof Calculation]),
+        ([key, value]) =>
+          JSON.stringify(value) !==
+          JSON.stringify(current[key as keyof Calculation]),
       ),
     ) as Partial<T>;
 
@@ -97,7 +116,13 @@
       error = `${type} runs over portfolios. Pick at least one.`;
       return;
     }
-    const fields = { name, params: parsedParams.params, portfolioIds, cron: cron.trim(), enabled };
+    const fields = {
+      name,
+      params: parsedParams.params,
+      portfolioIds,
+      cron: cron.trim(),
+      enabled,
+    };
     saving = true;
     try {
       const saved = initial
@@ -118,15 +143,28 @@
     <div class="fields">
       <label class="field">
         Name
-        <input bind:value={name} required maxlength="200" placeholder="Core ex-ante vol" />
+        <input
+          bind:value={name}
+          required
+          maxlength="200"
+          placeholder="Core ex-ante vol"
+        />
       </label>
 
       <label class="field">
         Type
         {#if editing}
-          <input value={type} disabled title="A calculation's type can't change; create a new calculation instead" />
+          <input
+            value={type}
+            disabled
+            title="A calculation's type can't change; create a new calculation instead"
+          />
         {:else}
-          <select value={type} onchange={(event) => chooseType(event.currentTarget.value)} required>
+          <select
+            value={type}
+            onchange={(event) => chooseType(event.currentTarget.value)}
+            required
+          >
             {#each types as candidate (candidate.name)}
               <option value={candidate.name}>{candidate.name}</option>
             {/each}
@@ -136,23 +174,35 @@
       {#if info}
         <p class="muted hint">{info.description}</p>
       {:else if editing && types.length > 0}
-        <p class="bad hint">The engine no longer has this type, so its runs fail.</p>
+        <p class="bad hint">
+          The engine no longer has this type, so its runs fail.
+        </p>
       {/if}
 
       <div class="field">
         Cron (UTC)
         <div class="cron">
-          <input bind:value={cron} required class="mono" aria-label="Cron expression" aria-invalid={cronError !== null} />
+          <input
+            bind:value={cron}
+            required
+            class="mono"
+            aria-label="Cron expression"
+            aria-invalid={cronError !== null}
+          />
           {#each CRON_PRESETS as preset (preset.cron)}
-            <button type="button" onclick={() => (cron = preset.cron)} title={preset.cron}>{preset.label}</button>
+            <button
+              type="button"
+              onclick={() => (cron = preset.cron)}
+              title={preset.cron}>{preset.label}</button
+            >
           {/each}
         </div>
         {#if cronError}
           <span class="bad">{cronError}</span>
         {:else}
           <span class="muted">
-            Minute, hour, day of month, month, day of week. Checked hourly, so the minute has no effect. Runs
-            calculate as of the previous UTC day.
+            Minute, hour, day of month, month, day of week. Checked hourly, so
+            the minute has no effect. Runs calculate as of the previous UTC day.
           </span>
         {/if}
       </div>
@@ -164,26 +214,42 @@
 
       {#if info?.takesPortfolio || portfolioIds.length > 0}
         <fieldset>
-          <legend>Portfolios <span class="muted">· the type runs once for each, in this order</span></legend>
+          <legend
+            >Portfolios <span class="muted"
+              >· the type runs once for each, in this order</span
+            ></legend
+          >
           {#if portfolioIds.length > 1}
             <ol class="chosen">
               {#each portfolioIds as id (id)}
                 <li>
                   {portfolioNames.get(id) ?? id}
-                  <button type="button" class="link" onclick={() => togglePortfolio(id)}>Remove</button>
+                  <button
+                    type="button"
+                    class="link"
+                    onclick={() => togglePortfolio(id)}>Remove</button
+                  >
                 </li>
               {/each}
             </ol>
           {/if}
           {#if portfolios.length === 0}
-            <p class="muted hint">No portfolios yet. Create one under Portfolios first.</p>
+            <p class="muted hint">
+              No portfolios yet. Create one under Portfolios first.
+            </p>
           {:else}
             <div class="choices">
               {#each portfolios as p (p.id)}
                 <label class="check">
-                  <input type="checkbox" checked={portfolioIds.includes(p.id)} onchange={() => togglePortfolio(p.id)} />
+                  <input
+                    type="checkbox"
+                    checked={portfolioIds.includes(p.id)}
+                    onchange={() => togglePortfolio(p.id)}
+                  />
                   {p.name}
-                  {#if p.snapshotCount === 0}<span class="muted">(no snapshots)</span>{/if}
+                  {#if p.snapshotCount === 0}<span class="muted"
+                      >(no snapshots)</span
+                    >{/if}
                 </label>
               {/each}
             </div>
@@ -198,13 +264,15 @@
           rows={Math.min(16, Math.max(5, paramsText.split("\n").length + 1))}
           spellcheck="false"
           class="mono"
-          aria-invalid={"error" in parsedParams}
-        ></textarea>
+          aria-invalid={"error" in parsedParams}></textarea>
       </label>
       {#if "error" in parsedParams}
         <p class="bad hint">{parsedParams.error}</p>
       {:else}
-        <p class="muted hint">The engine checks the params when you save and fills in defaults for any left out.</p>
+        <p class="muted hint">
+          The engine checks the params when you save and fills in defaults for
+          any left out.
+        </p>
       {/if}
     </div>
 
@@ -218,18 +286,28 @@
             {#each help as param (param.name)}
               <dt>
                 <span class="mono">{param.name}</span>
-                <span class="muted">{param.type}{param.required ? ", required" : ""}</span>
+                <span class="muted"
+                  >{param.type}{param.required ? ", required" : ""}</span
+                >
               </dt>
               <dd>
                 {#if param.description}<span>{param.description}</span>{/if}
                 <span class="muted">
-                  {#if param.default !== undefined}Default <span class="mono">{param.default}</span>.{/if}
-                  {#if param.constraints.length > 0}{param.constraints.join(", ")}.{/if}
+                  {#if param.default !== undefined}Default <span class="mono"
+                      >{param.default}</span
+                    >.{/if}
+                  {#if param.constraints.length > 0}{param.constraints.join(
+                      ", ",
+                    )}.{/if}
                 </span>
               </dd>
             {/each}
           </dl>
-          <button type="button" onclick={() => (paramsText = formatParams(defaultParams(info?.paramsSchema)))}>
+          <button
+            type="button"
+            onclick={() =>
+              (paramsText = formatParams(defaultParams(info?.paramsSchema)))}
+          >
             Reset to defaults
           </button>
         {/if}
@@ -252,7 +330,11 @@
   {/if}
   <div class="actions">
     <button type="button" onclick={oncancel} disabled={saving}>Cancel</button>
-    <button type="submit" class="primary" disabled={saving || name.trim() === "" || type === ""}>
+    <button
+      type="submit"
+      class="primary"
+      disabled={saving || name.trim() === "" || type === ""}
+    >
       {saving ? "Saving…" : editing ? "Save" : "Create calculation"}
     </button>
   </div>

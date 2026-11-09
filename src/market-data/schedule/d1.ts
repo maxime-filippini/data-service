@@ -58,23 +58,35 @@ const fromRunRow = (row: RunRow): ScheduleRun => ({
 const query = <A>(operation: () => Promise<A>) =>
   Effect.tryPromise({
     try: operation,
-    catch: () => new ScheduleError({ kind: "database", message: "Could not access the download schedule" }),
+    catch: () =>
+      new ScheduleError({
+        kind: "database",
+        message: "Could not access the download schedule",
+      }),
   });
 
 const requireRow = <A>(row: A | null) =>
   row === null
-    ? Effect.fail(new ScheduleError({ kind: "database", message: "The download schedule is missing" }))
+    ? Effect.fail(
+        new ScheduleError({
+          kind: "database",
+          message: "The download schedule is missing",
+        }),
+      )
     : Effect.succeed(row);
 
-export const D1ScheduleStoreLive = (db: D1Database): Layer.Layer<ScheduleStore> =>
+export const D1ScheduleStoreLive = (
+  db: D1Database,
+): Layer.Layer<ScheduleStore> =>
   Layer.succeed(
     ScheduleStore,
     ScheduleStore.of({
       get: () =>
-        query(() => db.prepare(`SELECT * FROM download_schedule WHERE id = 1`).first<ScheduleRow>()).pipe(
-          Effect.flatMap(requireRow),
-          Effect.map(fromScheduleRow),
-        ),
+        query(() =>
+          db
+            .prepare(`SELECT * FROM download_schedule WHERE id = 1`)
+            .first<ScheduleRow>(),
+        ).pipe(Effect.flatMap(requireRow), Effect.map(fromScheduleRow)),
 
       update: (patch, now) =>
         query(() =>
@@ -85,14 +97,20 @@ export const D1ScheduleStoreLive = (db: D1Database): Layer.Layer<ScheduleStore> 
                WHERE id = 1
                RETURNING *`,
             )
-            .bind(patch.hourUtc ?? null, patch.paused === undefined ? null : Number(patch.paused), now)
+            .bind(
+              patch.hourUtc ?? null,
+              patch.paused === undefined ? null : Number(patch.paused),
+              now,
+            )
             .first<ScheduleRow>(),
         ).pipe(Effect.flatMap(requireRow), Effect.map(fromScheduleRow)),
 
       lastScheduledRunDate: () =>
         query(() =>
           db
-            .prepare(`SELECT max(run_date) AS run_date FROM schedule_runs WHERE trigger = 'schedule'`)
+            .prepare(
+              `SELECT max(run_date) AS run_date FROM schedule_runs WHERE trigger = 'schedule'`,
+            )
             .first<{ run_date: string | null }>(),
         ).pipe(Effect.map((row) => row?.run_date ?? null)),
 
@@ -105,12 +123,23 @@ export const D1ScheduleStoreLive = (db: D1Database): Layer.Layer<ScheduleStore> 
                ON CONFLICT DO NOTHING
                RETURNING run_id`,
             )
-            .bind(run.runId, run.trigger, run.runDate, run.snapshotTo, run.createdAt)
+            .bind(
+              run.runId,
+              run.trigger,
+              run.runDate,
+              run.snapshotTo,
+              run.createdAt,
+            )
             .first<{ run_id: string }>(),
         ).pipe(Effect.map((row) => row !== null)),
 
       removeRun: (runId) =>
-        query(() => db.prepare(`DELETE FROM schedule_runs WHERE run_id = ?`).bind(runId).run()).pipe(Effect.asVoid),
+        query(() =>
+          db
+            .prepare(`DELETE FROM schedule_runs WHERE run_id = ?`)
+            .bind(runId)
+            .run(),
+        ).pipe(Effect.asVoid),
 
       completeRun: (runId, counts, at) =>
         query(() =>
@@ -127,7 +156,9 @@ export const D1ScheduleStoreLive = (db: D1Database): Layer.Layer<ScheduleStore> 
       failRun: (runId, error, at) =>
         query(() =>
           db
-            .prepare(`UPDATE schedule_runs SET status = 'failed', completed_at = ?, error = ? WHERE run_id = ?`)
+            .prepare(
+              `UPDATE schedule_runs SET status = 'failed', completed_at = ?, error = ? WHERE run_id = ?`,
+            )
             .bind(at, error, runId)
             .run(),
         ).pipe(Effect.asVoid),
@@ -147,7 +178,9 @@ export const D1ScheduleStoreLive = (db: D1Database): Layer.Layer<ScheduleStore> 
       listRuns: (limit) =>
         query(() =>
           db
-            .prepare(`SELECT * FROM schedule_runs ORDER BY created_at DESC, run_id DESC LIMIT ?`)
+            .prepare(
+              `SELECT * FROM schedule_runs ORDER BY created_at DESC, run_id DESC LIMIT ?`,
+            )
             .bind(limit)
             .all<RunRow>(),
         ).pipe(Effect.map((result) => result.results.map(fromRunRow))),

@@ -124,9 +124,9 @@ deleted.
 Partial unique indexes enforce the service's "one at a time" rules in the
 database, so two Workers racing can't both win:
 
-| Index | Rule |
-| --- | --- |
-| `ingestion_runs_one_fetching` | One `fetching` run per `(dataset, symbol)` |
-| `processing_jobs_one_active` | One `queued` or `processing` job per `(dataset, symbol)` |
-| `schedule_runs_one_per_day` | One `schedule`-triggered run per `run_date` |
-| `calculation_runs_one_running` | One `running` run per calculation |
+| Index                          | Rule                                                     |
+| ------------------------------ | -------------------------------------------------------- |
+| `ingestion_runs_one_fetching`  | One `fetching` run per `(dataset, symbol)`               |
+| `processing_jobs_one_active`   | One `queued` or `processing` job per `(dataset, symbol)` |
+| `schedule_runs_one_per_day`    | One `schedule`-triggered run per `run_date`              |
+| `calculation_runs_one_running` | One `running` run per calculation                        |

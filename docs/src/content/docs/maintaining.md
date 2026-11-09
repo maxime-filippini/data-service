@@ -28,37 +28,37 @@ The Worker owns state transitions in D1. Python reads and writes data in R2,
 and reports its outcome to the Worker. The app reads page data on the server
 and sends mutations through the Worker's JSON routes.
 
-| Location | Read it for |
-| --- | --- |
-| `src/index.ts` | Cloudflare fetch, cron and queue entry points |
-| `src/dependencies.ts` | Concrete dependency wiring for HTTP routes and page reads |
-| `src/routes/` | Authentication, request validation, HTTP responses |
-| `src/http/run-effect.ts` | Shared execution of Effects and expected-error HTTP mapping |
-| `src/calculations/` | Calculation configuration, run execution, scheduling, engine client |
-| `src/portfolios/` | Portfolio contracts, persistence interface and D1 implementation |
-| `src/market-data/` | Registry, ingestion, processing, download schedule and status reads |
-| `src/*-workflow.ts` | Cloudflare Workflow entry points and dependency wiring |
-| `src/workflows/steps.ts` | Adapter between orchestration and Cloudflare's step runner |
-| `src/pages/` | Read-only data supplied to SvelteKit pages |
-| `app/src/routes/` | Pages and their server loads |
-| `app/src/lib/api.ts` | Browser requests to `/app-api` |
-| `containers/processor/` | Raw response validation and Parquet rebuilds |
-| `containers/engine/` | Calculation types, execution and result storage |
-| `migrations/` | Database schema and concurrency constraints |
-| `test/` | Worker behavior tests, usually using real SQL against SQLite |
+| Location                 | Read it for                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| `src/index.ts`           | Cloudflare fetch, cron and queue entry points                       |
+| `src/dependencies.ts`    | Concrete dependency wiring for HTTP routes and page reads           |
+| `src/routes/`            | Authentication, request validation, HTTP responses                  |
+| `src/http/run-effect.ts` | Shared execution of Effects and expected-error HTTP mapping         |
+| `src/calculations/`      | Calculation configuration, run execution, scheduling, engine client |
+| `src/portfolios/`        | Portfolio contracts, persistence interface and D1 implementation    |
+| `src/market-data/`       | Registry, ingestion, processing, download schedule and status reads |
+| `src/*-workflow.ts`      | Cloudflare Workflow entry points and dependency wiring              |
+| `src/workflows/steps.ts` | Adapter between orchestration and Cloudflare's step runner          |
+| `src/pages/`             | Read-only data supplied to SvelteKit pages                          |
+| `app/src/routes/`        | Pages and their server loads                                        |
+| `app/src/lib/api.ts`     | Browser requests to `/app-api`                                      |
+| `containers/processor/`  | Raw response validation and Parquet rebuilds                        |
+| `containers/engine/`     | Calculation types, execution and result storage                     |
+| `migrations/`            | Database schema and concurrency constraints                         |
+| `test/`                  | Worker behavior tests, usually using real SQL against SQLite        |
 
 ### File roles inside a feature
 
 Calculations, portfolios and the download schedule use these names:
 
-| File | Responsibility |
-| --- | --- |
-| `contracts.ts` | Input schemas, values, typed errors and persistence input/result types |
-| `store.ts` | The injectable persistence interface: what operations can ask storage to do |
-| `d1.ts` | SQL and mapping between database rows and application values |
-| `views.ts` | Plain types that the app can import without loading Worker or Effect runtime code |
+| File                  | Responsibility                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `contracts.ts`        | Input schemas, values, typed errors and persistence input/result types              |
+| `store.ts`            | The injectable persistence interface: what operations can ask storage to do         |
+| `d1.ts`               | SQL and mapping between database rows and application values                        |
+| `views.ts`            | Plain types that the app can import without loading Worker or Effect runtime code   |
 | Named operation files | Business steps, such as `configure.ts`, `runs.ts`, `schedule.ts` or `operations.ts` |
-| `workflow.ts` | Durable orchestration: named steps, their ordering and retry configuration |
+| `workflow.ts`         | Durable orchestration: named steps, their ordering and retry configuration          |
 
 Small existing features such as `symbol-registry` and `status` still keep their
 interface and contracts together in `index.ts`. Split a module when its roles
@@ -123,8 +123,8 @@ Its steps are:
 Two lines from that operation illustrate the main distinction:
 
 ```ts
-const engine = yield* Engine;
-const params = yield* engine.validate(type.name, input.params ?? {});
+const engine = yield * Engine;
+const params = yield * engine.validate(type.name, input.params ?? {});
 ```
 
 The first line obtains a dependency. It does not call Python. The second line
@@ -189,10 +189,11 @@ When adapting external I/O that can reject, use:
 ```ts
 Effect.tryPromise({
   try: () => externalOperation(),
-  catch: () => new EngineError({
-    kind: "unavailable",
-    message: "The calculation engine could not be reached",
-  }),
+  catch: () =>
+    new EngineError({
+      kind: "unavailable",
+      message: "The calculation engine could not be reached",
+    }),
 });
 ```
 
@@ -249,14 +250,14 @@ side effects safe to retry. Effect execution alone provides no durable replay.
 These describe current behavior, including limitations. They are not guarantees
 that every infrastructure failure will automatically recover.
 
-| Work | Ownership and recovery |
-| --- | --- |
-| Ingestion | One fetching run per symbol. Queue redelivery may create a fresh run. Fetching runs older than 30 minutes are failed when a new attempt starts. |
-| Processing | D1 atomically claims a queued job. Unreachable-container failures release it for queue retry. HTTP error responses currently fail the job permanently. |
-| Processing reconciliation | At 02:00 UTC, cron fails processing jobs older than one hour, creates eligible new jobs and resends queued jobs. Failed jobs are not automatically retried for the same ingestion run. |
-| Download schedule | One scheduled run per UTC day. Its Workflow queues batches. Creation failure is reconciled against an existing instance; otherwise the scheduled record is removed for a later tick. |
-| Calculation schedule | One claimed slot per calculation. Launch failure currently consumes the slot. Disabled calculations do not start scheduled runs. |
-| Calculation execution | The engine step has two retries and a 30-minute timeout. Python currently returns many infrastructure exceptions as normal failed results, bypassing those retries. |
+| Work                       | Ownership and recovery                                                                                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ingestion                  | One fetching run per symbol. Queue redelivery may create a fresh run. Fetching runs older than 30 minutes are failed when a new attempt starts.                                                         |
+| Processing                 | D1 atomically claims a queued job. Unreachable-container failures release it for queue retry. HTTP error responses currently fail the job permanently.                                                  |
+| Processing reconciliation  | At 02:00 UTC, cron fails processing jobs older than one hour, creates eligible new jobs and resends queued jobs. Failed jobs are not automatically retried for the same ingestion run.                  |
+| Download schedule          | One scheduled run per UTC day. Its Workflow queues batches. Creation failure is reconciled against an existing instance; otherwise the scheduled record is removed for a later tick.                    |
+| Calculation schedule       | One claimed slot per calculation. Launch failure currently consumes the slot. Disabled calculations do not start scheduled runs.                                                                        |
+| Calculation execution      | The engine step has two retries and a 30-minute timeout. Python currently returns many infrastructure exceptions as normal failed results, bypassing those retries.                                     |
 | Stopped calculation checks | Runs older than five minutes are checked before a new run and on hourly cron. Lookup failures currently look like missing instances; fix this before relying on it to release ownership during outages. |
 
 Dev has no cron. Actions that rely on a sweep need an explicit trigger there.
@@ -270,21 +271,21 @@ and provenance remain separate improvements.
 
 ## Where to change common things
 
-| Change | Start here; then check |
-| --- | --- |
-| Calculation input fields | `calculations/contracts.ts`; `configure.ts`, `d1.ts`, `views.ts` and the app form as needed |
-| A calculation rule | `calculations/configure.ts`; create/update cases in `test/calculations.test.ts` |
-| Calculation execution | `calculations/runs.ts`; durable ordering/configuration in `workflow.ts` |
-| A new calculation type | `containers/engine/src/data_service_engine/types/`; [Adding a type](/docs/calculations/types/) |
-| Portfolio editability | `portfolios/d1.ts`; `test/portfolios.test.ts` |
+| Change                            | Start here; then check                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Calculation input fields          | `calculations/contracts.ts`; `configure.ts`, `d1.ts`, `views.ts` and the app form as needed           |
+| A calculation rule                | `calculations/configure.ts`; create/update cases in `test/calculations.test.ts`                       |
+| Calculation execution             | `calculations/runs.ts`; durable ordering/configuration in `workflow.ts`                               |
+| A new calculation type            | `containers/engine/src/data_service_engine/types/`; [Adding a type](/docs/calculations/types/)        |
+| Portfolio editability             | `portfolios/d1.ts`; `test/portfolios.test.ts`                                                         |
 | Automatic single-asset portfolios | `market-data/symbol-registry/d1.ts` and `migrations/0008_single_asset_portfolios.sql`; registry tests |
-| Download hour and due rules | `market-data/schedule/operations.ts`; `test/schedule.test.ts` |
-| Download batching | `market-data/schedule/workflow.ts`; schedule tests |
-| Queue retry decisions | `market-data/ingestion-queue.ts`, `market-data/processing.ts`, and `src/index.ts` |
-| SQL schema | A new file in `migrations/`; relevant D1 adapter and real-SQL tests |
-| HTTP error status/metadata | `http/run-effect.ts`; relevant route tests and API reference |
-| Page reads | `src/pages/index.ts` and `views.ts`; corresponding `+page.server.ts` |
-| Browser mutations | `app/src/lib/api.ts`, the form/detail component and reused Worker route |
+| Download hour and due rules       | `market-data/schedule/operations.ts`; `test/schedule.test.ts`                                         |
+| Download batching                 | `market-data/schedule/workflow.ts`; schedule tests                                                    |
+| Queue retry decisions             | `market-data/ingestion-queue.ts`, `market-data/processing.ts`, and `src/index.ts`                     |
+| SQL schema                        | A new file in `migrations/`; relevant D1 adapter and real-SQL tests                                   |
+| HTTP error status/metadata        | `http/run-effect.ts`; relevant route tests and API reference                                          |
+| Page reads                        | `src/pages/index.ts` and `views.ts`; corresponding `+page.server.ts`                                  |
+| Browser mutations                 | `app/src/lib/api.ts`, the form/detail component and reused Worker route                               |
 
 Portfolio protection and single-asset creation currently live in the D1 adapters
 so checks and writes can stay close to atomic persistence. Preserve the database
@@ -307,9 +308,14 @@ pnpm exec tsx --test --test-name-pattern='a run sends every portfolio' test/calc
 in the calculation tests executes named step bodies directly. These tests show
 what gets saved and sent without secrets, deployed queues or R2.
 
+Run `pnpm format` after editing supported source, configuration or documentation
+files. The repository configuration includes Svelte support and is shared with
+editor integrations. Python formatting remains with Ruff.
+
 For a change, run the relevant test file, then the shared checks:
 
 ```sh
+pnpm format:check
 pnpm test
 pnpm typecheck
 pnpm app:check

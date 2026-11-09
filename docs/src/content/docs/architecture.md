@@ -48,17 +48,17 @@ flowchart TB
   queue -- raw objects --> raw
 ```
 
-| Part | Role |
-| --- | --- |
-| **Worker** | Management API, hourly cron, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the processor container, and the calculation API that drives the engine container. |
-| **`ScheduledDownloadWorkflow`** | One instance per run of the daily schedule. Queues a download for every enabled symbol and records the outcome. |
-| **`CalculationRunWorkflow`** | One instance per calculation run. Calls the engine and records the outcome. |
-| **App** (`app/`) | SvelteKit app: a home page summing up both pipelines, and the dashboard pages for runs, symbols, the schedule, portfolios, calculations and the Parquet data. Runs inside the Worker, behind Cloudflare Access. See [The app and sign-in](/docs/operations/dashboard/). |
-| **D1** | Universe, schedule, runs, jobs, portfolios and calculations. No market data or results. See [Data model](/docs/reference/data-model/). |
-| **`raw-market-data`** (R2) | Immutable validated provider responses, one per run. |
-| **Processor container** | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks. |
-| **Engine container** | Holds every calculation type. Validates params, runs calculations over the canonical Parquet files and writes their results. Reads and writes the processed bucket only. |
-| **`processed-market-data`** (R2) | One Parquet object per `(dataset, symbol)`, and one per calculation. This is what apps read. |
+| Part                             | Role                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Worker**                       | Management API, hourly cron, ingestion consumer (provider downloads, raw storage), all D1 state, processing consumer that drives the processor container, and the calculation API that drives the engine container.                                                     |
+| **`ScheduledDownloadWorkflow`**  | One instance per run of the daily schedule. Queues a download for every enabled symbol and records the outcome.                                                                                                                                                         |
+| **`CalculationRunWorkflow`**     | One instance per calculation run. Calls the engine and records the outcome.                                                                                                                                                                                             |
+| **App** (`app/`)                 | SvelteKit app: a home page summing up both pipelines, and the dashboard pages for runs, symbols, the schedule, portfolios, calculations and the Parquet data. Runs inside the Worker, behind Cloudflare Access. See [The app and sign-in](/docs/operations/dashboard/). |
+| **D1**                           | Universe, schedule, runs, jobs, portfolios and calculations. No market data or results. See [Data model](/docs/reference/data-model/).                                                                                                                                  |
+| **`raw-market-data`** (R2)       | Immutable validated provider responses, one per run.                                                                                                                                                                                                                    |
+| **Processor container**          | Reads one raw object, writes one Parquet object, returns its ETag. No D1 access, no callbacks.                                                                                                                                                                          |
+| **Engine container**             | Holds every calculation type. Validates params, runs calculations over the canonical Parquet files and writes their results. Reads and writes the processed bucket only.                                                                                                |
+| **`processed-market-data`** (R2) | One Parquet object per `(dataset, symbol)`, and one per calculation. This is what apps read.                                                                                                                                                                            |
 
 ## Entry points
 

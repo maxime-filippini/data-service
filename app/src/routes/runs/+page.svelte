@@ -3,7 +3,13 @@
   import { navigating } from "$app/state";
 
   import { fetchRuns, type RunStatus } from "#lib/api.ts";
-  import { formatAgo, formatCount, formatDateTime, formatDuration, formatRange } from "#lib/format.ts";
+  import {
+    formatAgo,
+    formatCount,
+    formatDateTime,
+    formatDuration,
+    formatRange,
+  } from "#lib/format.ts";
   import { href, replace, route } from "#lib/router.svelte.ts";
   import StatusBadge from "#lib/StatusBadge.svelte";
 
@@ -33,7 +39,11 @@
     loadingMore = true;
     error = null;
     try {
-      const page = await fetchRuns({ symbol: symbol || undefined, status: status || undefined, cursor: nextCursor });
+      const page = await fetchRuns({
+        symbol: symbol || undefined,
+        status: status || undefined,
+        cursor: nextCursor,
+      });
       runs = [...runs, ...page.runs];
       nextCursor = page.nextCursor;
     } catch (cause) {
@@ -56,12 +66,17 @@
     setFilter({ symbol: symbolInput.trim().toUpperCase() });
   };
 
-  const toggle = (runId: string) => (expanded = expanded === runId ? null : runId);
+  const toggle = (runId: string) =>
+    (expanded = expanded === runId ? null : runId);
 </script>
 
 <div class="toolbar">
   <form onsubmit={applySymbol}>
-    <input placeholder="Symbol, e.g. AAPL.US" bind:value={symbolInput} aria-label="Symbol" />
+    <input
+      placeholder="Symbol, e.g. AAPL.US"
+      bind:value={symbolInput}
+      aria-label="Symbol"
+    />
   </form>
   <select
     aria-label="Status"
@@ -102,7 +117,11 @@
     </thead>
     <tbody>
       {#each runs as run (run.runId)}
-        <tr class="run" class:open={expanded === run.runId} onclick={() => toggle(run.runId)}>
+        <tr
+          class="run"
+          class:open={expanded === run.runId}
+          onclick={() => toggle(run.runId)}
+        >
           <td class="toggle">
             <button
               class="expand"
@@ -114,22 +133,41 @@
               }}>{expanded === run.runId ? "▾" : "▸"}</button
             >
           </td>
-          <td class="status"><StatusBadge status={run.status} title={run.error ?? undefined} /></td>
+          <td class="status"
+            ><StatusBadge
+              status={run.status}
+              title={run.error ?? undefined}
+            /></td
+          >
           <td class="symbol">
-            <a href={href("runs", { symbol: run.symbol, status })} onclick={(event) => event.stopPropagation()}
-              >{run.symbol}</a
+            <a
+              href={href("runs", { symbol: run.symbol, status })}
+              onclick={(event) => event.stopPropagation()}>{run.symbol}</a
             >
             <span class="muted dataset">{run.dataset}</span>
           </td>
-          <td data-label="Started" title={formatDateTime(run.createdAt)}>{formatAgo(run.createdAt)}</td>
+          <td data-label="Started" title={formatDateTime(run.createdAt)}
+            >{formatAgo(run.createdAt)}</td
+          >
           <td data-label="Duration" class="num">
-            {run.completedAt ? formatDuration(run.createdAt, run.completedAt) : "—"}
+            {run.completedAt
+              ? formatDuration(run.createdAt, run.completedAt)
+              : "—"}
           </td>
-          <td class="mono wide-only">{formatRange(run.requestedFrom, run.requestedTo)}</td>
-          <td data-label="Rows" class="num">{run.rowCount === null ? "—" : formatCount(run.rowCount)}</td>
-          <td data-label="Data covers" class="mono full">{formatRange(run.observedFrom, run.observedTo)}</td>
+          <td class="mono wide-only"
+            >{formatRange(run.requestedFrom, run.requestedTo)}</td
+          >
+          <td data-label="Rows" class="num"
+            >{run.rowCount === null ? "—" : formatCount(run.rowCount)}</td
+          >
+          <td data-label="Data covers" class="mono full"
+            >{formatRange(run.observedFrom, run.observedTo)}</td
+          >
           <td data-label="Parquet">
-            <StatusBadge status={run.job?.status ?? null} title={run.job?.error ?? undefined} />
+            <StatusBadge
+              status={run.job?.status ?? null}
+              title={run.job?.error ?? undefined}
+            />
           </td>
         </tr>
         {#if expanded === run.runId}
@@ -143,13 +181,17 @@
                 <dt>Run ID</dt>
                 <dd class="mono">{run.runId}</dd>
                 <dt class="narrow-only">Requested</dt>
-                <dd class="narrow-only mono">{formatRange(run.requestedFrom, run.requestedTo)}</dd>
+                <dd class="narrow-only mono">
+                  {formatRange(run.requestedFrom, run.requestedTo)}
+                </dd>
                 <dt>Provider</dt>
                 <dd>{run.provider}</dd>
                 <dt>Started</dt>
                 <dd>{formatDateTime(run.createdAt)}</dd>
                 <dt>Finished</dt>
-                <dd>{run.completedAt ? formatDateTime(run.completedAt) : "—"}</dd>
+                <dd>
+                  {run.completedAt ? formatDateTime(run.completedAt) : "—"}
+                </dd>
                 <dt>Raw object</dt>
                 <dd class="mono">{run.objectKey ?? "—"}</dd>
                 {#if run.job}
@@ -159,7 +201,10 @@
                     · <StatusBadge status={run.job.status} />
                     · queued {formatDateTime(run.job.createdAt)}
                     {#if run.job.startedAt && run.job.completedAt}
-                      · took {formatDuration(run.job.startedAt, run.job.completedAt)}
+                      · took {formatDuration(
+                        run.job.startedAt,
+                        run.job.completedAt,
+                      )}
                     {/if}
                   </dd>
                   {#if run.job.error}
@@ -176,7 +221,9 @@
   </table>
 
   {#if runs.length === 0 && !loading && !error}
-    <p class="notice">No ingestion runs{symbol || status ? " match these filters" : " yet"}.</p>
+    <p class="notice">
+      No ingestion runs{symbol || status ? " match these filters" : " yet"}.
+    </p>
   {/if}
 </div>
 

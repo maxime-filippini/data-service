@@ -14,8 +14,15 @@ const formatSchemaIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 export function effectValidator<
   Target extends keyof ValidationTargets,
   S extends Schema.ConstraintDecoder<unknown>,
->(target: Target, schema: S, options: { readonly onExcessProperty?: "error" } = {}) {
-  const decode = Schema.decodeUnknownResult(schema, { errors: "all", ...options });
+>(
+  target: Target,
+  schema: S,
+  options: { readonly onExcessProperty?: "error" } = {},
+) {
+  const decode = Schema.decodeUnknownResult(schema, {
+    errors: "all",
+    ...options,
+  });
 
   return validator(target, (value, c): S["Type"] => {
     const result = decode(value);

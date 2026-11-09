@@ -38,44 +38,74 @@ export const createSymbolRoutes = (
   const app = new Hono<{ Bindings: CloudflareBindings }>();
   app.use("*", auth);
 
-  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, SymbolRegistryError, SymbolRegistry>) =>
-    runHttp(program, registryFor(env));
+  const run = <A>(
+    env: CloudflareBindings,
+    program: Effect.Effect<A, SymbolRegistryError, SymbolRegistry>,
+  ) => runHttp(program, registryFor(env));
 
   // Register or update a symbol. Re-registering a disabled symbol enables it.
-  app.post("/", effectValidator("json", RegisterSymbolSchema, { onExcessProperty: "error" }), async (c) => {
-    const input = c.req.valid("json");
-    const { symbol, created } = await run(
-      c.env,
-      SymbolRegistry.use((registry) => registry.register(input, new Date().toISOString())),
-    );
-    return c.json(symbol, created ? 201 : 200);
-  });
+  app.post(
+    "/",
+    effectValidator("json", RegisterSymbolSchema, {
+      onExcessProperty: "error",
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      const { symbol, created } = await run(
+        c.env,
+        SymbolRegistry.use((registry) =>
+          registry.register(input, new Date().toISOString()),
+        ),
+      );
+      return c.json(symbol, created ? 201 : 200);
+    },
+  );
 
-  app.get("/", effectValidator("query", ListQuerySchema, { onExcessProperty: "error" }), async (c) => {
-    const query = c.req.valid("query");
-    const symbols = await run(
-      c.env,
-      SymbolRegistry.use((registry) =>
-        registry.list({
-          ...(query.dataset === undefined ? {} : { dataset: query.dataset }),
-          ...(query.enabled === undefined ? {} : { enabled: query.enabled === "true" }),
-        }),
-      ),
-    );
-    return c.json({ symbols });
-  });
+  app.get(
+    "/",
+    effectValidator("query", ListQuerySchema, { onExcessProperty: "error" }),
+    async (c) => {
+      const query = c.req.valid("query");
+      const symbols = await run(
+        c.env,
+        SymbolRegistry.use((registry) =>
+          registry.list({
+            ...(query.dataset === undefined ? {} : { dataset: query.dataset }),
+            ...(query.enabled === undefined
+              ? {}
+              : { enabled: query.enabled === "true" }),
+          }),
+        ),
+      );
+      return c.json({ symbols });
+    },
+  );
 
   // Take a symbol off, or put it back on, the daily schedule. Keeps run
   // history and the Parquet object.
-  for (const [action, enabled] of [["disable", false], ["enable", true]] as const) {
-    app.post(`/:dataset/:symbol/${action}`, effectValidator("param", IdentitySchema), async (c) => {
-      const { dataset, symbol } = c.req.valid("param");
-      const result = await run(
-        c.env,
-        SymbolRegistry.use((registry) => registry.setEnabled(dataset, symbol, enabled, new Date().toISOString())),
-      );
-      return c.json(result);
-    });
+  for (const [action, enabled] of [
+    ["disable", false],
+    ["enable", true],
+  ] as const) {
+    app.post(
+      `/:dataset/:symbol/${action}`,
+      effectValidator("param", IdentitySchema),
+      async (c) => {
+        const { dataset, symbol } = c.req.valid("param");
+        const result = await run(
+          c.env,
+          SymbolRegistry.use((registry) =>
+            registry.setEnabled(
+              dataset,
+              symbol,
+              enabled,
+              new Date().toISOString(),
+            ),
+          ),
+        );
+        return c.json(result);
+      },
+    );
   }
 
   return app;

@@ -23,13 +23,13 @@ POST /calculate (ad hoc) → Worker → engine container → result in the respo
 
 ## Parts
 
-| Part | Role |
-| --- | --- |
+| Part                                   | Role                                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Engine container (`containers/engine`) | A Python image separate from the processor, with its own heavier libraries. Holds every calculation type, validates params, runs calculations and writes results to R2. No D1 access. |
-| Worker | Stores portfolios, calculations and runs in D1, checks cron expressions on the hourly tick, and drives the engine. Treats params as plain JSON. |
-| D1 | `portfolios`, `calculations`, `calculation_runs`. No results. |
-| `processed-market-data` (R2) | Calculation results, next to the canonical datasets. |
-| Dashboard | Pages for portfolios, calculations and runs. Results open in the existing explorer. |
+| Worker                                 | Stores portfolios, calculations and runs in D1, checks cron expressions on the hourly tick, and drives the engine. Treats params as plain JSON.                                       |
+| D1                                     | `portfolios`, `calculations`, `calculation_runs`. No results.                                                                                                                         |
+| `processed-market-data` (R2)           | Calculation results, next to the canonical datasets.                                                                                                                                  |
+| Dashboard                              | Pages for portfolios, calculations and runs. Results open in the existing explorer.                                                                                                   |
 
 ## Calculation types
 
@@ -62,7 +62,7 @@ The framework passes a `ctx`:
   snapshot up to `ctx.as_of`. The type picks the holdings it needs:
   `holdings_at(date)` for the snapshot in effect on one date (ex-ante
   volatility), or `snapshots_between(start, end)` and `holdings_df(start,
-  end)` for every snapshot over a period (realised P&L).
+end)` for every snapshot over a period (realised P&L).
 
 Types never call R2 or providers directly. In v1 they can only read datasets,
 not other calculations' results.

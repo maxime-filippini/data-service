@@ -4,7 +4,11 @@ import { CalculationTypeNameSchema } from "$/calculations/contracts";
 import { type AdHocPortfolio, Engine } from "$/calculations/engine";
 import { previousDay } from "$/market-data/ingestion-queue";
 import { MarketDateSchema } from "$/market-data/schemas";
-import { HoldingsSchema, PortfolioError, PortfolioIdSchema } from "$/portfolios/contracts";
+import {
+  HoldingsSchema,
+  PortfolioError,
+  PortfolioIdSchema,
+} from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 
 /**
@@ -39,30 +43,41 @@ export type AdHocCalculation = typeof AdHocCalculationSchema.Type;
  * as-of date; plain holdings are checked to be tracked first. Returns the
  * engine's response (JSON or Arrow, by `accept`).
  */
-export const calculateAdHoc = Effect.fn("Calculations.calculateAdHoc")(function* (
-  input: AdHocCalculation,
-  now: Date,
-  accept?: string,
-) {
-  const asOf = input.asOf ?? previousDay(now);
-  const portfolios = yield* Portfolios;
+export const calculateAdHoc = Effect.fn("Calculations.calculateAdHoc")(
+  function* (input: AdHocCalculation, now: Date, accept?: string) {
+    const asOf = input.asOf ?? previousDay(now);
+    const portfolios = yield* Portfolios;
 
-  let portfolio: AdHocPortfolio | undefined;
-  if (input.portfolio !== undefined && "portfolioId" in input.portfolio) {
-    portfolio = yield* portfolios.forEngine(input.portfolio.portfolioId, asOf);
-    if (portfolio.snapshots.length === 0) {
-      return yield* Effect.fail(
-        new PortfolioError({ kind: "no_holdings", message: `The portfolio has no snapshot on or before ${asOf}` }),
+    let portfolio: AdHocPortfolio | undefined;
+    if (input.portfolio !== undefined && "portfolioId" in input.portfolio) {
+      portfolio = yield* portfolios.forEngine(
+        input.portfolio.portfolioId,
+        asOf,
       );
+      if (portfolio.snapshots.length === 0) {
+        return yield* Effect.fail(
+          new PortfolioError({
+            kind: "no_holdings",
+            message: `The portfolio has no snapshot on or before ${asOf}`,
+          }),
+        );
+      }
+    } else if (input.portfolio !== undefined) {
+      yield* portfolios.requireTracked(
+        input.portfolio.holdings.map((holding) => holding.symbol),
+      );
+      portfolio = { holdings: input.portfolio.holdings };
     }
-  } else if (input.portfolio !== undefined) {
-    yield* portfolios.requireTracked(input.portfolio.holdings.map((holding) => holding.symbol));
-    portfolio = { holdings: input.portfolio.holdings };
-  }
 
-  const engine = yield* Engine;
-  return yield* engine.calculate(
-    { type: input.type, params: input.params ?? {}, asOf, ...(portfolio === undefined ? {} : { portfolio }) },
-    accept,
-  );
-});
+    const engine = yield* Engine;
+    return yield* engine.calculate(
+      {
+        type: input.type,
+        params: input.params ?? {},
+        asOf,
+        ...(portfolio === undefined ? {} : { portfolio }),
+      },
+      accept,
+    );
+  },
+);

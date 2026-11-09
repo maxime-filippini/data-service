@@ -1,7 +1,13 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
 
-  import { fetchSymbols, type RegisterInput, requestDownloads, setOnSchedule, type SymbolStatusView } from "#lib/api.ts";
+  import {
+    fetchSymbols,
+    type RegisterInput,
+    requestDownloads,
+    setOnSchedule,
+    type SymbolStatusView,
+  } from "#lib/api.ts";
   import { formatAgo, formatCount, formatDateTime } from "#lib/format.ts";
   import { href, replace, route } from "#lib/router.svelte.ts";
   import ScheduleCard from "#lib/ScheduleCard.svelte";
@@ -12,7 +18,9 @@
 
   let { data }: PageProps = $props();
 
-  const enabled = $derived((route.params.get("enabled") ?? "") as "true" | "false" | "");
+  const enabled = $derived(
+    (route.params.get("enabled") ?? "") as "true" | "false" | "",
+  );
 
   // Loaded on the server, then reloaded here after each change.
   let symbols = $derived<readonly SymbolStatusView[]>(data.symbols);
@@ -27,8 +35,10 @@
   const pending = new SvelteSet<string>();
   const selected = new SvelteSet<string>();
 
-  const keyOf = (s: { dataset: string; symbol: string }) => `${s.dataset}/${s.symbol}`;
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const keyOf = (s: { dataset: string; symbol: string }) =>
+    `${s.dataset}/${s.symbol}`;
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   let latestRequest = 0;
 
@@ -41,7 +51,8 @@
       const result = await fetchSymbols({});
       if (request !== latestRequest) return;
       symbols = result.symbols;
-      for (const key of selected) if (!symbols.some((s) => keyOf(s) === key)) selected.delete(key);
+      for (const key of selected)
+        if (!symbols.some((s) => keyOf(s) === key)) selected.delete(key);
     } catch (cause) {
       if (request === latestRequest) error = describe(cause);
     } finally {
@@ -53,7 +64,8 @@
     symbols.filter(
       (s) =>
         (enabled === "" || s.enabled === (enabled === "true")) &&
-        (search.trim() === "" || s.symbol.includes(search.trim().toUpperCase())),
+        (search.trim() === "" ||
+          s.symbol.includes(search.trim().toUpperCase())),
     ),
   );
 
@@ -65,14 +77,17 @@
     neverIngested: symbols.filter((s) => s.lastCompletedRun === null).length,
   });
 
-  const allVisibleSelected = $derived(visible.length > 0 && visible.every((s) => selected.has(keyOf(s))));
+  const allVisibleSelected = $derived(
+    visible.length > 0 && visible.every((s) => selected.has(keyOf(s))),
+  );
 
   const toggleAll = () => {
     if (allVisibleSelected) for (const s of visible) selected.delete(keyOf(s));
     else for (const s of visible) selected.add(keyOf(s));
   };
 
-  const toggleSelected = (key: string) => (selected.has(key) ? selected.delete(key) : selected.add(key));
+  const toggleSelected = (key: string) =>
+    selected.has(key) ? selected.delete(key) : selected.add(key);
 
   const toggleSchedule = async (s: SymbolStatusView) => {
     const key = keyOf(s);
@@ -106,7 +121,11 @@
   };
 
   const downloadSelected = () =>
-    download(symbols.filter((s) => selected.has(keyOf(s))).map(({ dataset, symbol }) => ({ dataset, symbol })));
+    download(
+      symbols
+        .filter((s) => selected.has(keyOf(s)))
+        .map(({ dataset, symbol }) => ({ dataset, symbol })),
+    );
 
   const edit = (s: SymbolStatusView) => {
     message = null;
@@ -145,11 +164,16 @@
 />
 
 <div class="toolbar">
-  <input placeholder="Search symbols" bind:value={search} aria-label="Search symbols" />
+  <input
+    placeholder="Search symbols"
+    bind:value={search}
+    aria-label="Search symbols"
+  />
   <select
     aria-label="Schedule filter"
     value={enabled}
-    onchange={(event) => replace("symbols", { enabled: event.currentTarget.value })}
+    onchange={(event) =>
+      replace("symbols", { enabled: event.currentTarget.value })}
   >
     <option value="">All symbols</option>
     <option value="true">On the schedule</option>
@@ -157,10 +181,15 @@
   </select>
   <span class="spacer"></span>
   {#if selected.size > 0}
-    <button class="primary" onclick={downloadSelected}>Download {selected.size} now</button>
+    <button class="primary" onclick={downloadSelected}
+      >Download {selected.size} now</button
+    >
     <button onclick={() => selected.clear()}>Clear selection</button>
   {/if}
-  <button onclick={() => ((form = {}), (message = null), (error = null))} disabled={form !== null}>
+  <button
+    onclick={() => ((form = {}), (message = null), (error = null))}
+    disabled={form !== null}
+  >
     Add symbols
   </button>
   <button onclick={() => load()} disabled={loading}>Refresh</button>
@@ -187,9 +216,14 @@
 
 {#if symbols.length > 0}
   <p class="summary muted">
-    {counts.total} symbol{counts.total === 1 ? "" : "s"}, {counts.scheduled} on the schedule
-    {#if counts.runFailed > 0}· <span class="bad">{counts.runFailed} with a failed latest download</span>{/if}
-    {#if counts.jobFailed > 0}· <span class="bad">{counts.jobFailed} with a failed latest rebuild</span>{/if}
+    {counts.total} symbol{counts.total === 1 ? "" : "s"}, {counts.scheduled} on the
+    schedule
+    {#if counts.runFailed > 0}· <span class="bad"
+        >{counts.runFailed} with a failed latest download</span
+      >{/if}
+    {#if counts.jobFailed > 0}· <span class="bad"
+        >{counts.jobFailed} with a failed latest rebuild</span
+      >{/if}
     {#if counts.neverIngested > 0}· {counts.neverIngested} never downloaded{/if}
   </p>
 {/if}
@@ -198,7 +232,11 @@
   {#if visible.length > 0}
     <!-- The table header, with its select-all box, is hidden on phones. -->
     <label class="select-all">
-      <input type="checkbox" checked={allVisibleSelected} onchange={toggleAll} />
+      <input
+        type="checkbox"
+        checked={allVisibleSelected}
+        onchange={toggleAll}
+      />
       Select all {visible.length} shown
     </label>
   {/if}
@@ -230,7 +268,11 @@
     <tbody>
       {#each visible as s (keyOf(s))}
         {@const key = keyOf(s)}
-        <tr class="entry" class:disabled={!s.enabled} class:picked={selected.has(key)}>
+        <tr
+          class="entry"
+          class:disabled={!s.enabled}
+          class:picked={selected.has(key)}
+        >
           <td class="pick">
             <input
               type="checkbox"
@@ -240,12 +282,19 @@
             />
           </td>
           <td class="symbol">
-            <a href={href("runs", { symbol: s.symbol })} title="Show runs">{s.symbol}</a>
+            <a href={href("runs", { symbol: s.symbol })} title="Show runs"
+              >{s.symbol}</a
+            >
           </td>
           <td data-label="Dataset">{s.dataset}</td>
           <td class="wide-only">{s.provider}</td>
           <td class="schedule">
-            <label class="switch" title={s.enabled ? "Take off the daily schedule" : "Put on the daily schedule"}>
+            <label
+              class="switch"
+              title={s.enabled
+                ? "Take off the daily schedule"
+                : "Put on the daily schedule"}
+            >
               <input
                 type="checkbox"
                 role="switch"
@@ -260,8 +309,14 @@
           <td class="mono wide-only">{s.backfillStartDate}</td>
           <td data-label="Latest download">
             {#if s.latestRun}
-              <StatusBadge status={s.latestRun.status} title={s.latestRun.error ?? undefined} />
-              <span class="muted ago" title={formatDateTime(s.latestRun.createdAt)}>
+              <StatusBadge
+                status={s.latestRun.status}
+                title={s.latestRun.error ?? undefined}
+              />
+              <span
+                class="muted ago"
+                title={formatDateTime(s.latestRun.createdAt)}
+              >
                 {formatAgo(s.latestRun.createdAt)}
               </span>
             {:else}
@@ -278,13 +333,25 @@
             {/if}
           </td>
           <td data-label="Rows" class="num">
-            {s.lastCompletedRun ? formatCount(s.lastCompletedRun.rowCount) : "—"}
+            {s.lastCompletedRun
+              ? formatCount(s.lastCompletedRun.rowCount)
+              : "—"}
           </td>
-          <td data-label="Data through" class="mono">{s.lastCompletedRun?.observedTo ?? "—"}</td>
+          <td data-label="Data through" class="mono"
+            >{s.lastCompletedRun?.observedTo ?? "—"}</td
+          >
           <td data-label="Latest rebuild">
             {#if s.latestJob}
-              <StatusBadge status={s.latestJob.status} title={s.latestJob.error ?? undefined} />
-              <span class="muted ago" title={formatDateTime(s.latestJob.completedAt ?? s.latestJob.createdAt)}>
+              <StatusBadge
+                status={s.latestJob.status}
+                title={s.latestJob.error ?? undefined}
+              />
+              <span
+                class="muted ago"
+                title={formatDateTime(
+                  s.latestJob.completedAt ?? s.latestJob.createdAt,
+                )}
+              >
                 {formatAgo(s.latestJob.completedAt ?? s.latestJob.createdAt)}
               </span>
             {:else}
@@ -296,13 +363,19 @@
               <button class="link" onclick={() => edit(s)}>Edit</button>
               <button
                 class="link"
-                onclick={() => download([{ dataset: s.dataset, symbol: s.symbol }])}
+                onclick={() =>
+                  download([{ dataset: s.dataset, symbol: s.symbol }])}
                 disabled={pending.has(key)}
               >
                 Download
               </button>
               {#if s.lastCompletedRun}
-                <a href={href("explore", { dataset: s.dataset, symbol: s.symbol })}>Explore</a>
+                <a
+                  href={href("explore", {
+                    dataset: s.dataset,
+                    symbol: s.symbol,
+                  })}>Explore</a
+                >
               {/if}
             </div>
           </td>
@@ -313,7 +386,9 @@
 
   {#if visible.length === 0 && !loading && !error}
     <p class="notice">
-      {symbols.length === 0 ? "No symbols are registered. Add one to get started." : "No symbols match your filters."}
+      {symbols.length === 0
+        ? "No symbols are registered. Add one to get started."
+        : "No symbols match your filters."}
     </p>
   {:else if loading && symbols.length === 0}
     <p class="notice">Loading…</p>

@@ -5,6 +5,8 @@ import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async () => {
   const pages = data();
-  const [portfolios, symbols] = await loaded(Promise.all([pages.portfolios(), pages.symbols()]));
+  const [portfolios, symbols] = await loaded(
+    Promise.all([pages.portfolios(), pages.symbols()]),
+  );
   return { portfolios, symbols: holdingSymbols(symbols) };
 };

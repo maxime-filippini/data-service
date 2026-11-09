@@ -13,7 +13,12 @@
     updateCalculation,
   } from "./api";
   import CalculationForm from "./CalculationForm.svelte";
-  import { formatAgo, formatCount, formatDateTime, formatDuration } from "./format";
+  import {
+    formatAgo,
+    formatCount,
+    formatDateTime,
+    formatDuration,
+  } from "./format";
   import { formatParams } from "./params";
   import { href } from "./router.svelte";
   import StatusBadge from "./StatusBadge.svelte";
@@ -49,12 +54,16 @@
   /** Runs whose details are shown. */
   const open = new SvelteSet<string>();
 
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   const load = async () => {
     loading = true;
     try {
-      const [found, history] = await Promise.all([fetchCalculation(id), fetchCalculationRuns(id, 50)]);
+      const [found, history] = await Promise.all([
+        fetchCalculation(id),
+        fetchCalculationRuns(id, 50),
+      ]);
       calculation = found;
       runs = history.runs;
     } catch (cause) {
@@ -72,9 +81,13 @@
   });
 
   const info = $derived(types.find((type) => type.name === calculation?.type));
-  const portfolioNames = $derived(new Map(portfolios.map((p) => [p.id, p.name])));
+  const portfolioNames = $derived(
+    new Map(portfolios.map((p) => [p.id, p.name])),
+  );
   /** The previous UTC day, which runs default to. */
-  const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 24 * 3600 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
   const act = async (action: () => Promise<string | null>) => {
     busy = true;
@@ -104,13 +117,20 @@
   const setEnabled = (enabled: boolean) =>
     act(async () => {
       calculation = await updateCalculation(id, { enabled });
-      return enabled ? "Enabled: it runs on its cron again." : "Paused: it won't run on its cron until enabled.";
+      return enabled
+        ? "Enabled: it runs on its cron again."
+        : "Paused: it won't run on its cron until enabled.";
     });
 
   const remove = () => {
     if (!calculation) return;
     const { name } = calculation;
-    if (!confirm(`Delete ${name} and its run history? Its results file stays in R2.`)) return;
+    if (
+      !confirm(
+        `Delete ${name} and its run history? Its results file stays in R2.`,
+      )
+    )
+      return;
     return act(async () => {
       await deleteCalculation(id);
       ondeleted(name);
@@ -118,12 +138,16 @@
     });
   };
 
-  const toggle = (runId: string) => (open.has(runId) ? open.delete(runId) : open.add(runId));
+  const toggle = (runId: string) =>
+    open.has(runId) ? open.delete(runId) : open.add(runId);
 
   const portfolioLabel = (portfolioId: string | null) =>
-    portfolioId === null ? "No portfolio" : (portfolioNames.get(portfolioId) ?? portfolioId);
+    portfolioId === null
+      ? "No portfolio"
+      : (portfolioNames.get(portfolioId) ?? portfolioId);
 
-  const failedCount = (run: CalculationRun) => run.portfolios?.filter((p) => p.status === "failed").length ?? 0;
+  const failedCount = (run: CalculationRun) =>
+    run.portfolios?.filter((p) => p.status === "failed").length ?? 0;
 </script>
 
 <p class="back"><a href={href("calculations")}>← Calculations</a></p>
@@ -143,9 +167,13 @@
 {:else if calculation}
   <div class="title-row">
     <h1>{calculation.name}</h1>
-    <span class="state" class:paused={!calculation.enabled}>{calculation.enabled ? "Enabled" : "Paused"}</span>
+    <span class="state" class:paused={!calculation.enabled}
+      >{calculation.enabled ? "Enabled" : "Paused"}</span
+    >
     <span class="spacer"></span>
-    <button onclick={() => ((editing = true), (message = null), (error = null))}>Edit</button>
+    <button onclick={() => ((editing = true), (message = null), (error = null))}
+      >Edit</button
+    >
     <button onclick={() => setEnabled(!calculation?.enabled)} disabled={busy}>
       {calculation.enabled ? "Pause" : "Enable"}
     </button>
@@ -166,7 +194,9 @@
         <dt>Last scheduled slot</dt>
         <dd>
           {#if calculation.lastScheduledSlot}
-            <span title={calculation.lastScheduledSlot}>{formatDateTime(calculation.lastScheduledSlot)}</span>
+            <span title={calculation.lastScheduledSlot}
+              >{formatDateTime(calculation.lastScheduledSlot)}</span
+            >
           {:else}
             <span class="muted">None yet</span>
           {/if}
@@ -174,13 +204,18 @@
       </div>
       <div>
         <dt>Updated</dt>
-        <dd title={formatDateTime(calculation.updatedAt)}>{formatAgo(calculation.updatedAt)}</dd>
+        <dd title={formatDateTime(calculation.updatedAt)}>
+          {formatAgo(calculation.updatedAt)}
+        </dd>
       </div>
       <div class="wide">
         <dt>Portfolios</dt>
         <dd>
           {#each calculation.portfolioIds as portfolioId, index (portfolioId)}
-            {#if index > 0}{", "}{/if}<a href={href("portfolios", { id: portfolioId })}>{portfolioLabel(portfolioId)}</a>
+            {#if index > 0}{", "}{/if}<a
+              href={href("portfolios", { id: portfolioId })}
+              >{portfolioLabel(portfolioId)}</a
+            >
           {:else}
             <span class="muted">None (this type doesn't take a portfolio)</span>
           {/each}
@@ -189,13 +224,18 @@
       <div class="wide">
         <dt>Results</dt>
         <dd>
-          <a href={href("explore", { calculation: calculation.id })}>Explore results</a>
+          <a href={href("explore", { calculation: calculation.id })}
+            >Explore results</a
+          >
           <span class="muted mono key">{calculation.outputKey}</span>
         </dd>
       </div>
     </dl>
     {#if !info && types.length > 0}
-      <p class="bad">The engine has no type called {calculation.type}, so runs of this calculation fail.</p>
+      <p class="bad">
+        The engine has no type called {calculation.type}, so runs of this
+        calculation fail.
+      </p>
     {/if}
     <details>
       <summary>Params</summary>
@@ -219,14 +259,22 @@
     <span class="spacer"></span>
     <label class="muted as-of">
       As of
-      <input type="date" bind:value={asOf} max={new Date().toISOString().slice(0, 10)} aria-label="As-of date" />
+      <input
+        type="date"
+        bind:value={asOf}
+        max={new Date().toISOString().slice(0, 10)}
+        aria-label="As-of date"
+      />
     </label>
     <button type="submit" class="primary" disabled={busy}>Run now</button>
-    <button type="button" onclick={() => load()} disabled={loading}>Refresh</button>
+    <button type="button" onclick={() => load()} disabled={loading}
+      >Refresh</button
+    >
   </form>
   <p class="muted hint">
-    Leave the date empty to run as of the previous UTC day ({yesterday}). A run replaces its as-of date's rows in the
-    results, so running a date again is safe.
+    Leave the date empty to run as of the previous UTC day ({yesterday}). A run
+    replaces its as-of date's rows in the results, so running a date again is
+    safe.
   </p>
 
   <div class="card">
@@ -247,19 +295,32 @@
           {@const expanded = open.has(run.runId)}
           {@const failed = failedCount(run)}
           <tr class="run" class:expanded>
-            <td data-label="Started" title={formatDateTime(run.createdAt)}>{formatAgo(run.createdAt)}</td>
-            <td data-label="Trigger">{run.trigger === "manual" ? "Manual" : "Schedule"}</td>
+            <td data-label="Started" title={formatDateTime(run.createdAt)}
+              >{formatAgo(run.createdAt)}</td
+            >
+            <td data-label="Trigger"
+              >{run.trigger === "manual" ? "Manual" : "Schedule"}</td
+            >
             <td data-label="As of" class="mono">{run.asOf}</td>
             <td data-label="Status">
               <StatusBadge status={run.status} />
-              {#if failed > 0}<span class="bad small">{failed} failed</span>{/if}
+              {#if failed > 0}<span class="bad small">{failed} failed</span
+                >{/if}
             </td>
-            <td data-label="Rows" class="num">{run.rowCount === null ? "—" : formatCount(run.rowCount)}</td>
+            <td data-label="Rows" class="num"
+              >{run.rowCount === null ? "—" : formatCount(run.rowCount)}</td
+            >
             <td data-label="Took">
-              {run.completedAt && run.status !== "skipped" ? formatDuration(run.createdAt, run.completedAt) : "—"}
+              {run.completedAt && run.status !== "skipped"
+                ? formatDuration(run.createdAt, run.completedAt)
+                : "—"}
             </td>
             <td class="full toggle">
-              <button class="link" onclick={() => toggle(run.runId)} aria-expanded={expanded}>
+              <button
+                class="link"
+                onclick={() => toggle(run.runId)}
+                aria-expanded={expanded}
+              >
                 {expanded ? "Hide details" : "Details"}
               </button>
             </td>
@@ -276,7 +337,10 @@
                   <p class="bad">{run.error}</p>
                 {/if}
                 {#if run.status === "skipped"}
-                  <p class="muted">Skipped because another run of this calculation was still going.</p>
+                  <p class="muted">
+                    Skipped because another run of this calculation was still
+                    going.
+                  </p>
                 {/if}
                 {#if run.portfolios && run.portfolios.length > 0}
                   <table class="outcomes">
@@ -293,7 +357,11 @@
                         <tr>
                           <td>
                             {#if outcome.portfolioId}
-                              <a href={href("portfolios", { id: outcome.portfolioId })}>{portfolioLabel(outcome.portfolioId)}</a>
+                              <a
+                                href={href("portfolios", {
+                                  id: outcome.portfolioId,
+                                })}>{portfolioLabel(outcome.portfolioId)}</a
+                              >
                             {:else}
                               <span class="muted">{portfolioLabel(null)}</span>
                             {/if}
@@ -306,11 +374,18 @@
                     </tbody>
                   </table>
                 {:else if run.status === "running"}
-                  <p class="muted">Running. Each portfolio's outcome shows here when it finishes.</p>
+                  <p class="muted">
+                    Running. Each portfolio's outcome shows here when it
+                    finishes.
+                  </p>
                 {/if}
                 <p class="muted small">
-                  Run <span class="mono">{run.runId}</span> · started {formatDateTime(run.createdAt)}
-                  {#if run.completedAt}· finished {formatDateTime(run.completedAt)}{/if}
+                  Run <span class="mono">{run.runId}</span> · started {formatDateTime(
+                    run.createdAt,
+                  )}
+                  {#if run.completedAt}· finished {formatDateTime(
+                      run.completedAt,
+                    )}{/if}
                 </p>
                 <p class="label">Params used</p>
                 <pre>{formatParams(run.params)}</pre>

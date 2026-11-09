@@ -11,8 +11,14 @@ const ACCESS_EMAIL_HEADER = "X-Access-Email";
  * in front, so it runs as a local user.
  */
 export const handle: Handle = ({ event, resolve }) => {
-  const email = event.request.headers.get(ACCESS_EMAIL_HEADER) ?? (dev ? "local@localhost" : null);
-  if (email === null) return json({ error: "Sign in through Cloudflare Access" }, { status: 401 });
+  const email =
+    event.request.headers.get(ACCESS_EMAIL_HEADER) ??
+    (dev ? "local@localhost" : null);
+  if (email === null)
+    return json(
+      { error: "Sign in through Cloudflare Access" },
+      { status: 401 },
+    );
   event.locals.user = { email };
   return resolve(event);
 };

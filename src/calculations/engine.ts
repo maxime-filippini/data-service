@@ -1,6 +1,10 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
-import type { CalculationParams, CalculationTypeInfo, PortfolioOutcome } from "$/calculations/views";
+import type {
+  CalculationParams,
+  CalculationTypeInfo,
+  PortfolioOutcome,
+} from "$/calculations/views";
 import type { EnginePortfolio, Holding } from "$/portfolios/contracts";
 
 /** How long an ad hoc calculation may take, including a cold start. */
@@ -11,7 +15,11 @@ const QUICK_TIMEOUT_MS = 30_000;
 
 export const ARROW_STREAM = "application/vnd.apache.arrow.stream";
 
-export type { CalculationParams, CalculationTypeInfo, PortfolioOutcome } from "$/calculations/views";
+export type {
+  CalculationParams,
+  CalculationTypeInfo,
+  PortfolioOutcome,
+} from "$/calculations/views";
 
 /**
  * Worker-to-Python `/runs` payload for executing a saved calculation and
@@ -46,7 +54,8 @@ export interface RunResult {
  * snapshots or plain holdings treated as held at all times. No portfolio is
  * created or modified by sending this value.
  */
-export type AdHocPortfolio = EnginePortfolio | { readonly holdings: readonly Holding[] };
+export type AdHocPortfolio =
+  EnginePortfolio | { readonly holdings: readonly Holding[] };
 
 /**
  * Worker-to-Python `/calculate` payload for a one-off result returned as JSON
@@ -66,17 +75,26 @@ export interface CalculateRequest {
  * request. Used for HTTP status mapping and Workflow error handling; a
  * successful response whose body says `failed` remains a `RunResult` instead.
  */
-export class EngineError extends Schema.TaggedError<EngineError>()("EngineError", {
-  /**
-   * `not_found`: unknown type. `invalid`: invalid params or request (the
-   * engine's 422). `failed`: the calculation or the engine failed.
-   * `unavailable`: the container could not be reached. `timeout`: it took too long.
-   */
-  kind: Schema.Literals(["not_found", "invalid", "failed", "unavailable", "timeout"]),
-  message: Schema.String,
-  /** The engine's `detail`, such as the list of params errors for `invalid`. */
-  detail: Schema.optionalKey(Schema.Unknown),
-}) {}
+export class EngineError extends Schema.TaggedError<EngineError>()(
+  "EngineError",
+  {
+    /**
+     * `not_found`: unknown type. `invalid`: invalid params or request (the
+     * engine's 422). `failed`: the calculation or the engine failed.
+     * `unavailable`: the container could not be reached. `timeout`: it took too long.
+     */
+    kind: Schema.Literals([
+      "not_found",
+      "invalid",
+      "failed",
+      "unavailable",
+      "timeout",
+    ]),
+    message: Schema.String,
+    /** The engine's `detail`, such as the list of params errors for `invalid`. */
+    detail: Schema.optionalKey(Schema.Unknown),
+  },
+) {}
 
 /**
  * Injectable client interface to the Python calculation engine. Operations
@@ -86,16 +104,27 @@ export class EngineError extends Schema.TaggedError<EngineError>()("EngineError"
 export class Engine extends Context.Service<
   Engine,
   {
-    readonly listTypes: () => Effect.Effect<readonly CalculationTypeInfo[], EngineError>;
+    readonly listTypes: () => Effect.Effect<
+      readonly CalculationTypeInfo[],
+      EngineError
+    >;
     /** The params with defaults filled in. */
-    readonly validate: (type: string, params: CalculationParams) => Effect.Effect<CalculationParams, EngineError>;
+    readonly validate: (
+      type: string,
+      params: CalculationParams,
+    ) => Effect.Effect<CalculationParams, EngineError>;
     /** Runs a saved calculation and writes its rows to R2. Doesn't time out. */
-    readonly run: (request: RunRequest) => Effect.Effect<RunResult, EngineError>;
+    readonly run: (
+      request: RunRequest,
+    ) => Effect.Effect<RunResult, EngineError>;
     /**
      * Runs an ad hoc calculation. On success, the engine's response as is:
      * JSON `{ rows }`, or an Arrow IPC stream when `accept` asks for one.
      */
-    readonly calculate: (request: CalculateRequest, accept?: string) => Effect.Effect<Response, EngineError>;
+    readonly calculate: (
+      request: CalculateRequest,
+      accept?: string,
+    ) => Effect.Effect<Response, EngineError>;
   }
 >()("data-service/Engine") {}
 
@@ -118,16 +147,27 @@ const errorFrom = async (response: Response) => {
       : kind === "invalid"
         ? "Invalid request"
         : `Engine returned ${response.status}`;
-  return new EngineError({ kind, message, ...(typeof detail === "string" ? {} : { detail }) });
+  return new EngineError({
+    kind,
+    message,
+    ...(typeof detail === "string" ? {} : { detail }),
+  });
 };
 
 /** An engine client over the container's Durable Object stub. */
-export const EngineLive = (engine: Pick<Fetcher, "fetch">): Layer.Layer<Engine> => {
+export const EngineLive = (
+  engine: Pick<Fetcher, "fetch">,
+): Layer.Layer<Engine> => {
   /** Calls the engine. Non-2xx responses fail with the engine's error. */
   const call = (path: string, init: RequestInit, timeoutMs?: number) => {
     const request = Effect.tryPromise({
-      try: (signal) => engine.fetch(`http://engine${path}`, { ...init, signal }),
-      catch: () => new EngineError({ kind: "unavailable", message: "The calculation engine could not be reached" }),
+      try: (signal) =>
+        engine.fetch(`http://engine${path}`, { ...init, signal }),
+      catch: () =>
+        new EngineError({
+          kind: "unavailable",
+          message: "The calculation engine could not be reached",
+        }),
     });
     const timed =
       timeoutMs === undefined
@@ -137,13 +177,20 @@ export const EngineLive = (engine: Pick<Fetcher, "fetch">): Layer.Layer<Engine> 
               duration: timeoutMs,
               orElse: () =>
                 Effect.fail(
-                  new EngineError({ kind: "timeout", message: `The calculation engine took over ${timeoutMs / 1000}s` }),
+                  new EngineError({
+                    kind: "timeout",
+                    message: `The calculation engine took over ${timeoutMs / 1000}s`,
+                  }),
                 ),
             }),
           );
     return timed.pipe(
       Effect.flatMap((response) =>
-        response.ok ? Effect.succeed(response) : Effect.promise(() => errorFrom(response)).pipe(Effect.flatMap(Effect.fail)),
+        response.ok
+          ? Effect.succeed(response)
+          : Effect.promise(() => errorFrom(response)).pipe(
+              Effect.flatMap(Effect.fail),
+            ),
       ),
     );
   };
@@ -151,7 +198,11 @@ export const EngineLive = (engine: Pick<Fetcher, "fetch">): Layer.Layer<Engine> 
   const json = <A>(response: Response) =>
     Effect.tryPromise({
       try: () => response.json() as Promise<A>,
-      catch: () => new EngineError({ kind: "failed", message: "The calculation engine sent invalid JSON" }),
+      catch: () =>
+        new EngineError({
+          kind: "failed",
+          message: "The calculation engine sent invalid JSON",
+        }),
     });
 
   const post = (body: unknown, accept = "application/json"): RequestInit => ({
@@ -164,20 +215,31 @@ export const EngineLive = (engine: Pick<Fetcher, "fetch">): Layer.Layer<Engine> 
     Engine,
     Engine.of({
       listTypes: () =>
-        call("/types", { headers: { Accept: "application/json" } }, QUICK_TIMEOUT_MS).pipe(
-          Effect.flatMap(json<readonly CalculationTypeInfo[]>),
-        ),
+        call(
+          "/types",
+          { headers: { Accept: "application/json" } },
+          QUICK_TIMEOUT_MS,
+        ).pipe(Effect.flatMap(json<readonly CalculationTypeInfo[]>)),
 
       validate: (type, params) =>
-        call(`/types/${encodeURIComponent(type)}/validate`, post({ params }), QUICK_TIMEOUT_MS).pipe(
+        call(
+          `/types/${encodeURIComponent(type)}/validate`,
+          post({ params }),
+          QUICK_TIMEOUT_MS,
+        ).pipe(
           Effect.flatMap(json<{ params: CalculationParams }>),
           Effect.map((body) => body.params),
         ),
 
-      run: (request) => call("/runs", post(request)).pipe(Effect.flatMap(json<RunResult>)),
+      run: (request) =>
+        call("/runs", post(request)).pipe(Effect.flatMap(json<RunResult>)),
 
       calculate: (request, accept) =>
-        call("/calculate", post(request, accept ?? "application/json"), CALCULATE_TIMEOUT_MS),
+        call(
+          "/calculate",
+          post(request, accept ?? "application/json"),
+          CALCULATE_TIMEOUT_MS,
+        ),
     }),
   );
 };

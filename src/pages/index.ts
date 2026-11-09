@@ -4,7 +4,10 @@ import { CalculationIdSchema } from "$/calculations/contracts";
 import { isCronError, nextSlot, parseCron } from "$/calculations/cron";
 import { Calculations } from "$/calculations/store";
 import type { Calculation } from "$/calculations/views";
-import { type Dependencies, dependencies as liveDependencies } from "$/dependencies";
+import {
+  type Dependencies,
+  dependencies as liveDependencies,
+} from "$/dependencies";
 import { scheduleView } from "$/market-data/schedule/operations";
 import { ScheduleStore } from "$/market-data/schedule/store";
 import { datasetProviders } from "$/market-data/schemas";
@@ -33,8 +36,10 @@ export class PageDataError extends Error {
 
 const RUN_STATUSES: readonly RunStatus[] = ["fetching", "completed", "failed"];
 
-const isUuid = (schema: typeof CalculationIdSchema | typeof PortfolioIdSchema, id: string) =>
-  Schema.is(schema)(id);
+const isUuid = (
+  schema: typeof CalculationIdSchema | typeof PortfolioIdSchema,
+  id: string,
+) => Schema.is(schema)(id);
 
 /** Run a program against one service's layer; a failure becomes a `PageDataError`. */
 const runWith =
@@ -42,24 +47,38 @@ const runWith =
   async <A, E extends { readonly message: string; readonly kind?: string }>(
     program: Effect.Effect<A, E, R>,
   ): Promise<A> => {
-    const result = await program.pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
+    const result = await program.pipe(
+      Effect.provide(layer),
+      Effect.result,
+      Effect.runPromise,
+    );
     if (Result.isFailure(result)) {
-      throw new PageDataError(result.failure.kind === "not_found" ? 404 : 500, result.failure.message);
+      throw new PageDataError(
+        result.failure.kind === "not_found" ? 404 : 500,
+        result.failure.message,
+      );
     }
     return result.success;
   };
 
 const HOME_LIST_SIZE = 5;
 
-export const countSymbols = (symbols: readonly SymbolStatusView[]): SymbolCounts => ({
+export const countSymbols = (
+  symbols: readonly SymbolStatusView[],
+): SymbolCounts => ({
   total: symbols.length,
   scheduled: symbols.filter((s) => s.enabled).length,
-  failedDownloads: symbols.filter((s) => s.latestRun?.status === "failed").length,
-  failedRebuilds: symbols.filter((s) => s.latestJob?.status === "failed").length,
+  failedDownloads: symbols.filter((s) => s.latestRun?.status === "failed")
+    .length,
+  failedRebuilds: symbols.filter((s) => s.latestJob?.status === "failed")
+    .length,
   neverDownloaded: symbols.filter((s) => s.lastCompletedRun === null).length,
 });
 
-export const upcomingCalculations = (calculations: readonly Calculation[], now: Date): UpcomingCalculation[] =>
+export const upcomingCalculations = (
+  calculations: readonly Calculation[],
+  now: Date,
+): UpcomingCalculation[] =>
   calculations
     .filter((c) => c.enabled)
     .flatMap((c) => {
@@ -67,22 +86,36 @@ export const upcomingCalculations = (calculations: readonly Calculation[], now: 
       const next = isCronError(schedule) ? null : nextSlot(schedule, now);
       return next === null
         ? []
-        : [{ id: c.id, name: c.name, type: c.type, cron: c.cron, nextRunAt: next.toISOString() }];
+        : [
+            {
+              id: c.id,
+              name: c.name,
+              type: c.type,
+              cron: c.cron,
+              nextRunAt: next.toISOString(),
+            },
+          ];
     })
     .sort((a, b) => a.nextRunAt.localeCompare(b.nextRunAt));
 
 /** The page data (see `PageData`) on a request's bindings. */
-export const pageData = (env: CloudflareBindings, dependencies: Dependencies = liveDependencies): PageData => {
+export const pageData = (
+  env: CloudflareBindings,
+  dependencies: Dependencies = liveDependencies,
+): PageData => {
   const status = runWith(dependencies.statusFor(env));
   const store = runWith(dependencies.scheduleFor(env));
   const portfolios = runWith(dependencies.portfoliosFor(env));
   const calculations = runWith(dependencies.calculationsFor(env));
 
-  const listSymbols = () => status(PipelineStatus.use((s) => s.listSymbols({})));
+  const listSymbols = () =>
+    status(PipelineStatus.use((s) => s.listSymbols({})));
   const schedule = (now: Date) => store(scheduleView(now));
-  const scheduleRuns = (limit: number) => store(ScheduleStore.use((s) => s.listRuns(limit)));
+  const scheduleRuns = (limit: number) =>
+    store(ScheduleStore.use((s) => s.listRuns(limit)));
   const listPortfolios = () => portfolios(Portfolios.use((p) => p.list()));
-  const listCalculations = () => calculations(Calculations.use((c) => c.list()));
+  const listCalculations = () =>
+    calculations(Calculations.use((c) => c.list()));
 
   return {
     runs: (filter) => {
@@ -110,14 +143,16 @@ export const pageData = (env: CloudflareBindings, dependencies: Dependencies = l
     portfolios: () => listPortfolios(),
 
     portfolio: (id) => {
-      if (!isUuid(PortfolioIdSchema, id)) return Promise.reject(new PageDataError(404, "Portfolio not found"));
+      if (!isUuid(PortfolioIdSchema, id))
+        return Promise.reject(new PageDataError(404, "Portfolio not found"));
       return portfolios(Portfolios.use((p) => p.get(id)));
     },
 
     calculations: () => listCalculations(),
 
     calculation: async (id, runLimit = 50) => {
-      if (!isUuid(CalculationIdSchema, id)) throw new PageDataError(404, "Calculation not found");
+      if (!isUuid(CalculationIdSchema, id))
+        throw new PageDataError(404, "Calculation not found");
       const [calculation, runs] = await Promise.all([
         calculations(Calculations.use((c) => c.get(id))),
         calculations(Calculations.use((c) => c.listRuns(id, runLimit))),
@@ -131,12 +166,18 @@ export const pageData = (env: CloudflareBindings, dependencies: Dependencies = l
         listSymbols(),
         schedule(now),
         scheduleRuns(HOME_LIST_SIZE),
-        status(PipelineStatus.use((s) => s.listRuns({ status: "failed", limit: HOME_LIST_SIZE }))),
+        status(
+          PipelineStatus.use((s) =>
+            s.listRuns({ status: "failed", limit: HOME_LIST_SIZE }),
+          ),
+        ),
         listPortfolios(),
         listCalculations(),
       ]);
       const latestRuns = calcs
-        .flatMap((c) => (c.lastRun === null ? [] : [{ ...c.lastRun, calculationName: c.name }]))
+        .flatMap((c) =>
+          c.lastRun === null ? [] : [{ ...c.lastRun, calculationName: c.name }],
+        )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, HOME_LIST_SIZE);
       return {

@@ -1,11 +1,17 @@
 <script lang="ts">
-  import type { CalculationRunStatus, JobStatus, RunStatus, ScheduleRunStatus } from "./api";
+  import type {
+    CalculationRunStatus,
+    JobStatus,
+    RunStatus,
+    ScheduleRunStatus,
+  } from "./api";
 
   let {
     status,
     title,
   }: {
-    status: RunStatus | JobStatus | ScheduleRunStatus | CalculationRunStatus | null;
+    status:
+      RunStatus | JobStatus | ScheduleRunStatus | CalculationRunStatus | null;
     title?: string | undefined;
   } = $props();
 </script>

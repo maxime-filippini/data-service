@@ -24,19 +24,33 @@ export const ENGINE_STEP = {
 export const executeRun = async (
   params: RunWorkflowParams,
   steps: Steps,
-  run: <A, E>(program: Effect.Effect<A, E, Calculations | Portfolios | Engine>) => Promise<A>,
+  run: <A, E>(
+    program: Effect.Effect<A, E, Calculations | Portfolios | Engine>,
+  ) => Promise<A>,
 ) => {
   try {
-    const result = await steps.do("run calculation", () => run(calculateRun(params.runId)), ENGINE_STEP);
+    const result = await steps.do(
+      "run calculation",
+      () => run(calculateRun(params.runId)),
+      ENGINE_STEP,
+    );
     if (result === null) return null;
     await steps.do("record result", () =>
-      run(Calculations.use((store) => store.finishRun(params.runId, result, new Date().toISOString()))),
+      run(
+        Calculations.use((store) =>
+          store.finishRun(params.runId, result, new Date().toISOString()),
+        ),
+      ),
     );
     return result.status;
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     await steps.do("record failure", () =>
-      run(Calculations.use((store) => store.failRun(params.runId, message, new Date().toISOString()))),
+      run(
+        Calculations.use((store) =>
+          store.failRun(params.runId, message, new Date().toISOString()),
+        ),
+      ),
     );
     throw cause;
   }

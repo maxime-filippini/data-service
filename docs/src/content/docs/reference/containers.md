@@ -26,10 +26,10 @@ flowchart LR
 Turns one raw provider download into the canonical Parquet object for a
 symbol. Code: `containers/processor/`.
 
-| Endpoint | Does |
-| --- | --- |
-| `GET /health` | Liveness probe |
-| `POST /jobs` | Rebuild one Parquet file from one raw object |
+| Endpoint      | Does                                         |
+| ------------- | -------------------------------------------- |
+| `GET /health` | Liveness probe                               |
+| `POST /jobs`  | Rebuild one Parquet file from one raw object |
 
 The processing consumer sends a manifest:
 
@@ -50,12 +50,12 @@ The processing consumer sends a manifest:
 }
 ```
 
-| Response | Worker does |
-| --- | --- |
-| `200 {"outputEtag": "…"}` | Completes the job |
-| `500 {"detail": "…"}` | Fails the job with the detail |
-| `422` | Fails the job: the manifest itself was invalid |
-| Network error | Returns the job to `queued` and retries the message |
+| Response                  | Worker does                                         |
+| ------------------------- | --------------------------------------------------- |
+| `200 {"outputEtag": "…"}` | Completes the job                                   |
+| `500 {"detail": "…"}`     | Fails the job with the detail                       |
+| `422`                     | Fails the job: the manifest itself was invalid      |
+| Network error             | Returns the job to `queued` and retries the message |
 
 Every job is a full rebuild from one full-history snapshot, so running the
 same manifest twice is safe. To add a dataset, add its entry model and
@@ -66,13 +66,13 @@ envelope literal in `models.py` and its Parquet schema in `processor.py`.
 Holds every calculation type, validates params, runs calculations over the
 canonical files and writes their results. Code: `containers/engine/`.
 
-| Endpoint | Does |
-| --- | --- |
-| `GET /health` | Liveness probe |
-| `GET /types` | Each type's name, description, `takesPortfolio`, params JSON Schema and output columns |
+| Endpoint                     | Does                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `GET /health`                | Liveness probe                                                                               |
+| `GET /types`                 | Each type's name, description, `takesPortfolio`, params JSON Schema and output columns       |
 | `POST /types/:name/validate` | `{"params": {…}}` → `200 {"params": …}` with defaults filled in, `422` with errors, or `404` |
-| `POST /runs` | Run a saved calculation for one as-of date and write its rows to R2 |
-| `POST /calculate` | Run an ad hoc calculation and return its rows. Writes nothing |
+| `POST /runs`                 | Run a saved calculation for one as-of date and write its rows to R2                          |
+| `POST /calculate`            | Run an ad hoc calculation and return its rows. Writes nothing                                |
 
 ### `POST /runs`
 
@@ -87,7 +87,10 @@ canonical files and writes their results. Code: `containers/engine/`.
       "id": "…",
       "name": "Core",
       "snapshots": [
-        { "holdingsDate": "2026-09-30", "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }] }
+        {
+          "holdingsDate": "2026-09-30",
+          "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }]
+        }
       ]
     }
   ],
@@ -103,7 +106,12 @@ A well-formed request always gets `200`, with what happened:
   "error": null,
   "portfolios": [
     { "portfolioId": "…", "status": "completed", "rowCount": 1, "error": null },
-    { "portfolioId": "…", "status": "failed", "rowCount": 0, "error": "No prices_eod data for X.US" }
+    {
+      "portfolioId": "…",
+      "status": "failed",
+      "rowCount": 0,
+      "error": "No prices_eod data for X.US"
+    }
   ],
   "rowCount": 1,
   "outputEtag": "…"
@@ -135,13 +143,13 @@ that counts as held at all times.
 
 ## Configuration
 
-| Variable | Processor | Engine |
-| --- | :---: | :---: |
-| `R2_ENDPOINT_URL` | ✓ | ✓ |
-| `R2_ACCESS_KEY_ID` | ✓ | ✓ |
-| `R2_SECRET_ACCESS_KEY` | ✓ | ✓ |
-| `RAW_BUCKET` | ✓ | |
-| `PROCESSED_BUCKET` | ✓ | ✓ |
+| Variable               | Processor | Engine |
+| ---------------------- | :-------: | :----: |
+| `R2_ENDPOINT_URL`      |     ✓     |   ✓    |
+| `R2_ACCESS_KEY_ID`     |     ✓     |   ✓    |
+| `R2_SECRET_ACCESS_KEY` |     ✓     |   ✓    |
+| `RAW_BUCKET`           |     ✓     |        |
+| `PROCESSED_BUCKET`     |     ✓     |   ✓    |
 
 The Worker sets the bucket names per environment. They have no defaults, so a
 misconfigured deployment fails instead of touching production data.

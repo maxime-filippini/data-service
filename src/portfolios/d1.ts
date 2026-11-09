@@ -42,15 +42,26 @@ interface HoldingRow {
   readonly weight: number;
 }
 
-const databaseError = () => new PortfolioError({ kind: "database", message: "Could not access portfolios" });
-const notFound = () => new PortfolioError({ kind: "not_found", message: "The portfolio does not exist" });
+const databaseError = () =>
+  new PortfolioError({
+    kind: "database",
+    message: "Could not access portfolios",
+  });
+const notFound = () =>
+  new PortfolioError({
+    kind: "not_found",
+    message: "The portfolio does not exist",
+  });
 const managed = (symbol: string) =>
   new PortfolioError({
     kind: "conflict",
     message: `This is the single-asset portfolio of ${symbol}, which can't be changed`,
   });
 const dateTaken = (holdingsDate: string) =>
-  new PortfolioError({ kind: "conflict", message: `The portfolio already has a snapshot for ${holdingsDate}` });
+  new PortfolioError({
+    kind: "conflict",
+    message: `The portfolio already has a snapshot for ${holdingsDate}`,
+  });
 
 const inUse = (calculations: readonly { id: string; name: string }[]) =>
   new PortfolioError({
@@ -62,18 +73,29 @@ const inUse = (calculations: readonly { id: string; name: string }[]) =>
     calculations,
   });
 
-const symbolsOf = (snapshot: NewSnapshot) => snapshot.holdings.map((holding) => holding.symbol);
+const symbolsOf = (snapshot: NewSnapshot) =>
+  snapshot.holdings.map((holding) => holding.symbol);
 
-const query = <A>(operation: () => Promise<A>) => Effect.tryPromise({ try: operation, catch: databaseError });
+const query = <A>(operation: () => Promise<A>) =>
+  Effect.tryPromise({ try: operation, catch: databaseError });
 
 /** Groups holding rows, sorted by date, into snapshots. */
 const toSnapshots = (rows: readonly HoldingRow[]): Snapshot[] => {
-  const snapshots: { holdingsDate: string; createdAt: string; holdings: Holding[] }[] = [];
+  const snapshots: {
+    holdingsDate: string;
+    createdAt: string;
+    holdings: Holding[];
+  }[] = [];
   for (const row of rows) {
     const last = snapshots.at(-1);
     const holding = { symbol: row.symbol, weight: row.weight };
     if (last?.holdingsDate === row.holdings_date) last.holdings.push(holding);
-    else snapshots.push({ holdingsDate: row.holdings_date, createdAt: row.created_at, holdings: [holding] });
+    else
+      snapshots.push({
+        holdingsDate: row.holdings_date,
+        createdAt: row.created_at,
+        holdings: [holding],
+      });
   }
   return snapshots;
 };
@@ -144,14 +166,18 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
     ).pipe(
       Effect.flatMap((row) => {
         if (row === null) return Effect.fail(notFound());
-        return row.asset_symbol === null ? Effect.void : Effect.fail(managed(row.asset_symbol));
+        return row.asset_symbol === null
+          ? Effect.void
+          : Effect.fail(managed(row.asset_symbol));
       }),
     );
 
   /** Statements that insert a snapshot. Holdings go in as one JSON parameter. */
   const insertSnapshot = (id: string, snapshot: NewSnapshot, now: string) => [
     db
-      .prepare(`INSERT INTO portfolio_snapshots (portfolio_id, holdings_date, created_at) VALUES (?, ?, ?)`)
+      .prepare(
+        `INSERT INTO portfolio_snapshots (portfolio_id, holdings_date, created_at) VALUES (?, ?, ?)`,
+      )
       .bind(id, snapshot.holdingsDate, now),
     db
       .prepare(
@@ -167,7 +193,8 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
     Effect.tryPromise({
       try: () => db.batch(statements),
       catch: (error) =>
-        holdingsDate !== undefined && String(error).includes("UNIQUE constraint failed: portfolio_snapshots")
+        holdingsDate !== undefined &&
+        String(error).includes("UNIQUE constraint failed: portfolio_snapshots")
           ? dateTaken(holdingsDate)
           : databaseError(),
     });
@@ -188,17 +215,15 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
             .all<SummaryRow>(),
         ).pipe(
           Effect.map(({ results }) =>
-            results.map(
-              (row): PortfolioSummary => ({
-                id: row.portfolio_id,
-                name: row.name,
-                createdAt: row.created_at,
-                updatedAt: row.updated_at,
-                assetSymbol: row.asset_symbol,
-                snapshotCount: row.snapshot_count,
-                latestHoldingsDate: row.latest_holdings_date,
-              }),
-            ),
+            results.map((row): PortfolioSummary => ({
+              id: row.portfolio_id,
+              name: row.name,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+              assetSymbol: row.asset_symbol,
+              snapshotCount: row.snapshot_count,
+              latestHoldingsDate: row.latest_holdings_date,
+            })),
           ),
         ),
 
@@ -206,12 +231,17 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
 
       create: (input, id, now) =>
         Effect.gen(function* () {
-          if (input.snapshot !== undefined) yield* requireTracked(symbolsOf(input.snapshot));
+          if (input.snapshot !== undefined)
+            yield* requireTracked(symbolsOf(input.snapshot));
           yield* write([
             db
-              .prepare(`INSERT INTO portfolios (portfolio_id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`)
+              .prepare(
+                `INSERT INTO portfolios (portfolio_id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+              )
               .bind(id, input.name, now, now),
-            ...(input.snapshot === undefined ? [] : insertSnapshot(id, input.snapshot, now)),
+            ...(input.snapshot === undefined
+              ? []
+              : insertSnapshot(id, input.snapshot, now)),
           ]);
           return yield* load(id, null);
         }),
@@ -221,7 +251,9 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           yield* requireEditable(id);
           const row = yield* query(() =>
             db
-              .prepare(`UPDATE portfolios SET name = ?, updated_at = ? WHERE portfolio_id = ? RETURNING portfolio_id`)
+              .prepare(
+                `UPDATE portfolios SET name = ?, updated_at = ? WHERE portfolio_id = ? RETURNING portfolio_id`,
+              )
               .bind(name, now, id)
               .first(),
           );
@@ -245,9 +277,18 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           );
           if (users.length > 0) return yield* Effect.fail(inUse(users));
           const row = yield* Effect.tryPromise({
-            try: () => db.prepare(`DELETE FROM portfolios WHERE portfolio_id = ? RETURNING portfolio_id`).bind(id).first(),
+            try: () =>
+              db
+                .prepare(
+                  `DELETE FROM portfolios WHERE portfolio_id = ? RETURNING portfolio_id`,
+                )
+                .bind(id)
+                .first(),
             // A calculation started using it since the check.
-            catch: (error) => (String(error).includes("FOREIGN KEY constraint failed") ? inUse([]) : databaseError()),
+            catch: (error) =>
+              String(error).includes("FOREIGN KEY constraint failed")
+                ? inUse([])
+                : databaseError(),
           });
           if (row === null) return yield* Effect.fail(notFound());
         }),
@@ -266,20 +307,28 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
               .first<{ asset_symbol: string | null; taken: number }>(),
           );
           if (existing === null) return yield* Effect.fail(notFound());
-          if (existing.asset_symbol !== null) return yield* Effect.fail(managed(existing.asset_symbol));
-          if (existing.taken === 1) return yield* Effect.fail(dateTaken(snapshot.holdingsDate));
+          if (existing.asset_symbol !== null)
+            return yield* Effect.fail(managed(existing.asset_symbol));
+          if (existing.taken === 1)
+            return yield* Effect.fail(dateTaken(snapshot.holdingsDate));
           yield* requireTracked(symbolsOf(snapshot));
           yield* write(
             [
               ...insertSnapshot(id, snapshot, now),
-              db.prepare(`UPDATE portfolios SET updated_at = ? WHERE portfolio_id = ?`).bind(now, id),
+              db
+                .prepare(
+                  `UPDATE portfolios SET updated_at = ? WHERE portfolio_id = ?`,
+                )
+                .bind(now, id),
             ],
             snapshot.holdingsDate,
           );
           return {
             holdingsDate: snapshot.holdingsDate,
             createdAt: now,
-            holdings: [...snapshot.holdings].sort((a, b) => (a.symbol < b.symbol ? -1 : 1)),
+            holdings: [...snapshot.holdings].sort((a, b) =>
+              a.symbol < b.symbol ? -1 : 1,
+            ),
           } satisfies Snapshot;
         }),
 
@@ -296,10 +345,20 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           );
           if (row === null) {
             return yield* Effect.fail(
-              new PortfolioError({ kind: "not_found", message: `The portfolio has no snapshot for ${holdingsDate}` }),
+              new PortfolioError({
+                kind: "not_found",
+                message: `The portfolio has no snapshot for ${holdingsDate}`,
+              }),
             );
           }
-          yield* query(() => db.prepare(`UPDATE portfolios SET updated_at = ? WHERE portfolio_id = ?`).bind(now, id).run());
+          yield* query(() =>
+            db
+              .prepare(
+                `UPDATE portfolios SET updated_at = ? WHERE portfolio_id = ?`,
+              )
+              .bind(now, id)
+              .run(),
+          );
         }),
 
       requireTracked,
@@ -309,7 +368,9 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           Effect.map((portfolio) => ({
             id: portfolio.id,
             name: portfolio.name,
-            snapshots: portfolio.snapshots.map(({ holdingsDate, holdings }) => ({ holdingsDate, holdings })),
+            snapshots: portfolio.snapshots.map(
+              ({ holdingsDate, holdings }) => ({ holdingsDate, holdings }),
+            ),
           })),
         ),
     }),

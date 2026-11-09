@@ -12,9 +12,24 @@
   } from "@tanstack/svelte-table";
   import { untrack } from "svelte";
 
-  import { calculationResultsUrl, datasetUrl, fetchCalculationResults, fetchDatasetFile } from "#lib/api.ts";
-  import { formatBytes, formatCount, formatRange, formatValue } from "#lib/format.ts";
-  import { readParquet, type Column, type Dataset, type Row } from "#lib/parquet.ts";
+  import {
+    calculationResultsUrl,
+    datasetUrl,
+    fetchCalculationResults,
+    fetchDatasetFile,
+  } from "#lib/api.ts";
+  import {
+    formatBytes,
+    formatCount,
+    formatRange,
+    formatValue,
+  } from "#lib/format.ts";
+  import {
+    readParquet,
+    type Column,
+    type Dataset,
+    type Row,
+  } from "#lib/parquet.ts";
   import { href, replace, route } from "#lib/router.svelte.ts";
 
   import type { PageProps } from "./$types";
@@ -48,8 +63,16 @@
   // Only symbols with a successful download can have a Parquet file.
   const choices = $derived(symbols.filter((s) => s.lastCompletedRun !== null));
 
-  const chosenCalculation = $derived(calculations.find((c) => c.id === calculation));
-  const chosen = $derived(calculation ? `calculation:${calculation}` : dataset && symbol ? `${dataset}/${symbol}` : "");
+  const chosenCalculation = $derived(
+    calculations.find((c) => c.id === calculation),
+  );
+  const chosen = $derived(
+    calculation
+      ? `calculation:${calculation}`
+      : dataset && symbol
+        ? `${dataset}/${symbol}`
+        : "",
+  );
 
   let latestRequest = 0;
 
@@ -60,7 +83,9 @@
     if (!calculation && (!dataset || !symbol)) return;
     loading = true;
     try {
-      const bytes = calculation ? await fetchCalculationResults(calculation) : await fetchDatasetFile(dataset, symbol);
+      const bytes = calculation
+        ? await fetchCalculationResults(calculation)
+        : await fetchDatasetFile(dataset, symbol);
       const decoded = await readParquet(bytes);
       if (request !== latestRequest) return;
       fileSize = bytes.byteLength;
@@ -69,7 +94,8 @@
       table.setSorting(dateColumn ? [{ id: dateColumn.name, desc: true }] : []);
       table.resetPageIndex(true);
     } catch (cause) {
-      if (request === latestRequest) error = cause instanceof Error ? cause.message : String(cause);
+      if (request === latestRequest)
+        error = cause instanceof Error ? cause.message : String(cause);
     } finally {
       if (request === latestRequest) loading = false;
     }
@@ -83,7 +109,9 @@
   });
 
   const columns = $derived(file?.columns ?? []);
-  const kinds = $derived(new Map(columns.map((column) => [column.name, column.kind])));
+  const kinds = $derived(
+    new Map(columns.map((column) => [column.name, column.kind])),
+  );
 
   /**
    * The column the date range applies to: `as_of` in calculation results,
@@ -106,8 +134,11 @@
   });
 
   const span = $derived.by(() => {
-    if (dateColumn === undefined || !file || file.rows.length === 0) return null;
-    const days = file.rows.map((row) => String(row[dateColumn]).slice(0, 10)).sort();
+    if (dateColumn === undefined || !file || file.rows.length === 0)
+      return null;
+    const days = file.rows
+      .map((row) => String(row[dateColumn]).slice(0, 10))
+      .sort();
     return { first: days[0]!, last: days.at(-1)! };
   });
 
@@ -149,20 +180,28 @@
 </script>
 
 <div class="toolbar">
-  <select aria-label="Data" value={chosen} onchange={(event) => choose(event.currentTarget.value)}>
+  <select
+    aria-label="Data"
+    value={chosen}
+    onchange={(event) => choose(event.currentTarget.value)}
+  >
     <option value="" disabled>Choose a symbol or calculation</option>
     {#if !calculation && dataset && symbol && !choices.some((s) => s.dataset === dataset && s.symbol === symbol)}
       <option value={`${dataset}/${symbol}`}>{symbol} · {dataset}</option>
     {/if}
     <optgroup label="Datasets">
       {#each choices as s (`${s.dataset}/${s.symbol}`)}
-        <option value={`${s.dataset}/${s.symbol}`}>{s.symbol} · {s.dataset}</option>
+        <option value={`${s.dataset}/${s.symbol}`}
+          >{s.symbol} · {s.dataset}</option
+        >
       {/each}
     </optgroup>
     {#if calculations.length > 0 || calculation}
       <optgroup label="Calculation results">
         {#if calculation && !chosenCalculation}
-          <option value={`calculation:${calculation}`}>Calculation {calculation}</option>
+          <option value={`calculation:${calculation}`}
+            >Calculation {calculation}</option
+          >
         {/if}
         {#each calculations as c (c.id)}
           <option value={`calculation:${c.id}`}>{c.name} · {c.type}</option>
@@ -172,10 +211,20 @@
   </select>
   {#if dateColumn !== undefined}
     <label class="muted date">
-      From <input type="date" bind:value={from} min={span?.first} max={span?.last} />
+      From <input
+        type="date"
+        bind:value={from}
+        min={span?.first}
+        max={span?.last}
+      />
     </label>
     <label class="muted date">
-      To <input type="date" bind:value={to} min={span?.first} max={span?.last} />
+      To <input
+        type="date"
+        bind:value={to}
+        min={span?.first}
+        max={span?.last}
+      />
     </label>
     {#if from || to}
       <button onclick={() => ((from = ""), (to = ""))}>Clear dates</button>
@@ -184,11 +233,17 @@
   <span class="spacer"></span>
   {#if file && calculation}
     <a href={href("calculations", { id: calculation })}>Calculation</a>
-    <a href={calculationResultsUrl(calculation)} download={`${chosenCalculation?.name ?? calculation}.parquet`}>
+    <a
+      href={calculationResultsUrl(calculation)}
+      download={`${chosenCalculation?.name ?? calculation}.parquet`}
+    >
       Download Parquet
     </a>
   {:else if file}
-    <a href={datasetUrl(dataset, symbol)} download={`${symbol}.${dataset}.parquet`}>Download Parquet</a>
+    <a
+      href={datasetUrl(dataset, symbol)}
+      download={`${symbol}.${dataset}.parquet`}>Download Parquet</a
+    >
   {/if}
   <button onclick={() => load()} disabled={loading || !chosen}>Refresh</button>
 </div>
@@ -199,9 +254,13 @@
 
 {#if file}
   <p class="summary muted">
-    {formatCount(file.rows.length)} rows · {columns.length} columns · {formatBytes(fileSize)}
+    {formatCount(file.rows.length)} rows · {columns.length} columns · {formatBytes(
+      fileSize,
+    )}
     {#if span}· {formatRange(span.first, span.last)}{/if}
-    {#if rows.length !== file.rows.length}· <strong>{formatCount(rows.length)} in range</strong>{/if}
+    {#if rows.length !== file.rows.length}· <strong
+        >{formatCount(rows.length)} in range</strong
+      >{/if}
   </p>
 {/if}
 
@@ -213,9 +272,14 @@
           <tr>
             {#each group.headers as header (header.id)}
               <th class:num={kinds.get(header.column.id) === "number"}>
-                <button class="sort" onclick={header.column.getToggleSortingHandler()}>
+                <button
+                  class="sort"
+                  onclick={header.column.getToggleSortingHandler()}
+                >
                   {header.column.id}
-                  <span class="mark">{sortMark(header.column.getIsSorted())}</span>
+                  <span class="mark"
+                    >{sortMark(header.column.getIsSorted())}</span
+                  >
                 </button>
               </th>
             {/each}
@@ -247,17 +311,35 @@
 
 {#if file && rows.length > 0}
   <div class="pager">
-    <button onclick={() => table.firstPage()} disabled={!table.getCanPreviousPage()} aria-label="First page">
+    <button
+      onclick={() => table.firstPage()}
+      disabled={!table.getCanPreviousPage()}
+      aria-label="First page"
+    >
       «<span class="wide-only"> First</span>
     </button>
-    <button onclick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Previous page">
+    <button
+      onclick={() => table.previousPage()}
+      disabled={!table.getCanPreviousPage()}
+      aria-label="Previous page"
+    >
       ‹<span class="wide-only"> Previous</span>
     </button>
-    <span class="muted page">Page {pagination.pageIndex + 1} of {table.getPageCount()}</span>
-    <button onclick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="Next page">
+    <span class="muted page"
+      >Page {pagination.pageIndex + 1} of {table.getPageCount()}</span
+    >
+    <button
+      onclick={() => table.nextPage()}
+      disabled={!table.getCanNextPage()}
+      aria-label="Next page"
+    >
       <span class="wide-only">Next </span>›
     </button>
-    <button onclick={() => table.lastPage()} disabled={!table.getCanNextPage()} aria-label="Last page">
+    <button
+      onclick={() => table.lastPage()}
+      disabled={!table.getCanNextPage()}
+      aria-label="Last page"
+    >
       <span class="wide-only">Last </span>»
     </button>
     <select

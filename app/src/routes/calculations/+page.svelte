@@ -34,7 +34,8 @@
   /** Calculations with a request in flight. */
   const pending = new SvelteSet<string>();
 
-  const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+  const describe = (cause: unknown) =>
+    cause instanceof Error ? cause.message : String(cause);
 
   $effect(() => void calculationTypes.load());
 
@@ -43,7 +44,10 @@
     const request = ++latestRequest;
     loading = true;
     try {
-      const [calcs, owned] = await Promise.all([fetchCalculations(), fetchPortfolios()]);
+      const [calcs, owned] = await Promise.all([
+        fetchCalculations(),
+        fetchPortfolios(),
+      ]);
       if (request !== latestRequest) return;
       calculations = calcs.calculations;
       portfolios = owned.portfolios;
@@ -58,7 +62,9 @@
     calculations.filter(
       (c) =>
         search.trim() === "" ||
-        `${c.name} ${c.type}`.toLowerCase().includes(search.trim().toLowerCase()),
+        `${c.name} ${c.type}`
+          .toLowerCase()
+          .includes(search.trim().toLowerCase()),
     ),
   );
 
@@ -67,7 +73,9 @@
     error = null;
     message = null;
     try {
-      await updateCalculation(calculation.id, { enabled: !calculation.enabled });
+      await updateCalculation(calculation.id, {
+        enabled: !calculation.enabled,
+      });
       await load();
     } catch (cause) {
       error = describe(cause);
@@ -78,16 +86,25 @@
 </script>
 
 <div class="toolbar">
-  <input placeholder="Search calculations" bind:value={search} aria-label="Search calculations" />
+  <input
+    placeholder="Search calculations"
+    bind:value={search}
+    aria-label="Search calculations"
+  />
   <span class="spacer"></span>
   <button
     onclick={() => ((creating = true), (message = null), (error = null))}
     disabled={creating || types.length === 0}
-    title={types.length === 0 ? "Waiting for the engine's calculation types" : undefined}
+    title={types.length === 0
+      ? "Waiting for the engine's calculation types"
+      : undefined}
   >
     New calculation
   </button>
-  <button onclick={() => (load(), calculationTypes.load({ retry: true }))} disabled={loading}>Refresh</button>
+  <button
+    onclick={() => (load(), calculationTypes.load({ retry: true }))}
+    disabled={loading}>Refresh</button
+  >
 </div>
 
 {#if calculationTypes.error}
@@ -128,12 +145,19 @@
     <tbody>
       {#each visible as c (c.id)}
         <tr class="entry" class:disabled={!c.enabled}>
-          <td class="name"><a href={href("calculations", { id: c.id })}>{c.name}</a></td>
+          <td class="name"
+            ><a href={href("calculations", { id: c.id })}>{c.name}</a></td
+          >
           <td data-label="Type" class="mono">{c.type}</td>
-          <td data-label="Portfolios" class="num">{c.portfolioIds.length || "—"}</td>
+          <td data-label="Portfolios" class="num"
+            >{c.portfolioIds.length || "—"}</td
+          >
           <td data-label="Cron (UTC)" class="mono">{c.cron}</td>
           <td class="enabled">
-            <label class="switch" title={c.enabled ? "Pause its schedule" : "Run it on its cron"}>
+            <label
+              class="switch"
+              title={c.enabled ? "Pause its schedule" : "Run it on its cron"}
+            >
               <input
                 type="checkbox"
                 role="switch"
@@ -147,10 +171,15 @@
           </td>
           <td data-label="Last run" class="full">
             {#if c.lastRun}
-              <StatusBadge status={c.lastRun.status} title={c.lastRun.error ?? undefined} />
+              <StatusBadge
+                status={c.lastRun.status}
+                title={c.lastRun.error ?? undefined}
+              />
               <span class="muted">
                 as of <span class="mono">{c.lastRun.asOf}</span> ·
-                <span title={formatDateTime(c.lastRun.createdAt)}>{formatAgo(c.lastRun.createdAt)}</span>
+                <span title={formatDateTime(c.lastRun.createdAt)}
+                  >{formatAgo(c.lastRun.createdAt)}</span
+                >
               </span>
             {:else}
               <span class="muted">Never</span>
@@ -162,7 +191,9 @@
   </table>
   {#if visible.length === 0 && !loading && !error}
     <p class="notice">
-      {calculations.length === 0 ? "No calculations yet." : "No calculations match."}
+      {calculations.length === 0
+        ? "No calculations yet."
+        : "No calculations match."}
     </p>
   {:else if loading && calculations.length === 0}
     <p class="notice">Loading…</p>

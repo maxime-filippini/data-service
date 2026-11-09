@@ -3,7 +3,10 @@ import { HTTPException } from "hono/http-exception";
 import { createRemoteJWKSet, type JWTVerifyGetKey, jwtVerify } from "jose";
 
 type CloudflareSubtleCrypto = SubtleCrypto & {
-  timingSafeEqual?: (a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView) => boolean;
+  timingSafeEqual?: (
+    a: ArrayBuffer | ArrayBufferView,
+    b: ArrayBuffer | ArrayBufferView,
+  ) => boolean;
 };
 
 const subtle = crypto.subtle as CloudflareSubtleCrypto;
@@ -15,21 +18,26 @@ const tokensMatch = async (provided: string, expected: string) => {
     subtle.digest("SHA-256", encoder.encode(provided)),
     subtle.digest("SHA-256", encoder.encode(expected)),
   ]);
-  if (typeof subtle.timingSafeEqual === "function") return subtle.timingSafeEqual(a, b);
+  if (typeof subtle.timingSafeEqual === "function")
+    return subtle.timingSafeEqual(a, b);
 
   // Node (used by the tests) lacks Cloudflare's timingSafeEqual. Both inputs
   // are fixed-size digests, so this loop has no early exit.
   const left = new Uint8Array(a);
   const right = new Uint8Array(b);
   let difference = 0;
-  for (let index = 0; index < left.length; index += 1) difference |= left[index]! ^ right[index]!;
+  for (let index = 0; index < left.length; index += 1)
+    difference |= left[index]! ^ right[index]!;
   return difference === 0;
 };
 
 /** Require `Authorization: Bearer <MANAGEMENT_API_TOKEN>`. */
-export const requireManagementToken: MiddlewareHandler<{ Bindings: CloudflareBindings }> = async (c, next) => {
+export const requireManagementToken: MiddlewareHandler<{
+  Bindings: CloudflareBindings;
+}> = async (c, next) => {
   const expected = c.env.MANAGEMENT_API_TOKEN;
-  const [scheme, token, ...rest] = c.req.header("Authorization")?.split(" ") ?? [];
+  const [scheme, token, ...rest] =
+    c.req.header("Authorization")?.split(" ") ?? [];
   const provided = scheme === "Bearer" && rest.length === 0 ? token : undefined;
 
   if (!expected || !provided || !(await tokensMatch(provided, expected))) {
@@ -82,7 +90,8 @@ const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const originOf = (domain: string | undefined) => {
   if (!domain) return undefined;
   try {
-    return new URL(domain.includes("://") ? domain : `https://${domain}`).origin;
+    return new URL(domain.includes("://") ? domain : `https://${domain}`)
+      .origin;
   } catch {
     return undefined;
   }
@@ -116,7 +125,10 @@ export const checkAccess = async (
   settings: AccessSettings,
   keysFor: AccessKeys = remoteAccessKeys,
 ): Promise<AccessCheck> => {
-  if (settings.DASHBOARD_LOCAL_BYPASS === "true" && LOCAL_HOSTNAMES.has(new URL(request.url).hostname)) {
+  if (
+    settings.DASHBOARD_LOCAL_BYPASS === "true" &&
+    LOCAL_HOSTNAMES.has(new URL(request.url).hostname)
+  ) {
     return { email: "local@localhost" };
   }
 
@@ -131,7 +143,8 @@ export const checkAccess = async (
   }
 
   const token = request.headers.get("Cf-Access-Jwt-Assertion");
-  if (!token) return { status: 401, error: "Sign in through Cloudflare Access" };
+  if (!token)
+    return { status: 401, error: "Sign in through Cloudflare Access" };
 
   let email: unknown;
   try {
@@ -154,12 +167,18 @@ export const checkAccess = async (
 
 /** Hono middleware for `checkAccess`: sets `accessEmail`, or answers with the denial. */
 export const requireAccessUser =
-  (keysFor: AccessKeys = remoteAccessKeys): MiddlewareHandler<{
+  (
+    keysFor: AccessKeys = remoteAccessKeys,
+  ): MiddlewareHandler<{
     Bindings: CloudflareBindings;
     Variables: AccessVariables;
   }> =>
   async (c, next) => {
-    const result = await checkAccess(c.req.raw, c.env as AccessSettings, keysFor);
+    const result = await checkAccess(
+      c.req.raw,
+      c.env as AccessSettings,
+      keysFor,
+    );
     if ("error" in result) {
       throw new HTTPException(result.status, {
         res: Response.json({ error: result.error }, { status: result.status }),

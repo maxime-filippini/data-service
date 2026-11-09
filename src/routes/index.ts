@@ -1,10 +1,17 @@
 import { Hono } from "hono";
 
-import { type AccessKeys, remoteAccessKeys, requireManagementToken } from "$/auth";
+import {
+  type AccessKeys,
+  remoteAccessKeys,
+  requireManagementToken,
+} from "$/auth";
 import type { Dependencies } from "$/dependencies";
 import { type AppHandler, createAppRoutes } from "$/routes/app";
 import { createAppApiRoutes } from "$/routes/app-api";
-import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
+import {
+  createCalculateRoutes,
+  createCalculationTypeRoutes,
+} from "$/routes/calculate";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createDocsRoutes } from "$/routes/docs";
 import { createIngestionRoutes } from "$/routes/ingestions";
@@ -29,13 +36,34 @@ export const createRoutes = (
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
   const api = new Hono<{ Bindings: CloudflareBindings }>();
-  api.route("/symbols", createSymbolRoutes(dependencies.registryFor, requireManagementToken));
-  api.route("/ingestions", createIngestionRoutes(dependencies.registryFor, requireManagementToken));
-  api.route("/schedule", createScheduleRoutes(dependencies, requireManagementToken));
-  api.route("/portfolios", createPortfolioRoutes(dependencies.portfoliosFor, requireManagementToken));
-  api.route("/calculation-types", createCalculationTypeRoutes(dependencies.engineFor, requireManagementToken));
-  api.route("/calculate", createCalculateRoutes(dependencies, requireManagementToken));
-  api.route("/calculations", createCalculationRoutes(dependencies, requireManagementToken));
+  api.route(
+    "/symbols",
+    createSymbolRoutes(dependencies.registryFor, requireManagementToken),
+  );
+  api.route(
+    "/ingestions",
+    createIngestionRoutes(dependencies.registryFor, requireManagementToken),
+  );
+  api.route(
+    "/schedule",
+    createScheduleRoutes(dependencies, requireManagementToken),
+  );
+  api.route(
+    "/portfolios",
+    createPortfolioRoutes(dependencies.portfoliosFor, requireManagementToken),
+  );
+  api.route(
+    "/calculation-types",
+    createCalculationTypeRoutes(dependencies.engineFor, requireManagementToken),
+  );
+  api.route(
+    "/calculate",
+    createCalculateRoutes(dependencies, requireManagementToken),
+  );
+  api.route(
+    "/calculations",
+    createCalculationRoutes(dependencies, requireManagementToken),
+  );
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
   const app = new Hono<{ Bindings: CloudflareBindings }>();

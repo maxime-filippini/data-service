@@ -19,7 +19,10 @@ import { PortfolioIdSchema } from "$/portfolios/contracts";
  * The engine registry key selecting a Python calculation type, such as
  * `ex_ante_vol`. Used in saved and ad hoc requests; the engine checks existence.
  */
-export const CalculationTypeNameSchema = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(100));
+export const CalculationTypeNameSchema = Schema.String.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(100),
+);
 
 /** Most portfolios one calculation can run over. */
 export const MAX_CALCULATION_PORTFOLIOS = 100;
@@ -40,7 +43,10 @@ export const RunIdSchema = Schema.String.check(Schema.isUUID());
  * Human-readable label for a saved calculation. Trimmed for storage; names
  * are presentation values, not registry keys or unique identifiers.
  */
-const CalculationNameSchema = Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(200));
+const CalculationNameSchema = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(200),
+);
 
 /**
  * UTC schedule accepted when configuring calculations. Syntax is checked
@@ -66,7 +72,10 @@ const ParamsSchema = Schema.Record(Schema.String, Schema.Unknown);
  */
 const PortfolioIdsSchema = Schema.Array(PortfolioIdSchema).check(
   Schema.isMaxLength(MAX_CALCULATION_PORTFOLIOS),
-  Schema.makeFilter((ids) => new Set(ids).size === ids.length || "Each portfolio can appear only once"),
+  Schema.makeFilter(
+    (ids) =>
+      new Set(ids).size === ids.length || "Each portfolio can appear only once",
+  ),
 );
 
 /**
@@ -126,23 +135,27 @@ export type * from "$/calculations/views";
 export type { CalculationRunStatus as RunStatus } from "$/calculations/views";
 
 /** A calculation's results, in the processed bucket. */
-export const calculationOutputKey = (calculationId: string) => `calculation=${calculationId}/data.parquet`;
+export const calculationOutputKey = (calculationId: string) =>
+  `calculation=${calculationId}/data.parquet`;
 
 /**
  * Expected persistence, configuration or Workflow-launch failure reported by
  * calculation operations. HTTP mapping uses `kind`; per-portfolio execution
  * failures instead belong in `PortfolioOutcome`/`FinishedRun`.
  */
-export class CalculationError extends Schema.TaggedError<CalculationError>()("CalculationError", {
-  /**
-   * `invalid`: the calculation doesn't fit its type or names missing
-   * portfolios. `workflow`: a run's Workflow could not be started.
-   */
-  kind: Schema.Literals(["database", "not_found", "invalid", "workflow"]),
-  message: Schema.String,
-  /** The portfolios that don't exist, for `invalid`. */
-  portfolioIds: Schema.optionalKey(Schema.Array(Schema.String)),
-}) {}
+export class CalculationError extends Schema.TaggedError<CalculationError>()(
+  "CalculationError",
+  {
+    /**
+     * `invalid`: the calculation doesn't fit its type or names missing
+     * portfolios. `workflow`: a run's Workflow could not be started.
+     */
+    kind: Schema.Literals(["database", "not_found", "invalid", "workflow"]),
+    message: Schema.String,
+    /** The portfolios that don't exist, for `invalid`. */
+    portfolioIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  },
+) {}
 
 /**
  * Fully prepared record accepted by `Calculations.create`. The configuration

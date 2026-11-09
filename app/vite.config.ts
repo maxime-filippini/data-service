@@ -14,7 +14,10 @@ export default defineConfig({
         config: "wrangler.adapter.jsonc",
         // `vite dev` gets the real Worker's bindings and shares `wrangler
         // dev`'s local D1 database.
-        platformProxy: { configPath: "../wrangler.jsonc", persist: { path: "../.wrangler/state/v3" } },
+        platformProxy: {
+          configPath: "../wrangler.jsonc",
+          persist: { path: "../.wrangler/state/v3" },
+        },
       }),
       csp: {
         mode: "auto",

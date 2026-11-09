@@ -22,16 +22,16 @@ I reviewed the Worker entry points and wiring; ingestion, processing and both sc
 
 Executed checks:
 
-| Check | Result |
-| --- | --- |
-| TypeScript tests | 102 passed |
-| Worker typecheck | Passed |
-| Svelte check | 0 errors, 0 warnings |
-| App production build | Passed |
-| Processor Python tests | 19 passed with the documented Polars compatibility runtime |
-| Engine Python tests | 46 passed with the compatibility runtime |
-| Ruff lint and format checks, both Python projects | Passed |
-| Docs build | Blocked: local Node 22.22.1 is below Astro's required 22.23.4 |
+| Check                                             | Result                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------- |
+| TypeScript tests                                  | 102 passed                                                    |
+| Worker typecheck                                  | Passed                                                        |
+| Svelte check                                      | 0 errors, 0 warnings                                          |
+| App production build                              | Passed                                                        |
+| Processor Python tests                            | 19 passed with the documented Polars compatibility runtime    |
+| Engine Python tests                               | 46 passed with the compatibility runtime                      |
+| Ruff lint and format checks, both Python projects | Passed                                                        |
+| Docs build                                        | Blocked: local Node 22.22.1 is below Astro's required 22.23.4 |
 
 The ordinary processor test command initially crashed while importing Polars with an illegal instruction. The repository already documents `uv run --with 'polars[rtcompat]' pytest`; using that resolved the problem. This is an environment issue, not evidence of a processor logic failure.
 
@@ -178,20 +178,20 @@ Effect provides useful typed failures and testable dependency supply here. Most 
 
 You need a small vocabulary:
 
-| Code | Meaning in this repository |
-| --- | --- |
-| `Effect<A, E, R>` | A description of work producing A, with expected failures E, requiring dependencies R |
-| `Effect.fn(...)(function* ...)` | A named operation, written as sequential steps; also supplies tracing context |
-| `yield* someEffect` | Execute that step as part of this program and use its successful value |
-| `yield* Calculations` | Ask the environment for the calculations dependency; it performs no database query itself |
-| `Context.Service` | A typed dependency key plus its interface |
-| `Layer.succeed(Tag, implementation)` | A recipe supplying an existing implementation of that dependency |
-| `Layer.effect(...)` | Build a dependency using an Effect, potentially with its own failures and requirements |
-| `Effect.provide(layer)` | Supply dependencies to the program |
-| `Effect.runPromise` | Execute the fully supplied program at an ordinary async entry point |
-| `Effect.result` | Turn expected failures into inspectable values; defects remain a separate failure mechanism |
-| `Effect.tryPromise` | Adapt I/O that may reject into a typed failure |
-| `Schema` | Validate external values at runtime; a TypeScript type assertion does not do this |
+| Code                                 | Meaning in this repository                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `Effect<A, E, R>`                    | A description of work producing A, with expected failures E, requiring dependencies R       |
+| `Effect.fn(...)(function* ...)`      | A named operation, written as sequential steps; also supplies tracing context               |
+| `yield* someEffect`                  | Execute that step as part of this program and use its successful value                      |
+| `yield* Calculations`                | Ask the environment for the calculations dependency; it performs no database query itself   |
+| `Context.Service`                    | A typed dependency key plus its interface                                                   |
+| `Layer.succeed(Tag, implementation)` | A recipe supplying an existing implementation of that dependency                            |
+| `Layer.effect(...)`                  | Build a dependency using an Effect, potentially with its own failures and requirements      |
+| `Effect.provide(layer)`              | Supply dependencies to the program                                                          |
+| `Effect.runPromise`                  | Execute the fully supplied program at an ordinary async entry point                         |
+| `Effect.result`                      | Turn expected failures into inspectable values; defects remain a separate failure mechanism |
+| `Effect.tryPromise`                  | Adapt I/O that may reject into a typed failure                                              |
+| `Schema`                             | Validate external values at runtime; a TypeScript type assertion does not do this           |
 
 The central distinction is that an Effect is a description until run. A Layer is dependency construction, not a background process. `yield*` gives sequential code; it does not automatically imply concurrent work or database transactions.
 

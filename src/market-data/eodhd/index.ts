@@ -100,6 +100,4 @@ export const EodhdMarketDataSource = (
 export const EodhdMarketDataSourceLive = (
   apiToken: unknown,
 ): Layer.Layer<MarketDataSource, MarketDataError> =>
-  EodhdMarketDataSource(apiToken).pipe(
-    Layer.provide(FetchHttpClient.layer),
-  );
+  EodhdMarketDataSource(apiToken).pipe(Layer.provide(FetchHttpClient.layer));

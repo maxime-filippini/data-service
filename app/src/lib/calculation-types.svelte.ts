@@ -16,7 +16,8 @@ export const calculationTypes = {
   },
   /** Load the types unless they're loaded or loading. `retry` tries again after a failure. */
   load({ retry = false } = {}) {
-    if (types.length > 0 || (request !== null && !retry)) return request ?? Promise.resolve();
+    if (types.length > 0 || (request !== null && !retry))
+      return request ?? Promise.resolve();
     error = null;
     request = fetchCalculationTypes()
       .then((result) => {

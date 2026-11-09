@@ -19,11 +19,15 @@
   let error = $state<string | null>(null);
   let message = $state<string | null>(null);
 
-  const hour = (hourUtc: number) => `${String(hourUtc).padStart(2, "0")}:00 UTC`;
+  const hour = (hourUtc: number) =>
+    `${String(hourUtc).padStart(2, "0")}:00 UTC`;
 
   const runNow = async () => {
     const count = `${symbols.scheduled} symbol${symbols.scheduled === 1 ? "" : "s"}`;
-    if (!confirm(`Download the full history of all ${count} on the schedule now?`)) return;
+    if (
+      !confirm(`Download the full history of all ${count} on the schedule now?`)
+    )
+      return;
     busy = true;
     error = null;
     message = null;
@@ -39,19 +43,41 @@
   };
 
   const SECTIONS = [
-    { path: "/runs", title: "Ingestion runs", text: "Every download, with its Parquet rebuild." },
-    { path: "/symbols", title: "Symbols", text: "The universe, and the daily download schedule." },
-    { path: "/portfolios", title: "Portfolios", text: "Holdings snapshots that calculations run over." },
-    { path: "/calculations", title: "Calculations", text: "Saved calculations, their crons and runs." },
-    { path: "/explore", title: "Explore data", text: "Browse any symbol's or calculation's Parquet file." },
+    {
+      path: "/runs",
+      title: "Ingestion runs",
+      text: "Every download, with its Parquet rebuild.",
+    },
+    {
+      path: "/symbols",
+      title: "Symbols",
+      text: "The universe, and the daily download schedule.",
+    },
+    {
+      path: "/portfolios",
+      title: "Portfolios",
+      text: "Holdings snapshots that calculations run over.",
+    },
+    {
+      path: "/calculations",
+      title: "Calculations",
+      text: "Saved calculations, their crons and runs.",
+    },
+    {
+      path: "/explore",
+      title: "Explore data",
+      text: "Browse any symbol's or calculation's Parquet file.",
+    },
   ];
 </script>
 
 <section class="intro">
   <h1>Data service</h1>
   <p class="muted">
-    Downloads market data for a universe of symbols every day, builds one Parquet file per symbol in R2, and runs
-    calculations such as ex-ante volatility over portfolios. Other apps read the Parquet files straight from R2.
+    Downloads market data for a universe of symbols every day, builds one
+    Parquet file per symbol in R2, and runs calculations such as ex-ante
+    volatility over portfolios. Other apps read the Parquet files straight from
+    R2.
     <a href="/docs/" rel="external">Read the docs</a>.
   </p>
 </section>
@@ -69,12 +95,20 @@
     <span class="value">{formatCount(symbols.total)}</span>
     <span class="muted">{formatCount(symbols.scheduled)} on the schedule</span>
   </a>
-  <a class="tile card" class:alert={symbols.failedDownloads > 0} href={href("runs", { status: "failed" })}>
+  <a
+    class="tile card"
+    class:alert={symbols.failedDownloads > 0}
+    href={href("runs", { status: "failed" })}
+  >
     <span class="label">Failed downloads</span>
     <span class="value">{formatCount(symbols.failedDownloads)}</span>
     <span class="muted">symbols whose latest download failed</span>
   </a>
-  <a class="tile card" class:alert={symbols.failedRebuilds > 0} href={href("symbols")}>
+  <a
+    class="tile card"
+    class:alert={symbols.failedRebuilds > 0}
+    href={href("symbols")}
+  >
     <span class="label">Failed rebuilds</span>
     <span class="value">{formatCount(symbols.failedRebuilds)}</span>
     <span class="muted">symbols whose latest Parquet rebuild failed</span>
@@ -101,13 +135,16 @@
 
     <p>
       {#if home.schedule.paused}
-        <span class="badge-paused">Paused</span> The daily download doesn't run until it's resumed on
+        <span class="badge-paused">Paused</span> The daily download doesn't run
+        until it's resumed on
         <a href={href("symbols")}>Symbols</a>.
       {:else}
         Downloads daily after {hour(home.schedule.hourUtc)}.
         {#if home.schedule.nextRunAt}
           Next run
-          <span title={formatDateTime(home.schedule.nextRunAt)}>{formatAgo(home.schedule.nextRunAt)}</span>.
+          <span title={formatDateTime(home.schedule.nextRunAt)}
+            >{formatAgo(home.schedule.nextRunAt)}</span
+          >.
         {/if}
       {/if}
     </p>
@@ -115,11 +152,18 @@
     {#if latestScheduleRun}
       <p class="latest">
         Latest run:
-        <StatusBadge status={latestScheduleRun.status} title={latestScheduleRun.error ?? undefined} />
-        <span title={formatDateTime(latestScheduleRun.createdAt)}>{formatAgo(latestScheduleRun.createdAt)}</span>
+        <StatusBadge
+          status={latestScheduleRun.status}
+          title={latestScheduleRun.error ?? undefined}
+        />
+        <span title={formatDateTime(latestScheduleRun.createdAt)}
+          >{formatAgo(latestScheduleRun.createdAt)}</span
+        >
         <span class="muted">
           · {latestScheduleRun.trigger}
-          {#if latestScheduleRun.queuedCount !== null}· {formatCount(latestScheduleRun.queuedCount)} queued{/if}
+          {#if latestScheduleRun.queuedCount !== null}· {formatCount(
+              latestScheduleRun.queuedCount,
+            )} queued{/if}
         </span>
       </p>
       {#if latestScheduleRun.error}
@@ -136,9 +180,15 @@
       <ul class="list">
         {#each home.failedRuns as run (run.runId)}
           <li>
-            <a href={href("runs", { symbol: run.symbol, status: "failed" })}>{run.symbol}</a>
-            <span class="muted" title={formatDateTime(run.createdAt)}>{formatAgo(run.createdAt)}</span>
-            {#if run.error}<span class="reason" title={run.error}>{run.error}</span>{/if}
+            <a href={href("runs", { symbol: run.symbol, status: "failed" })}
+              >{run.symbol}</a
+            >
+            <span class="muted" title={formatDateTime(run.createdAt)}
+              >{formatAgo(run.createdAt)}</span
+            >
+            {#if run.error}<span class="reason" title={run.error}
+                >{run.error}</span
+              >{/if}
           </li>
         {/each}
       </ul>
@@ -160,10 +210,14 @@
         {#each home.calculations.latestRuns as run (run.runId)}
           <li>
             <StatusBadge status={run.status} title={run.error ?? undefined} />
-            <a href={href("calculations", { id: run.calculationId })}>{run.calculationName}</a>
+            <a href={href("calculations", { id: run.calculationId })}
+              >{run.calculationName}</a
+            >
             <span class="muted">
               as of <span class="mono">{run.asOf}</span> ·
-              <span title={formatDateTime(run.createdAt)}>{formatAgo(run.createdAt)}</span>
+              <span title={formatDateTime(run.createdAt)}
+                >{formatAgo(run.createdAt)}</span
+              >
             </span>
           </li>
         {/each}
@@ -177,9 +231,13 @@
       <ul class="list">
         {#each home.calculations.upcoming as upcoming (upcoming.id)}
           <li>
-            <a href={href("calculations", { id: upcoming.id })}>{upcoming.name}</a>
+            <a href={href("calculations", { id: upcoming.id })}
+              >{upcoming.name}</a
+            >
             <span class="muted mono">{upcoming.type}</span>
-            <span class="when" title={formatDateTime(upcoming.nextRunAt)}>{formatAgo(upcoming.nextRunAt)}</span>
+            <span class="when" title={formatDateTime(upcoming.nextRunAt)}
+              >{formatAgo(upcoming.nextRunAt)}</span
+            >
           </li>
         {/each}
       </ul>
@@ -198,7 +256,9 @@
     {/each}
     <a class="card section" href="/docs/" rel="external">
       <strong>Docs</strong>
-      <span class="muted">How the service works, the management API and operations.</span>
+      <span class="muted"
+        >How the service works, the management API and operations.</span
+      >
     </a>
   </div>
 </section>

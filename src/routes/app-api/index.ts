@@ -1,12 +1,25 @@
 import { Effect, Schema } from "effect";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 
-import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
-import { CalculationIdSchema, calculationOutputKey } from "$/calculations/contracts";
+import {
+  type AccessKeys,
+  type AccessVariables,
+  remoteAccessKeys,
+  requireAccessUser,
+} from "$/auth";
+import {
+  CalculationIdSchema,
+  calculationOutputKey,
+} from "$/calculations/contracts";
 import type { Dependencies } from "$/dependencies";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
-import { canonicalKey, DatasetSchema, datasetProviders, MarketSymbolSchema } from "$/market-data/schemas";
+import {
+  canonicalKey,
+  DatasetSchema,
+  datasetProviders,
+  MarketSymbolSchema,
+} from "$/market-data/schemas";
 import {
   CursorSchema,
   type DashboardUser,
@@ -16,7 +29,10 @@ import {
   type RunPage,
   type SymbolStatusView,
 } from "$/market-data/status";
-import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
+import {
+  createCalculateRoutes,
+  createCalculationTypeRoutes,
+} from "$/routes/calculate";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
@@ -32,12 +48,19 @@ const DEFAULT_RUN_PAGE_SIZE = 50;
 const RunsQuerySchema = Schema.Struct({
   dataset: Schema.optionalKey(DatasetSchema),
   symbol: Schema.optionalKey(MarketSymbolSchema),
-  status: Schema.optionalKey(Schema.Literals(["fetching", "completed", "failed"])),
+  status: Schema.optionalKey(
+    Schema.Literals(["fetching", "completed", "failed"]),
+  ),
   cursor: Schema.optionalKey(CursorSchema),
   limit: Schema.optionalKey(
     Schema.String.check(
-      Schema.isPattern(/^[1-9]\d*$/u, { message: "Expected a positive integer" }),
-      Schema.makeFilter((value) => Number(value) <= MAX_RUN_PAGE_SIZE || `At most ${MAX_RUN_PAGE_SIZE}`),
+      Schema.isPattern(/^[1-9]\d*$/u, {
+        message: "Expected a positive integer",
+      }),
+      Schema.makeFilter(
+        (value) =>
+          Number(value) <= MAX_RUN_PAGE_SIZE || `At most ${MAX_RUN_PAGE_SIZE}`,
+      ),
     ),
   ),
 });
@@ -80,8 +103,11 @@ const accessChecked: MiddlewareHandler = (_, next) => next();
 const requireSameOrigin: MiddlewareHandler = async (c, next) => {
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
     const origin = c.req.header("Origin");
-    const sameOrigin = origin === new URL(c.req.url).origin || c.req.header("Sec-Fetch-Site") === "same-origin";
-    if (!sameOrigin) return c.json({ error: "Cross-site requests are not allowed" }, 403);
+    const sameOrigin =
+      origin === new URL(c.req.url).origin ||
+      c.req.header("Sec-Fetch-Site") === "same-origin";
+    if (!sameOrigin)
+      return c.json({ error: "Cross-site requests are not allowed" }, 403);
   }
   await next();
 };
@@ -102,41 +128,57 @@ export const createAppApiRoutes = (
 
   app.use("*", requireAccessUser(keysFor));
 
-  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, PipelineStatusError, PipelineStatus>) =>
-    runHttp(program, statusFor(env));
+  const run = <A>(
+    env: CloudflareBindings,
+    program: Effect.Effect<A, PipelineStatusError, PipelineStatus>,
+  ) => runHttp(program, statusFor(env));
 
   app.use("*", requireSameOrigin);
   app.use("*", async (c, next) => {
     await next();
-    if (!c.res.headers.has("Cache-Control")) c.header("Cache-Control", "no-store");
+    if (!c.res.headers.has("Cache-Control"))
+      c.header("Cache-Control", "no-store");
   });
 
   app.get("/me", (c) => c.json<DashboardUser>({ email: c.get("accessEmail") }));
 
-  app.get("/runs", effectValidator("query", RunsQuerySchema, { onExcessProperty: "error" }), async (c) => {
-    const { limit, ...filter } = c.req.valid("query");
-    const page = await run(
-      c.env,
-      PipelineStatus.use((status) =>
-        status.listRuns({ ...filter, limit: limit === undefined ? DEFAULT_RUN_PAGE_SIZE : Number(limit) }),
-      ),
-    );
-    return c.json<RunPage>(page);
-  });
+  app.get(
+    "/runs",
+    effectValidator("query", RunsQuerySchema, { onExcessProperty: "error" }),
+    async (c) => {
+      const { limit, ...filter } = c.req.valid("query");
+      const page = await run(
+        c.env,
+        PipelineStatus.use((status) =>
+          status.listRuns({
+            ...filter,
+            limit: limit === undefined ? DEFAULT_RUN_PAGE_SIZE : Number(limit),
+          }),
+        ),
+      );
+      return c.json<RunPage>(page);
+    },
+  );
 
-  app.get("/symbols", effectValidator("query", SymbolsQuerySchema, { onExcessProperty: "error" }), async (c) => {
-    const query = c.req.valid("query");
-    const symbols = await run(
-      c.env,
-      PipelineStatus.use((status) =>
-        status.listSymbols({
-          ...(query.dataset === undefined ? {} : { dataset: query.dataset }),
-          ...(query.enabled === undefined ? {} : { enabled: query.enabled === "true" }),
-        }),
-      ),
-    );
-    return c.json<{ symbols: readonly SymbolStatusView[] }>({ symbols });
-  });
+  app.get(
+    "/symbols",
+    effectValidator("query", SymbolsQuerySchema, { onExcessProperty: "error" }),
+    async (c) => {
+      const query = c.req.valid("query");
+      const symbols = await run(
+        c.env,
+        PipelineStatus.use((status) =>
+          status.listSymbols({
+            ...(query.dataset === undefined ? {} : { dataset: query.dataset }),
+            ...(query.enabled === undefined
+              ? {}
+              : { enabled: query.enabled === "true" }),
+          }),
+        ),
+      );
+      return c.json<{ symbols: readonly SymbolStatusView[] }>({ symbols });
+    },
+  );
 
   /**
    * A Parquet file streamed from the processed bucket for the explorer. The
@@ -148,10 +190,15 @@ export const createAppApiRoutes = (
     key: string,
     missing: string,
   ): Promise<Response> => {
-    const cachedEtag = c.req.header("If-None-Match")?.replace(/^W\//u, "").replaceAll('"', "");
+    const cachedEtag = c.req
+      .header("If-None-Match")
+      ?.replace(/^W\//u, "")
+      .replaceAll('"', "");
     const object = await c.env.PROCESSED_MARKET_DATA_BUCKET.get(
       key,
-      cachedEtag === undefined ? {} : { onlyIf: { etagDoesNotMatch: cachedEtag } },
+      cachedEtag === undefined
+        ? {}
+        : { onlyIf: { etagDoesNotMatch: cachedEtag } },
     );
     if (object === null) return c.json({ error: missing }, 404);
 
@@ -160,7 +207,8 @@ export const createAppApiRoutes = (
       ETag: object.httpEtag,
       "Last-Modified": object.uploaded.toUTCString(),
     });
-    if (!("body" in object)) return new Response(null, { status: 304, headers });
+    if (!("body" in object))
+      return new Response(null, { status: 304, headers });
 
     headers.set("Content-Type", "application/vnd.apache.parquet");
     headers.set("Content-Length", String(object.size));
@@ -169,33 +217,60 @@ export const createAppApiRoutes = (
 
   app.get(
     "/datasets/:dataset/:symbol",
-    effectValidator("param", DatasetParamsSchema, { onExcessProperty: "error" }),
+    effectValidator("param", DatasetParamsSchema, {
+      onExcessProperty: "error",
+    }),
     (c) => {
       const { dataset, symbol } = c.req.valid("param");
-      return streamParquet(c, canonicalKey(dataset, symbol), "No data has been built for this symbol yet");
+      return streamParquet(
+        c,
+        canonicalKey(dataset, symbol),
+        "No data has been built for this symbol yet",
+      );
     },
   );
 
   // A calculation's results. They stay in R2 after the calculation is deleted.
   app.get(
     "/calculations/:id/results",
-    effectValidator("param", CalculationParamsSchema, { onExcessProperty: "error" }),
+    effectValidator("param", CalculationParamsSchema, {
+      onExcessProperty: "error",
+    }),
     (c) => {
       const { id } = c.req.valid("param");
-      return streamParquet(c, calculationOutputKey(id), "This calculation has no results yet");
+      return streamParquet(
+        c,
+        calculationOutputKey(id),
+        "This calculation has no results yet",
+      );
     },
   );
 
   // Choices for the registry form.
   app.get("/options", (c) => c.json({ datasetProviders }));
 
-  app.route("/registry", createSymbolRoutes(dependencies.registryFor, accessChecked));
-  app.route("/ingestions", createIngestionRoutes(dependencies.registryFor, accessChecked));
+  app.route(
+    "/registry",
+    createSymbolRoutes(dependencies.registryFor, accessChecked),
+  );
+  app.route(
+    "/ingestions",
+    createIngestionRoutes(dependencies.registryFor, accessChecked),
+  );
   app.route("/schedule", createScheduleRoutes(dependencies, accessChecked));
-  app.route("/portfolios", createPortfolioRoutes(dependencies.portfoliosFor, accessChecked));
-  app.route("/calculation-types", createCalculationTypeRoutes(dependencies.engineFor, accessChecked));
+  app.route(
+    "/portfolios",
+    createPortfolioRoutes(dependencies.portfoliosFor, accessChecked),
+  );
+  app.route(
+    "/calculation-types",
+    createCalculationTypeRoutes(dependencies.engineFor, accessChecked),
+  );
   app.route("/calculate", createCalculateRoutes(dependencies, accessChecked));
-  app.route("/calculations", createCalculationRoutes(dependencies, accessChecked));
+  app.route(
+    "/calculations",
+    createCalculationRoutes(dependencies, accessChecked),
+  );
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));
 

@@ -33,11 +33,11 @@ The app lives in `app/`. adapter-cloudflare builds it into a request handler,
 which the Worker's entry point (`src/index.ts`) imports, and into static files
 in `dist/`, next to the docs. The Worker routes every request:
 
-| Path | Goes to | Auth |
-| --- | --- | --- |
-| `/api/*` | [Management API](/docs/reference/api/) | Bearer token |
-| `/app-api/*` | The app's JSON API, called from the browser | Cloudflare Access |
-| `/docs/*` | These docs (static files) | Cloudflare Access |
+| Path          | Goes to                                         | Auth              |
+| ------------- | ----------------------------------------------- | ----------------- |
+| `/api/*`      | [Management API](/docs/reference/api/)          | Bearer token      |
+| `/app-api/*`  | The app's JSON API, called from the browser     | Cloudflare Access |
+| `/docs/*`     | These docs (static files)                       | Cloudflare Access |
 | anything else | The SvelteKit app: pages and their static files | Cloudflare Access |
 
 Each page loads its data on the server, in its `+page.server.ts`, by reading
@@ -86,9 +86,9 @@ management token is never sent to the browser.
 
 ## The app's JSON API
 
-| Kind | Routes |
-| --- | --- |
-| Reads | `/me`, `/runs`, `/symbols`, `/options`, `/datasets/:dataset/:symbol`, `/calculations/:id/results` |
+| Kind    | Routes                                                                                                      |
+| ------- | ----------------------------------------------------------------------------------------------------------- |
+| Reads   | `/me`, `/runs`, `/symbols`, `/options`, `/datasets/:dataset/:symbol`, `/calculations/:id/results`           |
 | Changes | `/registry`, `/ingestions`, `/schedule`, `/portfolios`, `/calculation-types`, `/calculate`, `/calculations` |
 
 All under `/app-api`. The change routes mount the same modules as the

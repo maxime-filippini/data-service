@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
 
-import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
+import {
+  type AccessKeys,
+  type AccessVariables,
+  remoteAccessKeys,
+  requireAccessUser,
+} from "$/auth";
 
 /**
  * The header that tells the app who the Access user is. The Worker sets it
@@ -15,7 +20,10 @@ export const ACCESS_EMAIL_HEADER = "X-Access-Email";
  * header; tests can provide a lightweight handler to check that handoff.
  */
 export interface AppHandler {
-  readonly fetch: (request: Request, env: CloudflareBindings) => Response | Promise<Response>;
+  readonly fetch: (
+    request: Request,
+    env: CloudflareBindings,
+  ) => Response | Promise<Response>;
 }
 
 /**
@@ -25,14 +33,23 @@ export interface AppHandler {
  * SvelteKit sets the pages' Content-Security-Policy itself, since it needs a
  * nonce for its inline startup script.
  */
-export const createAppRoutes = (handler: AppHandler, keysFor: AccessKeys = remoteAccessKeys) => {
-  const app = new Hono<{ Bindings: CloudflareBindings; Variables: AccessVariables }>();
+export const createAppRoutes = (
+  handler: AppHandler,
+  keysFor: AccessKeys = remoteAccessKeys,
+) => {
+  const app = new Hono<{
+    Bindings: CloudflareBindings;
+    Variables: AccessVariables;
+  }>();
   app.use("*", requireAccessUser(keysFor));
   app.use("*", secureHeaders());
   app.all("*", async (c) => {
     const headers = new Headers(c.req.raw.headers);
     headers.set(ACCESS_EMAIL_HEADER, c.get("accessEmail"));
-    const response = await handler.fetch(new Request(c.req.raw, { headers }), c.env);
+    const response = await handler.fetch(
+      new Request(c.req.raw, { headers }),
+      c.env,
+    );
     // Copy the response so the security headers can be added to it.
     return new Response(response.body, response);
   });

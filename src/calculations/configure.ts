@@ -1,23 +1,40 @@
 import { Effect } from "effect";
 
-import { CalculationError, type CreateCalculation, type UpdateCalculation } from "$/calculations/contracts";
+import {
+  CalculationError,
+  type CreateCalculation,
+  type UpdateCalculation,
+} from "$/calculations/contracts";
 import { Engine, type CalculationTypeInfo } from "$/calculations/engine";
 import { Calculations } from "$/calculations/store";
 
-const invalid = (message: string) => new CalculationError({ kind: "invalid", message });
+const invalid = (message: string) =>
+  new CalculationError({ kind: "invalid", message });
 
 /** The engine's description of a type. */
 const typeInfo = Effect.fn("Calculations.typeInfo")(function* (name: string) {
   const engine = yield* Engine;
-  const type = (yield* engine.listTypes()).find((candidate) => candidate.name === name);
-  if (type === undefined) return yield* Effect.fail(invalid(`The engine has no calculation type ${name}`));
+  const type = (yield* engine.listTypes()).find(
+    (candidate) => candidate.name === name,
+  );
+  if (type === undefined)
+    return yield* Effect.fail(
+      invalid(`The engine has no calculation type ${name}`),
+    );
   return type;
 });
 
 /** A type that takes a portfolio needs at least one; other types take none. */
-const checkPortfolios = (type: CalculationTypeInfo, portfolioIds: readonly string[]) => {
+const checkPortfolios = (
+  type: CalculationTypeInfo,
+  portfolioIds: readonly string[],
+) => {
   if (type.takesPortfolio && portfolioIds.length === 0) {
-    return Effect.fail(invalid(`${type.name} runs over portfolios, so the calculation needs at least one`));
+    return Effect.fail(
+      invalid(
+        `${type.name} runs over portfolios, so the calculation needs at least one`,
+      ),
+    );
   }
   if (!type.takesPortfolio && portfolioIds.length > 0) {
     return Effect.fail(invalid(`${type.name} doesn't take a portfolio`));
@@ -41,7 +58,15 @@ export const createCalculation = Effect.fn("Calculations.create")(function* (
   const params = yield* engine.validate(type.name, input.params ?? {});
   const store = yield* Calculations;
   return yield* store.create(
-    { id, name: input.name, type: type.name, params, portfolioIds, cron: input.cron, enabled: input.enabled ?? true },
+    {
+      id,
+      name: input.name,
+      type: type.name,
+      params,
+      portfolioIds,
+      cron: input.cron,
+      enabled: input.enabled ?? true,
+    },
     now,
   );
 });
@@ -59,13 +84,18 @@ export const updateCalculation = Effect.fn("Calculations.update")(function* (
   const store = yield* Calculations;
   const current = yield* store.get(id);
   if (patch.type !== undefined && patch.type !== current.type) {
-    return yield* Effect.fail(invalid("A calculation's type can't change; create a new calculation instead"));
+    return yield* Effect.fail(
+      invalid(
+        "A calculation's type can't change; create a new calculation instead",
+      ),
+    );
   }
 
   let params = patch.params;
   if (patch.params !== undefined || patch.portfolioIds !== undefined) {
     const type = yield* typeInfo(current.type);
-    if (patch.portfolioIds !== undefined) yield* checkPortfolios(type, patch.portfolioIds);
+    if (patch.portfolioIds !== undefined)
+      yield* checkPortfolios(type, patch.portfolioIds);
     if (patch.params !== undefined) {
       const engine = yield* Engine;
       params = yield* engine.validate(type.name, patch.params);
@@ -77,7 +107,9 @@ export const updateCalculation = Effect.fn("Calculations.update")(function* (
     {
       ...(patch.name === undefined ? {} : { name: patch.name }),
       ...(params === undefined ? {} : { params }),
-      ...(patch.portfolioIds === undefined ? {} : { portfolioIds: patch.portfolioIds }),
+      ...(patch.portfolioIds === undefined
+        ? {}
+        : { portfolioIds: patch.portfolioIds }),
       ...(patch.cron === undefined ? {} : { cron: patch.cron }),
       ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
     },

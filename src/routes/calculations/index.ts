@@ -28,7 +28,10 @@ const IdParamSchema = Schema.Struct({ id: CalculationIdSchema });
  * Calculation/run path pair. Format validation is followed by an ownership
  * check so a run cannot be read through a different calculation's URL.
  */
-const RunParamSchema = Schema.Struct({ id: CalculationIdSchema, runId: RunIdSchema });
+const RunParamSchema = Schema.Struct({
+  id: CalculationIdSchema,
+  runId: RunIdSchema,
+});
 
 /**
  * Bounded history-page size read from URL text; the route applies its
@@ -37,7 +40,9 @@ const RunParamSchema = Schema.Struct({ id: CalculationIdSchema, runId: RunIdSche
 const RunsQuerySchema = Schema.Struct({
   limit: Schema.optionalKey(
     Schema.String.check(
-      Schema.isPattern(/^[1-9]\d*$/u, { message: "Expected a positive integer" }),
+      Schema.isPattern(/^[1-9]\d*$/u, {
+        message: "Expected a positive integer",
+      }),
       Schema.makeFilter((value) => Number(value) <= 100 || "At most 100"),
     ),
   ),
@@ -50,7 +55,9 @@ const RunsQuerySchema = Schema.Struct({
  */
 export const createCalculationRoutes = (
   dependencies: {
-    readonly calculationsFor: (env: CloudflareBindings) => Layer.Layer<Calculations>;
+    readonly calculationsFor: (
+      env: CloudflareBindings,
+    ) => Layer.Layer<Calculations>;
     readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
     readonly runWorkflowFor: (env: CloudflareBindings) => RunWorkflow;
   },
@@ -59,42 +66,82 @@ export const createCalculationRoutes = (
   const app = new Hono<Env>();
   app.use("*", auth);
 
-  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, CalculationError | EngineError, Calculations | Engine>) =>
-    runHttp(program, Layer.merge(dependencies.calculationsFor(env), dependencies.engineFor(env)));
+  const run = <A>(
+    env: CloudflareBindings,
+    program: Effect.Effect<
+      A,
+      CalculationError | EngineError,
+      Calculations | Engine
+    >,
+  ) =>
+    runHttp(
+      program,
+      Layer.merge(
+        dependencies.calculationsFor(env),
+        dependencies.engineFor(env),
+      ),
+    );
 
   app.get("/", async (c) => {
-    const calculations = await run(c.env, Calculations.use((store) => store.list()));
+    const calculations = await run(
+      c.env,
+      Calculations.use((store) => store.list()),
+    );
     return c.json({ calculations });
   });
 
   // The engine checks the params; they're saved with defaults filled in.
-  app.post("/", effectValidator("json", CreateCalculationSchema, { onExcessProperty: "error" }), async (c) => {
-    const input = c.req.valid("json");
-    const calculation = await run(c.env, createCalculation(input, crypto.randomUUID(), new Date().toISOString()));
-    return c.json(calculation, 201);
-  });
+  app.post(
+    "/",
+    effectValidator("json", CreateCalculationSchema, {
+      onExcessProperty: "error",
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      const calculation = await run(
+        c.env,
+        createCalculation(input, crypto.randomUUID(), new Date().toISOString()),
+      );
+      return c.json(calculation, 201);
+    },
+  );
 
   app.get("/:id", effectValidator("param", IdParamSchema), async (c) => {
     const { id } = c.req.valid("param");
-    return c.json(await run(c.env, Calculations.use((store) => store.get(id))));
+    return c.json(
+      await run(
+        c.env,
+        Calculations.use((store) => store.get(id)),
+      ),
+    );
   });
 
   // Change the name, params, portfolios, cron or enabled flag. Omitted fields are kept.
   app.patch(
     "/:id",
     effectValidator("param", IdParamSchema),
-    effectValidator("json", UpdateCalculationSchema, { onExcessProperty: "error" }),
+    effectValidator("json", UpdateCalculationSchema, {
+      onExcessProperty: "error",
+    }),
     async (c) => {
       const { id } = c.req.valid("param");
       const patch = c.req.valid("json");
-      return c.json(await run(c.env, updateCalculation(id, patch, new Date().toISOString())));
+      return c.json(
+        await run(
+          c.env,
+          updateCalculation(id, patch, new Date().toISOString()),
+        ),
+      );
     },
   );
 
   // Deletes the calculation and its runs. Its results stay in R2.
   app.delete("/:id", effectValidator("param", IdParamSchema), async (c) => {
     const { id } = c.req.valid("param");
-    await run(c.env, Calculations.use((store) => store.remove(id)));
+    await run(
+      c.env,
+      Calculations.use((store) => store.remove(id)),
+    );
     return c.body(null, 204);
   });
 
@@ -108,7 +155,13 @@ export const createCalculationRoutes = (
       const runs = await run(
         c.env,
         Calculations.use((store) =>
-          store.get(id).pipe(Effect.andThen(store.listRuns(id, limit === undefined ? 20 : Number(limit)))),
+          store
+            .get(id)
+            .pipe(
+              Effect.andThen(
+                store.listRuns(id, limit === undefined ? 20 : Number(limit)),
+              ),
+            ),
         ),
       );
       return c.json({ runs });
@@ -127,18 +180,31 @@ export const createCalculationRoutes = (
       const now = new Date();
       const started = await run(
         c.env,
-        startRun(id, { trigger: "manual", asOf: asOf ?? previousDay(now) }, now, dependencies.runWorkflowFor(c.env)),
+        startRun(
+          id,
+          { trigger: "manual", asOf: asOf ?? previousDay(now) },
+          now,
+          dependencies.runWorkflowFor(c.env),
+        ),
       );
       return c.json(started, 202);
     },
   );
 
-  app.get("/:id/runs/:runId", effectValidator("param", RunParamSchema), async (c) => {
-    const { id, runId } = c.req.valid("param");
-    const found = await run(c.env, Calculations.use((store) => store.getRun(runId)));
-    if (found.calculationId !== id) return c.json({ error: "The run does not exist" }, 404);
-    return c.json(found);
-  });
+  app.get(
+    "/:id/runs/:runId",
+    effectValidator("param", RunParamSchema),
+    async (c) => {
+      const { id, runId } = c.req.valid("param");
+      const found = await run(
+        c.env,
+        Calculations.use((store) => store.getRun(runId)),
+      );
+      if (found.calculationId !== id)
+        return c.json({ error: "The run does not exist" }, 404);
+      return c.json(found);
+    },
+  );
 
   return app;
 };

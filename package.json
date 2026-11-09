@@ -1,35 +1,39 @@
 {
-	"name": "data-service",
-	"type": "module",
-	"scripts": {
-		"dev": "wrangler dev --local-upstream localhost:8787 --var DASHBOARD_LOCAL_BYPASS:true",
-		"deploy": "wrangler deploy --minify",
-		"deploy:dev": "wrangler deploy --minify --env dev",
-		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
-		"db:migrate:local": "wrangler d1 migrations apply data-service-market-data --local",
-		"db:migrate:remote": "wrangler d1 migrations apply data-service-market-data --remote",
-		"db:migrate:dev": "wrangler d1 migrations apply data-service-market-data-dev --remote --env dev",
-		"test": "node --import tsx --test test/*.test.*",
-		"typecheck": "tsc --noEmit",
-		"app:dev": "pnpm --filter app dev",
-		"app:check": "pnpm --filter app check",
-		"docs:dev": "pnpm --filter docs dev",
-		"docs:build": "pnpm --filter docs build",
-		"processor:test": "uv run --directory containers/processor pytest",
-		"processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests",
-		"engine:test": "uv run --directory containers/engine pytest",
-		"engine:lint": "uv run --directory containers/engine ruff check src tests && uv run --directory containers/engine ruff format --check src tests"
-	},
-	"dependencies": {
-		"@cloudflare/containers": "^0.3.7",
-		"effect": "4.0.0-rc.118",
-		"hono": "^4.13.12",
-		"jose": "^6.2.12"
-	},
-	"devDependencies": {
-		"@types/node": "^26.6.3",
-		"tsx": "^4.23.15",
-		"typescript": "^7.0.2",
-		"wrangler": "^4.145.0"
-	}
+  "name": "data-service",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local-upstream localhost:8787 --var DASHBOARD_LOCAL_BYPASS:true",
+    "deploy": "wrangler deploy --minify",
+    "deploy:dev": "wrangler deploy --minify --env dev",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:migrate:local": "wrangler d1 migrations apply data-service-market-data --local",
+    "db:migrate:remote": "wrangler d1 migrations apply data-service-market-data --remote",
+    "db:migrate:dev": "wrangler d1 migrations apply data-service-market-data-dev --remote --env dev",
+    "test": "node --import tsx --test test/*.test.*",
+    "typecheck": "tsc --noEmit",
+    "app:dev": "pnpm --filter app dev",
+    "app:check": "pnpm --filter app check",
+    "docs:dev": "pnpm --filter docs dev",
+    "docs:build": "pnpm --filter docs build",
+    "processor:test": "uv run --directory containers/processor pytest",
+    "processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests",
+    "engine:test": "uv run --directory containers/engine pytest",
+    "engine:lint": "uv run --directory containers/engine ruff check src tests && uv run --directory containers/engine ruff format --check src tests",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "effect": "4.0.0-rc.118",
+    "hono": "^4.13.12",
+    "jose": "^6.2.12"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.145.0"
+  }
 }

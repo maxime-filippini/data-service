@@ -5,7 +5,11 @@ import {
   MarketDataControlPlane,
   type ProcessingManifest,
 } from "$/market-data/control-plane";
-import { canonicalKey, type Dataset, type Provider } from "$/market-data/schemas";
+import {
+  canonicalKey,
+  type Dataset,
+  type Provider,
+} from "$/market-data/schemas";
 
 /**
  * Private joined result after a job claim, combining its pinned ingestion
@@ -91,7 +95,12 @@ export const D1MarketDataControlPlaneLive = (
                    SET status = 'failed', completed_at = ?, error = 'Timed out while fetching'
                    WHERE dataset = ? AND symbol = ? AND status = 'fetching' AND created_at < ?`,
                 )
-                .bind(input.createdAt, input.dataset, input.symbol, input.staleBefore),
+                .bind(
+                  input.createdAt,
+                  input.dataset,
+                  input.symbol,
+                  input.staleBefore,
+                ),
               db
                 .prepare(
                   `INSERT INTO ingestion_runs (run_id, dataset, symbol, provider,
@@ -164,7 +173,11 @@ export const D1MarketDataControlPlaneLive = (
 
       createJobForRun: (runId, createdAt) =>
         query(
-          () => db.prepare(CREATE_JOB_FOR_RUN).bind(createdAt, runId).first<{ job_id: string }>(),
+          () =>
+            db
+              .prepare(CREATE_JOB_FOR_RUN)
+              .bind(createdAt, runId)
+              .first<{ job_id: string }>(),
           "Could not create the processing job",
           { runId },
         ).pipe(Effect.map((row) => row?.job_id)),
@@ -187,7 +200,9 @@ export const D1MarketDataControlPlaneLive = (
         query(
           () =>
             db
-              .prepare(`SELECT job_id FROM processing_jobs WHERE status = 'queued' ORDER BY job_id`)
+              .prepare(
+                `SELECT job_id FROM processing_jobs WHERE status = 'queued' ORDER BY job_id`,
+              )
               .all<{ job_id: string }>(),
           "Could not list queued processing jobs",
         ).pipe(Effect.map((result) => result.results.map((row) => row.job_id))),
@@ -218,7 +233,9 @@ export const D1MarketDataControlPlaneLive = (
         ).pipe(
           Effect.map(([update, select]) => {
             const row = select.results[0];
-            return update.meta.changes === 1 && row !== undefined ? toManifest(row) : undefined;
+            return update.meta.changes === 1 && row !== undefined
+              ? toManifest(row)
+              : undefined;
           }),
         ),
 

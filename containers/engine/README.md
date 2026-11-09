@@ -53,6 +53,7 @@ TYPE = CalculationType(
 
   A portfolio with no snapshot on or before the as-of date fails before the
   type runs.
+
 - `ctx.load(dataset, symbols, start, end)` returns the dataset's rows with a
   `symbol` column. It never returns rows after `ctx.as_of`.
 - Raise `CalculationError` for expected failures, like missing data. Its
@@ -66,13 +67,13 @@ Two types with the same name stop the engine from starting.
 The container is reachable only through the Worker, so there is no
 authentication.
 
-| Endpoint | Does |
-| --- | --- |
-| `GET /health` | Liveness probe. |
-| `GET /types` | Each type's name, description, `takesPortfolio`, params JSON Schema and output columns. |
+| Endpoint                     | Does                                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET /health`                | Liveness probe.                                                                               |
+| `GET /types`                 | Each type's name, description, `takesPortfolio`, params JSON Schema and output columns.       |
 | `POST /types/:name/validate` | `{"params": {…}}` → `200 {"params": …}` with defaults filled in, `422` with errors, or `404`. |
-| `POST /runs` | Runs a saved calculation for one as-of date and writes its rows to R2. |
-| `POST /calculate` | Runs an ad hoc calculation and returns its rows. Writes nothing. |
+| `POST /runs`                 | Runs a saved calculation for one as-of date and writes its rows to R2.                        |
+| `POST /calculate`            | Runs an ad hoc calculation and returns its rows. Writes nothing.                              |
 
 ### Runs
 
@@ -87,7 +88,10 @@ authentication.
       "id": "…",
       "name": "Core",
       "snapshots": [
-        { "holdingsDate": "2026-09-30", "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }] }
+        {
+          "holdingsDate": "2026-09-30",
+          "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }]
+        }
       ]
     }
   ],
@@ -103,7 +107,12 @@ A well-formed request always gets `200`, with what happened:
   "error": null,
   "portfolios": [
     { "portfolioId": "…", "status": "completed", "rowCount": 1, "error": null },
-    { "portfolioId": "…", "status": "failed", "rowCount": 0, "error": "No prices_eod data for X.US" }
+    {
+      "portfolioId": "…",
+      "status": "failed",
+      "rowCount": 0,
+      "error": "No prices_eod data for X.US"
+    }
   ],
   "rowCount": 1,
   "outputEtag": "…"
@@ -148,12 +157,12 @@ portfolio without an `id` or with an undated snapshot.
 
 Set these variables in the environment or a local `.env` file:
 
-| Variable | Purpose |
-| --- | --- |
-| `R2_ENDPOINT_URL` | `https://<account-id>.r2.cloudflarestorage.com` |
-| `R2_ACCESS_KEY_ID` | R2 S3 access key |
-| `R2_SECRET_ACCESS_KEY` | R2 S3 secret key |
-| `PROCESSED_BUCKET` | Bucket holding datasets and results, e.g. `processed-market-data` |
+| Variable               | Purpose                                                           |
+| ---------------------- | ----------------------------------------------------------------- |
+| `R2_ENDPOINT_URL`      | `https://<account-id>.r2.cloudflarestorage.com`                   |
+| `R2_ACCESS_KEY_ID`     | R2 S3 access key                                                  |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 secret key                                                  |
+| `PROCESSED_BUCKET`     | Bucket holding datasets and results, e.g. `processed-market-data` |
 
 The bucket has no default, so a misconfigured deployment fails instead of
 touching production data. The credentials need read and write access to it.

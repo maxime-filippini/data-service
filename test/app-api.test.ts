@@ -22,10 +22,19 @@ const AUD = "dashboard-aud";
 const ME = "me@example.com";
 
 const { publicKey, privateKey } = await generateKeyPair("RS256");
-const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), kid: "key-1", alg: "RS256" }] });
+const keys = createLocalJWKSet({
+  keys: [{ ...(await exportJWK(publicKey)), kid: "key-1", alg: "RS256" }],
+});
 
-const signToken = (claims: { email?: string; aud?: string; iss?: string } = {}, key = privateKey) =>
-  new SignJWT(claims.email === undefined && "email" in claims ? {} : { email: claims.email ?? ME })
+const signToken = (
+  claims: { email?: string; aud?: string; iss?: string } = {},
+  key = privateKey,
+) =>
+  new SignJWT(
+    claims.email === undefined && "email" in claims
+      ? {}
+      : { email: claims.email ?? ME },
+  )
     .setProtectedHeader({ alg: "RS256", kid: "key-1" })
     .setIssuer(claims.iss ?? TEAM)
     .setAudience(claims.aud ?? AUD)
@@ -71,7 +80,9 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
   const env = {
     ...baseEnv,
     INGESTION_QUEUE: {
-      sendBatch: async (batch: Iterable<MessageSendRequest<IngestionMessage>>) => {
+      sendBatch: async (
+        batch: Iterable<MessageSendRequest<IngestionMessage>>,
+      ) => {
         queued.push(...[...batch].map((message) => message.body));
       },
     },
@@ -85,14 +96,23 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
   ) =>
     app.request(
       `${host}${path}`,
-      { headers: token === undefined ? headers : { ...headers, "Cf-Access-Jwt-Assertion": token } },
+      {
+        headers:
+          token === undefined
+            ? headers
+            : { ...headers, "Cf-Access-Jwt-Assertion": token },
+      },
       env,
     );
   /** A change sent from the app's own page. */
   const send = async (
     method: string,
     path: string,
-    { body, token, headers = { Origin: "https://data-service.example.workers.dev" } }: {
+    {
+      body,
+      token,
+      headers = { Origin: "https://data-service.example.workers.dev" },
+    }: {
       body?: unknown;
       token?: string;
       headers?: Record<string, string>;
@@ -116,7 +136,13 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
 
 const insertRun = (
   sqlite: ReturnType<typeof makeTestDatabase>["sqlite"],
-  run: { id: string; symbol?: string; status?: string; createdAt: string; error?: string },
+  run: {
+    id: string;
+    symbol?: string;
+    status?: string;
+    createdAt: string;
+    error?: string;
+  },
 ) => {
   const status = run.status ?? "completed";
   const completed = status === "completed";
@@ -143,17 +169,35 @@ const insertRun = (
 
 const insertJob = (
   sqlite: ReturnType<typeof makeTestDatabase>["sqlite"],
-  job: { id: string; runId: string; symbol?: string; status: string; createdAt: string; error?: string },
+  job: {
+    id: string;
+    runId: string;
+    symbol?: string;
+    status: string;
+    createdAt: string;
+    error?: string;
+  },
 ) => {
   sqlite
     .prepare(
       `INSERT INTO processing_jobs (job_id, dataset, symbol, run_id, status, created_at, error)
        VALUES (?, 'prices_eod', ?, ?, ?, ?, ?)`,
     )
-    .run(job.id, job.symbol ?? "AAPL.US", job.runId, job.status, job.createdAt, job.error ?? null);
+    .run(
+      job.id,
+      job.symbol ?? "AAPL.US",
+      job.runId,
+      job.status,
+      job.createdAt,
+      job.error ?? null,
+    );
 };
 
-const insertSymbol = (sqlite: ReturnType<typeof makeTestDatabase>["sqlite"], symbol: string, enabled = 1) => {
+const insertSymbol = (
+  sqlite: ReturnType<typeof makeTestDatabase>["sqlite"],
+  symbol: string,
+  enabled = 1,
+) => {
   sqlite
     .prepare(
       `INSERT INTO tracked_symbols VALUES ('prices_eod', ?, 'eodhd', ?, '2016-01-01',
@@ -183,20 +227,36 @@ test("requests without a valid Access token for an allowlisted email are refused
     ["garbage", "not-a-jwt", 401],
     ["wrong signing key", await signToken({}, otherKey), 401],
     ["wrong audience", await signToken({ aud: "another-app" }), 401],
-    ["wrong issuer", await signToken({ iss: "https://evil.cloudflareaccess.com" }), 401],
-    ["email not allowlisted", await signToken({ email: "stranger@example.com" }), 403],
+    [
+      "wrong issuer",
+      await signToken({ iss: "https://evil.cloudflareaccess.com" }),
+      401,
+    ],
+    [
+      "email not allowlisted",
+      await signToken({ email: "stranger@example.com" }),
+      403,
+    ],
     ["service token (no email)", await signToken({ email: undefined }), 403],
   ];
   for (const [name, token, status] of cases) {
     for (const path of ["/app-api/me", "/app-api/runs"]) {
-      assert.equal((await request(path, token)).status, status, `${name} ${path}`);
+      assert.equal(
+        (await request(path, token)).status,
+        status,
+        `${name} ${path}`,
+      );
     }
   }
 });
 
 test("missing Access settings close the API", async () => {
   const token = await signToken();
-  for (const missing of ["ACCESS_TEAM_DOMAIN", "ACCESS_AUD", "DASHBOARD_ALLOWED_EMAILS"]) {
+  for (const missing of [
+    "ACCESS_TEAM_DOMAIN",
+    "ACCESS_AUD",
+    "DASHBOARD_ALLOWED_EMAILS",
+  ]) {
     const { request } = setup({ [missing]: "" });
     assert.equal((await request("/app-api/me", token)).status, 503, missing);
   }
@@ -211,8 +271,15 @@ test("the team domain can be given without a scheme or with a trailing slash", a
 });
 
 test("the local bypass only works on localhost", async () => {
-  const { request } = setup({ DASHBOARD_LOCAL_BYPASS: "true", ACCESS_TEAM_DOMAIN: "" });
-  const local = await request("/app-api/me", undefined, "http://localhost:8787");
+  const { request } = setup({
+    DASHBOARD_LOCAL_BYPASS: "true",
+    ACCESS_TEAM_DOMAIN: "",
+  });
+  const local = await request(
+    "/app-api/me",
+    undefined,
+    "http://localhost:8787",
+  );
   assert.equal(local.status, 200);
   assert.deepEqual(await local.json(), { email: "local@localhost" });
   assert.equal((await request("/app-api/me")).status, 503);
@@ -222,11 +289,34 @@ test("runs are listed newest first with their latest job, and page with a cursor
   const { sqlite, request } = setup();
   const token = await signToken();
   insertRun(sqlite, { id: "r1", createdAt: "2026-10-01T02:00:00.000Z" });
-  insertRun(sqlite, { id: "r2", createdAt: "2026-10-02T02:00:00.000Z", status: "failed", error: "Provider said no" });
-  insertRun(sqlite, { id: "r3", createdAt: "2026-10-03T02:00:00.000Z", symbol: "MSFT.US" });
-  insertRun(sqlite, { id: "r4", createdAt: "2026-10-03T02:00:00.000Z", status: "fetching" });
-  insertJob(sqlite, { id: "j1", runId: "r1", status: "failed", createdAt: "2026-10-01T03:00:00.000Z" });
-  insertJob(sqlite, { id: "j2", runId: "r1", status: "completed", createdAt: "2026-10-01T04:00:00.000Z" });
+  insertRun(sqlite, {
+    id: "r2",
+    createdAt: "2026-10-02T02:00:00.000Z",
+    status: "failed",
+    error: "Provider said no",
+  });
+  insertRun(sqlite, {
+    id: "r3",
+    createdAt: "2026-10-03T02:00:00.000Z",
+    symbol: "MSFT.US",
+  });
+  insertRun(sqlite, {
+    id: "r4",
+    createdAt: "2026-10-03T02:00:00.000Z",
+    status: "fetching",
+  });
+  insertJob(sqlite, {
+    id: "j1",
+    runId: "r1",
+    status: "failed",
+    createdAt: "2026-10-01T03:00:00.000Z",
+  });
+  insertJob(sqlite, {
+    id: "j2",
+    runId: "r1",
+    status: "completed",
+    createdAt: "2026-10-01T04:00:00.000Z",
+  });
 
   const list = async (query: string) => {
     const response = await request(`/app-api/runs${query}`, token);
@@ -235,7 +325,10 @@ test("runs are listed newest first with their latest job, and page with a cursor
   };
 
   const all = await list("");
-  assert.deepEqual(all.runs.map((run) => run.runId), ["r4", "r3", "r2", "r1"]);
+  assert.deepEqual(
+    all.runs.map((run) => run.runId),
+    ["r4", "r3", "r2", "r1"],
+  );
   assert.equal(all.nextCursor, null);
   assert.equal(all.runs[2]!.error, "Provider said no");
   assert.equal(all.runs[3]!.job?.jobId, "j2");
@@ -243,18 +336,48 @@ test("runs are listed newest first with their latest job, and page with a cursor
   assert.equal(all.runs[0]!.job, null);
 
   const first = await list("?limit=2");
-  assert.deepEqual(first.runs.map((run) => run.runId), ["r4", "r3"]);
+  assert.deepEqual(
+    first.runs.map((run) => run.runId),
+    ["r4", "r3"],
+  );
   assert.ok(first.nextCursor);
-  const second = await list(`?limit=2&cursor=${encodeURIComponent(first.nextCursor)}`);
-  assert.deepEqual(second.runs.map((run) => run.runId), ["r2", "r1"]);
+  const second = await list(
+    `?limit=2&cursor=${encodeURIComponent(first.nextCursor)}`,
+  );
+  assert.deepEqual(
+    second.runs.map((run) => run.runId),
+    ["r2", "r1"],
+  );
   assert.equal(second.nextCursor, null);
 
-  assert.deepEqual((await list("?symbol=MSFT.US")).runs.map((run) => run.runId), ["r3"]);
-  assert.deepEqual((await list("?status=failed")).runs.map((run) => run.runId), ["r2"]);
-  assert.deepEqual((await list("?symbol=AAPL.US&status=completed")).runs.map((run) => run.runId), ["r1"]);
+  assert.deepEqual(
+    (await list("?symbol=MSFT.US")).runs.map((run) => run.runId),
+    ["r3"],
+  );
+  assert.deepEqual(
+    (await list("?status=failed")).runs.map((run) => run.runId),
+    ["r2"],
+  );
+  assert.deepEqual(
+    (await list("?symbol=AAPL.US&status=completed")).runs.map(
+      (run) => run.runId,
+    ),
+    ["r1"],
+  );
 
-  for (const query of ["?limit=0", "?limit=201", "?status=queued", "?symbol=aapl", "?cursor=nope", "?extra=1"]) {
-    assert.equal((await request(`/app-api/runs${query}`, token)).status, 400, query);
+  for (const query of [
+    "?limit=0",
+    "?limit=201",
+    "?status=queued",
+    "?symbol=aapl",
+    "?cursor=nope",
+    "?extra=1",
+  ]) {
+    assert.equal(
+      (await request(`/app-api/runs${query}`, token)).status,
+      400,
+      query,
+    );
   }
 });
 
@@ -264,11 +387,26 @@ test("symbols show their latest download, last success and latest rebuild", asyn
   insertSymbol(sqlite, "AAPL.US");
   insertSymbol(sqlite, "MSFT.US", 0);
   insertRun(sqlite, { id: "r1", createdAt: "2026-10-01T02:00:00.000Z" });
-  insertRun(sqlite, { id: "r2", createdAt: "2026-10-02T02:00:00.000Z", status: "failed", error: "Timed out" });
-  insertJob(sqlite, { id: "j1", runId: "r1", status: "failed", createdAt: "2026-10-01T03:00:00.000Z", error: "Bad" });
+  insertRun(sqlite, {
+    id: "r2",
+    createdAt: "2026-10-02T02:00:00.000Z",
+    status: "failed",
+    error: "Timed out",
+  });
+  insertJob(sqlite, {
+    id: "j1",
+    runId: "r1",
+    status: "failed",
+    createdAt: "2026-10-01T03:00:00.000Z",
+    error: "Bad",
+  });
 
   const list = async (query = "") =>
-    ((await (await request(`/app-api/symbols${query}`, token)).json()) as { symbols: SymbolStatusView[] }).symbols;
+    (
+      (await (await request(`/app-api/symbols${query}`, token)).json()) as {
+        symbols: SymbolStatusView[];
+      }
+    ).symbols;
 
   const [aapl, msft] = await list();
   assert.equal(aapl!.symbol, "AAPL.US");
@@ -293,11 +431,19 @@ test("symbols show their latest download, last success and latest rebuild", asyn
   assert.equal(msft!.lastCompletedRun, null);
   assert.equal(msft!.latestJob, null);
 
-  assert.deepEqual((await list("?enabled=true")).map((s) => s.symbol), ["AAPL.US"]);
-  assert.equal((await request("/app-api/symbols?enabled=yes", token)).status, 400);
+  assert.deepEqual(
+    (await list("?enabled=true")).map((s) => s.symbol),
+    ["AAPL.US"],
+  );
+  assert.equal(
+    (await request("/app-api/symbols?enabled=yes", token)).status,
+    400,
+  );
 });
 
-const fakeBucket = (objects: Record<string, { bytes: Uint8Array; etag: string }>) => {
+const fakeBucket = (
+  objects: Record<string, { bytes: Uint8Array; etag: string }>,
+) => {
   const gets: { key: string; onlyIf?: R2Conditional }[] = [];
   const bucket = {
     gets,
@@ -321,21 +467,31 @@ const fakeBucket = (objects: Record<string, { bytes: Uint8Array; etag: string }>
 
 test("the dataset explorer streams a symbol's Parquet file and revalidates it by ETag", async () => {
   const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
-  const bucket = fakeBucket({ "dataset=prices_eod/symbol=AAPL.US/data.parquet": { bytes, etag: "abc123" } });
+  const bucket = fakeBucket({
+    "dataset=prices_eod/symbol=AAPL.US/data.parquet": { bytes, etag: "abc123" },
+  });
   const { request } = setup({ PROCESSED_MARKET_DATA_BUCKET: bucket });
   const token = await signToken();
 
   const file = await request("/app-api/datasets/prices_eod/AAPL.US", token);
   assert.equal(file.status, 200);
   assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
-  assert.equal(file.headers.get("Content-Type"), "application/vnd.apache.parquet");
+  assert.equal(
+    file.headers.get("Content-Type"),
+    "application/vnd.apache.parquet",
+  );
   assert.equal(file.headers.get("ETag"), '"abc123"');
   assert.equal(file.headers.get("Cache-Control"), "private, no-cache");
 
   for (const ifNoneMatch of ['"abc123"', 'W/"abc123"']) {
-    const cached = await request("/app-api/datasets/prices_eod/AAPL.US", token, undefined, {
-      "If-None-Match": ifNoneMatch,
-    });
+    const cached = await request(
+      "/app-api/datasets/prices_eod/AAPL.US",
+      token,
+      undefined,
+      {
+        "If-None-Match": ifNoneMatch,
+      },
+    );
     assert.equal(cached.status, 304, ifNoneMatch);
     assert.equal(cached.headers.get("ETag"), '"abc123"');
   }
@@ -345,49 +501,92 @@ test("the dataset explorer streams a symbol's Parquet file and revalidates it by
   assert.equal(missing.status, 404);
   assert.equal(missing.headers.get("Cache-Control"), "no-store");
 
-  for (const path of ["/app-api/datasets/fred_rates/AAPL.US", "/app-api/datasets/prices_eod/aapl.us"]) {
+  for (const path of [
+    "/app-api/datasets/fred_rates/AAPL.US",
+    "/app-api/datasets/prices_eod/aapl.us",
+  ]) {
     assert.equal((await request(path, token)).status, 400, path);
   }
-  assert.equal((await request("/app-api/datasets/prices_eod/AAPL.US")).status, 401);
+  assert.equal(
+    (await request("/app-api/datasets/prices_eod/AAPL.US")).status,
+    401,
+  );
   assert.equal(bucket.gets.length, 4);
 });
 
 test("the explorer streams a calculation's results file", async () => {
   const id = "7b0f9a52-4c1e-4f7a-9d55-0d6a1c3e2b10";
   const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31]);
-  const bucket = fakeBucket({ [`calculation=${id}/data.parquet`]: { bytes, etag: "def456" } });
+  const bucket = fakeBucket({
+    [`calculation=${id}/data.parquet`]: { bytes, etag: "def456" },
+  });
   const { request } = setup({ PROCESSED_MARKET_DATA_BUCKET: bucket });
   const token = await signToken();
 
   const file = await request(`/app-api/calculations/${id}/results`, token);
   assert.equal(file.status, 200);
   assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
-  assert.equal(file.headers.get("Content-Type"), "application/vnd.apache.parquet");
+  assert.equal(
+    file.headers.get("Content-Type"),
+    "application/vnd.apache.parquet",
+  );
   assert.equal(file.headers.get("ETag"), '"def456"');
 
-  const cached = await request(`/app-api/calculations/${id}/results`, token, undefined, { "If-None-Match": '"def456"' });
+  const cached = await request(
+    `/app-api/calculations/${id}/results`,
+    token,
+    undefined,
+    { "If-None-Match": '"def456"' },
+  );
   assert.equal(cached.status, 304);
 
-  const missing = await request("/app-api/calculations/0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b/results", token);
+  const missing = await request(
+    "/app-api/calculations/0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b/results",
+    token,
+  );
   assert.equal(missing.status, 404);
-  assert.deepEqual(await missing.json(), { error: "This calculation has no results yet" });
+  assert.deepEqual(await missing.json(), {
+    error: "This calculation has no results yet",
+  });
 
-  assert.equal((await request("/app-api/calculations/not-a-uuid/results", token)).status, 400);
-  assert.equal((await request(`/app-api/calculations/${id}/results`)).status, 401);
+  assert.equal(
+    (await request("/app-api/calculations/not-a-uuid/results", token)).status,
+    400,
+  );
+  assert.equal(
+    (await request(`/app-api/calculations/${id}/results`)).status,
+    401,
+  );
 });
 
 test("the app edits the registry, starts downloads and runs the schedule", async () => {
   const { send, workflowRuns, queued } = setup();
   const token = await signToken();
-  const aapl = { dataset: "prices_eod", symbol: "AAPL.US", provider: "eodhd", backfillStartDate: "2016-01-01" };
+  const aapl = {
+    dataset: "prices_eod",
+    symbol: "AAPL.US",
+    provider: "eodhd",
+    backfillStartDate: "2016-01-01",
+  };
 
   const options = await send("GET", "/app-api/options", { token });
-  assert.deepEqual(await options.json(), { datasetProviders: { prices_eod: ["eodhd"] } });
+  assert.deepEqual(await options.json(), {
+    datasetProviders: { prices_eod: ["eodhd"] },
+  });
 
-  assert.equal((await send("POST", "/app-api/registry", { token, body: aapl })).status, 201);
-  const off = await send("POST", "/app-api/registry/prices_eod/AAPL.US/disable", { token });
+  assert.equal(
+    (await send("POST", "/app-api/registry", { token, body: aapl })).status,
+    201,
+  );
+  const off = await send(
+    "POST",
+    "/app-api/registry/prices_eod/AAPL.US/disable",
+    { token },
+  );
   assert.equal(((await off.json()) as { enabled: boolean }).enabled, false);
-  const on = await send("POST", "/app-api/registry/prices_eod/AAPL.US/enable", { token });
+  const on = await send("POST", "/app-api/registry/prices_eod/AAPL.US/enable", {
+    token,
+  });
   assert.equal(((await on.json()) as { enabled: boolean }).enabled, true);
 
   const download = await send("POST", "/app-api/ingestions", {
@@ -397,12 +596,20 @@ test("the app edits the registry, starts downloads and runs the schedule", async
   assert.equal(download.status, 202);
   assert.equal(queued[0]?.symbol, "AAPL.US");
 
-  const schedule = await send("PATCH", "/app-api/schedule", { token, body: { paused: false, hourUtc: 7 } });
+  const schedule = await send("PATCH", "/app-api/schedule", {
+    token,
+    body: { paused: false, hourUtc: 7 },
+  });
   assert.equal(schedule.status, 200);
   assert.equal(((await schedule.json()) as { hourUtc: number }).hourUtc, 7);
-  assert.equal((await send("POST", "/app-api/schedule/runs", { token })).status, 202);
+  assert.equal(
+    (await send("POST", "/app-api/schedule/runs", { token })).status,
+    202,
+  );
   assert.equal(workflowRuns.length, 1);
-  const runs = (await (await send("GET", "/app-api/schedule/runs", { token })).json()) as { runs: unknown[] };
+  const runs = (await (
+    await send("GET", "/app-api/schedule/runs", { token })
+  ).json()) as { runs: unknown[] };
   assert.equal(runs.runs.length, 1);
 });
 
@@ -415,12 +622,24 @@ test("changes need Access and must come from the app's own pages", async () => {
     ["no Origin", {}, 403],
     ["another site", { Origin: "https://evil.example" }, 403],
     ["another site, fetch metadata", { "Sec-Fetch-Site": "cross-site" }, 403],
-    ["same origin, fetch metadata only", { "Sec-Fetch-Site": "same-origin" }, 202],
+    [
+      "same origin, fetch metadata only",
+      { "Sec-Fetch-Site": "same-origin" },
+      202,
+    ],
   ];
   for (const [name, headers, status] of cases) {
-    assert.equal((await send("POST", "/app-api/schedule/runs", { token, headers })).status, status, name);
+    assert.equal(
+      (await send("POST", "/app-api/schedule/runs", { token, headers })).status,
+      status,
+      name,
+    );
   }
-  assert.equal((await send("GET", "/app-api/schedule", { token, headers: {} })).status, 200, "reads need no Origin");
+  assert.equal(
+    (await send("GET", "/app-api/schedule", { token, headers: {} })).status,
+    200,
+    "reads need no Origin",
+  );
 });
 
 test("the app lists calculation types and runs ad hoc calculations", async () => {
@@ -432,13 +651,26 @@ test("the app lists calculation types and runs ad hoc calculations", async () =>
   assert.equal(types.status, 200);
   assert.deepEqual(await types.json(), { types: [exAnteVol] });
 
-  const body = { type: "ex_ante_vol", asOf: "2026-10-16", portfolio: { holdings: [{ symbol: "AAPL.US", weight: 1 }] } };
-  assert.equal((await send("POST", "/app-api/calculate", { body })).status, 401);
-  assert.equal((await send("POST", "/app-api/calculate", { body, token, headers: {} })).status, 403);
+  const body = {
+    type: "ex_ante_vol",
+    asOf: "2026-10-16",
+    portfolio: { holdings: [{ symbol: "AAPL.US", weight: 1 }] },
+  };
+  assert.equal(
+    (await send("POST", "/app-api/calculate", { body })).status,
+    401,
+  );
+  assert.equal(
+    (await send("POST", "/app-api/calculate", { body, token, headers: {} }))
+      .status,
+    403,
+  );
   const result = await send("POST", "/app-api/calculate", { body, token });
   assert.equal(result.status, 200);
   assert.equal(result.headers.get("Cache-Control"), "no-store");
-  assert.deepEqual(await result.json(), { rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }] });
+  assert.deepEqual(await result.json(), {
+    rows: [{ as_of: "2026-10-16", portfolio_id: null, value: 0.2 }],
+  });
 });
 
 test("the app serves the calculation routes", async () => {

@@ -4,7 +4,11 @@
 
 import type { Calculation, CalculationRun } from "../calculations/views";
 import type { ScheduleRun, ScheduleView } from "../market-data/schedule/views";
-import type { IngestionRunView, RunPage, SymbolStatusView } from "../market-data/status/views";
+import type {
+  IngestionRunView,
+  RunPage,
+  SymbolStatusView,
+} from "../market-data/status/views";
 import type { Portfolio, PortfolioSummary } from "../portfolios/views";
 
 /**
@@ -73,10 +77,15 @@ export interface HomeData {
  */
 export interface PageData {
   /** The first page of ingestion runs, filtered by symbol and status. Unknown statuses are ignored. */
-  readonly runs: (filter: { readonly symbol?: string; readonly status?: string }) => Promise<RunPage>;
+  readonly runs: (filter: {
+    readonly symbol?: string;
+    readonly status?: string;
+  }) => Promise<RunPage>;
   readonly symbols: () => Promise<readonly SymbolStatusView[]>;
   /** The registry form's choices: the providers each dataset can use. */
-  readonly options: () => { readonly datasetProviders: Readonly<Record<string, readonly string[]>> };
+  readonly options: () => {
+    readonly datasetProviders: Readonly<Record<string, readonly string[]>>;
+  };
   readonly schedule: () => Promise<ScheduleView>;
   /** The schedule's latest runs, newest first. */
   readonly scheduleRuns: (limit?: number) => Promise<readonly ScheduleRun[]>;
@@ -88,6 +97,9 @@ export interface PageData {
   readonly calculation: (
     id: string,
     runLimit?: number,
-  ) => Promise<{ readonly calculation: Calculation; readonly runs: readonly CalculationRun[] }>;
+  ) => Promise<{
+    readonly calculation: Calculation;
+    readonly runs: readonly CalculationRun[];
+  }>;
   readonly home: () => Promise<HomeData>;
 }

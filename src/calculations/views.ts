@@ -43,7 +43,8 @@ export type RunTrigger = "schedule" | "manual";
  * Persisted execution state: `partial` wrote results for only some portfolios;
  * `skipped` records a request that did not execute because another run was active.
  */
-export type CalculationRunStatus = "running" | "completed" | "partial" | "failed" | "skipped";
+export type CalculationRunStatus =
+  "running" | "completed" | "partial" | "failed" | "skipped";
 
 /**
  * Read model of one saved calculation execution, returned in history/detail

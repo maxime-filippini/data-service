@@ -40,7 +40,9 @@ export class PipelineStatus extends Context.Service<
   PipelineStatus,
   {
     /** Runs, newest first. */
-    readonly listRuns: (filter: RunFilter) => Effect.Effect<RunPage, PipelineStatusError>;
+    readonly listRuns: (
+      filter: RunFilter,
+    ) => Effect.Effect<RunPage, PipelineStatusError>;
     readonly listSymbols: (filter: {
       readonly dataset?: Dataset;
       readonly enabled?: boolean;
@@ -51,11 +53,14 @@ export class PipelineStatus extends Context.Service<
 const CURSOR_SEPARATOR = "_";
 
 /** A run's position in the newest-first order. */
-export const encodeCursor = (createdAt: string, runId: string) => `${createdAt}${CURSOR_SEPARATOR}${runId}`;
+export const encodeCursor = (createdAt: string, runId: string) =>
+  `${createdAt}${CURSOR_SEPARATOR}${runId}`;
 
 export const decodeCursor = (cursor: string) => {
   const index = cursor.lastIndexOf(CURSOR_SEPARATOR);
-  return index <= 0 ? undefined : { createdAt: cursor.slice(0, index), runId: cursor.slice(index + 1) };
+  return index <= 0
+    ? undefined
+    : { createdAt: cursor.slice(0, index), runId: cursor.slice(index + 1) };
 };
 
 /**
@@ -64,5 +69,7 @@ export const decodeCursor = (cursor: string) => {
  * from timestamps or use it as a database identifier.
  */
 export const CursorSchema = Schema.String.check(
-  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z_[A-Za-z0-9-]{1,64}$/u, { message: "Invalid cursor" }),
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z_[A-Za-z0-9-]{1,64}$/u, {
+    message: "Invalid cursor",
+  }),
 );

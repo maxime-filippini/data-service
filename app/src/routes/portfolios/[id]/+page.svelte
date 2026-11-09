@@ -17,6 +17,7 @@
   <PortfolioDetail
     portfolio={data.portfolio}
     symbols={data.symbols}
-    ondeleted={(deleted) => goto(href("portfolios"), { state: { message: `Deleted ${deleted}.` } })}
+    ondeleted={(deleted) =>
+      goto(href("portfolios"), { state: { message: `Deleted ${deleted}.` } })}
   />
 {/key}

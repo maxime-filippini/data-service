@@ -93,7 +93,11 @@ export class MarketDataControlPlane extends Context.Service<
     /** Record a new `fetching` run; false if the symbol already has one in progress. */
     readonly startIngestionRun: (input: StartIngestionRun) => Op<boolean>;
     readonly completeIngestionRun: (input: CompleteIngestionRun) => Op;
-    readonly failIngestionRun: (runId: string, message: string, at: string) => Op;
+    readonly failIngestionRun: (
+      runId: string,
+      message: string,
+      at: string,
+    ) => Op;
 
     /** Queue a job for every symbol whose latest completed run has never been processed. */
     readonly createPendingJobs: (createdAt: string) => Op<number>;
@@ -101,13 +105,19 @@ export class MarketDataControlPlane extends Context.Service<
      * Queue a job for one run if it is still the symbol's latest completed run
      * and the symbol has no active job. Returns the new job ID, if any.
      */
-    readonly createJobForRun: (runId: string, createdAt: string) => Op<string | undefined>;
+    readonly createJobForRun: (
+      runId: string,
+      createdAt: string,
+    ) => Op<string | undefined>;
     /** Fail jobs stuck in `processing` since before the cutoff, releasing their lock. */
     readonly failStaleJobs: (startedBefore: string, at: string) => Op<number>;
     readonly listQueuedJobIds: () => Op<readonly string[]>;
 
     /** Atomically move a queued job to `processing`; undefined if it was not queued. */
-    readonly claimJob: (jobId: string, startedAt: string) => Op<ProcessingManifest | undefined>;
+    readonly claimJob: (
+      jobId: string,
+      startedAt: string,
+    ) => Op<ProcessingManifest | undefined>;
     readonly completeJob: (jobId: string, outputEtag: string, at: string) => Op;
     readonly failJob: (jobId: string, message: string, at: string) => Op;
     /** Return a claimed job to the queue after a delivery failure. */

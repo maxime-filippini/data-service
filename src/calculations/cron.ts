@@ -32,20 +32,41 @@ const MONTH: Field = {
   name: "month",
   min: 1,
   max: 12,
-  names: ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"],
+  names: [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ],
 };
 // 7 is accepted as Sunday and folded into 0 below.
-const DAY_OF_WEEK: Field = { name: "day of week", min: 0, max: 7, names: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] };
+const DAY_OF_WEEK: Field = {
+  name: "day of week",
+  min: 0,
+  max: 7,
+  names: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"],
+};
 
 class CronSyntaxError extends Error {}
 
 const valueOf = (text: string, field: Field) => {
   const index = field.names?.indexOf(text.toUpperCase()) ?? -1;
   if (index >= 0) return index + field.min;
-  if (!/^\d+$/u.test(text)) throw new CronSyntaxError(`Invalid ${field.name} "${text}"`);
+  if (!/^\d+$/u.test(text))
+    throw new CronSyntaxError(`Invalid ${field.name} "${text}"`);
   const value = Number(text);
   if (value < field.min || value > field.max) {
-    throw new CronSyntaxError(`The ${field.name} must be between ${field.min} and ${field.max}, not ${value}`);
+    throw new CronSyntaxError(
+      `The ${field.name} must be between ${field.min} and ${field.max}, not ${value}`,
+    );
   }
   return value;
 };
@@ -54,7 +75,8 @@ const parseField = (text: string, field: Field) => {
   const values = new Set<number>();
   for (const part of text.split(",")) {
     const [range = "", step, ...rest] = part.split("/");
-    if (rest.length > 0 || range === "") throw new CronSyntaxError(`Invalid ${field.name} "${part}"`);
+    if (rest.length > 0 || range === "")
+      throw new CronSyntaxError(`Invalid ${field.name} "${part}"`);
 
     let start: number;
     let end: number;
@@ -62,9 +84,13 @@ const parseField = (text: string, field: Field) => {
       [start, end] = [field.min, field.max];
     } else if (range.includes("-")) {
       const [from = "", to = "", ...more] = range.split("-");
-      if (more.length > 0) throw new CronSyntaxError(`Invalid ${field.name} "${part}"`);
+      if (more.length > 0)
+        throw new CronSyntaxError(`Invalid ${field.name} "${part}"`);
       [start, end] = [valueOf(from, field), valueOf(to, field)];
-      if (start > end) throw new CronSyntaxError(`The ${field.name} range "${range}" goes backwards`);
+      if (start > end)
+        throw new CronSyntaxError(
+          `The ${field.name} range "${range}" goes backwards`,
+        );
     } else {
       start = valueOf(range, field);
       // `a/n` means from a to the end, every n.
@@ -73,7 +99,8 @@ const parseField = (text: string, field: Field) => {
 
     let every = 1;
     if (step !== undefined) {
-      if (!/^\d+$/u.test(step) || Number(step) === 0) throw new CronSyntaxError(`Invalid ${field.name} step "${step}"`);
+      if (!/^\d+$/u.test(step) || Number(step) === 0)
+        throw new CronSyntaxError(`Invalid ${field.name} step "${step}"`);
       every = Number(step);
     }
     for (let value = start; value <= end; value += every) values.add(value);
@@ -82,12 +109,17 @@ const parseField = (text: string, field: Field) => {
 };
 
 /** Parses a cron expression, or returns why it's invalid. */
-export const parseCron = (expression: string): CronSchedule | { readonly error: string } => {
+export const parseCron = (
+  expression: string,
+): CronSchedule | { readonly error: string } => {
   const fields = expression.trim().split(/\s+/u);
   if (fields.length !== 5) {
-    return { error: `A cron expression has 5 fields (minute hour day-of-month month day-of-week), not ${fields.length}` };
+    return {
+      error: `A cron expression has 5 fields (minute hour day-of-month month day-of-week), not ${fields.length}`,
+    };
   }
-  const [minute = "", hour = "", dayOfMonth = "", month = "", dayOfWeek = ""] = fields;
+  const [minute = "", hour = "", dayOfMonth = "", month = "", dayOfWeek = ""] =
+    fields;
   try {
     const daysOfWeek = parseField(dayOfWeek, DAY_OF_WEEK);
     if (daysOfWeek.delete(7)) daysOfWeek.add(0);
@@ -105,8 +137,9 @@ export const parseCron = (expression: string): CronSchedule | { readonly error: 
   }
 };
 
-export const isCronError = (parsed: ReturnType<typeof parseCron>): parsed is { readonly error: string } =>
-  "error" in parsed;
+export const isCronError = (
+  parsed: ReturnType<typeof parseCron>,
+): parsed is { readonly error: string } => "error" in parsed;
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -132,7 +165,8 @@ export const latestSlot = (schedule: CronSchedule, now: Date): Date | null => {
   for (let back = 0; back <= SEARCH_DAYS; back += 1) {
     const day = new Date(today - back * DAY_MS);
     if (!matchesDay(schedule, day)) continue;
-    const hour = back === 0 ? hours.find((h) => h <= now.getUTCHours()) : hours[0];
+    const hour =
+      back === 0 ? hours.find((h) => h <= now.getUTCHours()) : hours[0];
     if (hour !== undefined) return new Date(day.getTime() + hour * HOUR_MS);
   }
   return null;
@@ -148,7 +182,8 @@ export const nextSlot = (schedule: CronSchedule, now: Date): Date | null => {
   for (let ahead = 0; ahead <= SEARCH_DAYS; ahead += 1) {
     const day = new Date(today + ahead * DAY_MS);
     if (!matchesDay(schedule, day)) continue;
-    const hour = ahead === 0 ? hours.find((h) => h > now.getUTCHours()) : hours[0];
+    const hour =
+      ahead === 0 ? hours.find((h) => h > now.getUTCHours()) : hours[0];
     if (hour !== undefined) return new Date(day.getTime() + hour * HOUR_MS);
   }
   return null;

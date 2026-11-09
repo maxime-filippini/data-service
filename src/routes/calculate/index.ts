@@ -22,7 +22,10 @@ export const createCalculationTypeRoutes = (
   app.use("*", auth);
 
   app.get("/", async (c) => {
-    const types = await runHttp(Engine.use((engine) => engine.listTypes()), engineFor(c.env));
+    const types = await runHttp(
+      Engine.use((engine) => engine.listTypes()),
+      engineFor(c.env),
+    );
     return c.json({ types });
   });
 
@@ -37,22 +40,36 @@ export const createCalculationTypeRoutes = (
 export const createCalculateRoutes = (
   dependencies: {
     readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
-    readonly portfoliosFor: (env: CloudflareBindings) => Layer.Layer<Portfolios>;
+    readonly portfoliosFor: (
+      env: CloudflareBindings,
+    ) => Layer.Layer<Portfolios>;
   },
   auth: MiddlewareHandler<Env>,
 ) => {
   const app = new Hono<Env>();
   app.use("*", auth);
 
-  app.post("/", effectValidator("json", AdHocCalculationSchema, { onExcessProperty: "error" }), async (c) => {
-    const response = await runHttp(
-      calculateAdHoc(c.req.valid("json"), new Date(), c.req.header("Accept")),
-      Layer.merge(dependencies.engineFor(c.env), dependencies.portfoliosFor(c.env)),
-    );
-    return new Response(response.body, {
-      headers: { "Content-Type": response.headers.get("Content-Type") ?? "application/json" },
-    });
-  });
+  app.post(
+    "/",
+    effectValidator("json", AdHocCalculationSchema, {
+      onExcessProperty: "error",
+    }),
+    async (c) => {
+      const response = await runHttp(
+        calculateAdHoc(c.req.valid("json"), new Date(), c.req.header("Accept")),
+        Layer.merge(
+          dependencies.engineFor(c.env),
+          dependencies.portfoliosFor(c.env),
+        ),
+      );
+      return new Response(response.body, {
+        headers: {
+          "Content-Type":
+            response.headers.get("Content-Type") ?? "application/json",
+        },
+      });
+    },
+  );
 
   return app;
 };

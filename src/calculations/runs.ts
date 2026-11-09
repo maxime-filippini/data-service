@@ -33,7 +33,11 @@ export type RunWorkflow = Pick<Workflow<RunWorkflowParams>, "create" | "get">;
 export const RUN_CHECK_GRACE_MS = 5 * 60 * 1000;
 
 /** Workflow statuses after which a run can't report back any more. */
-const STOPPED: ReadonlySet<string> = new Set(["errored", "terminated", "complete"]);
+const STOPPED: ReadonlySet<string> = new Set([
+  "errored",
+  "terminated",
+  "complete",
+]);
 
 /** The Workflow's status, or null when it doesn't exist. */
 const workflowStatus = (workflow: RunWorkflow, runId: string) =>
@@ -52,24 +56,25 @@ const workflowStatus = (workflow: RunWorkflow, runId: string) =>
  * example after a crash, so they don't block later runs. Only checks runs
  * older than `RUN_CHECK_GRACE_MS`. Returns how many it failed.
  */
-export const failStoppedRuns = Effect.fn("Calculations.failStoppedRuns")(function* (
-  workflow: RunWorkflow,
-  now: Date,
-  calculationId?: string,
-) {
-  const store = yield* Calculations;
-  let failed = 0;
-  for (const run of yield* store.runningRuns(calculationId)) {
-    if (now.getTime() - Date.parse(run.createdAt) < RUN_CHECK_GRACE_MS) continue;
-    const status = yield* workflowStatus(workflow, run.runId);
-    if (status !== null && !STOPPED.has(status)) continue;
-    const error =
-      status === null ? "The run's workflow never started" : `The run stopped without reporting back (workflow ${status})`;
-    yield* store.failRun(run.runId, error, now.toISOString());
-    failed += 1;
-  }
-  return failed;
-});
+export const failStoppedRuns = Effect.fn("Calculations.failStoppedRuns")(
+  function* (workflow: RunWorkflow, now: Date, calculationId?: string) {
+    const store = yield* Calculations;
+    let failed = 0;
+    for (const run of yield* store.runningRuns(calculationId)) {
+      if (now.getTime() - Date.parse(run.createdAt) < RUN_CHECK_GRACE_MS)
+        continue;
+      const status = yield* workflowStatus(workflow, run.runId);
+      if (status !== null && !STOPPED.has(status)) continue;
+      const error =
+        status === null
+          ? "The run's workflow never started"
+          : `The run stopped without reporting back (workflow ${status})`;
+      yield* store.failRun(run.runId, error, now.toISOString());
+      failed += 1;
+    }
+    return failed;
+  },
+);
 
 /**
  * Start a run of a calculation for one as-of date with its current params,
@@ -103,7 +108,11 @@ export const startRun = Effect.fn("Calculations.startRun")(function* (
           kind: "workflow",
           message: `Could not start the run: ${cause instanceof Error ? cause.message : String(cause)}`,
         }),
-    }).pipe(Effect.tapError((error) => store.failRun(runId, error.message, new Date().toISOString())));
+    }).pipe(
+      Effect.tapError((error) =>
+        store.failRun(runId, error.message, new Date().toISOString()),
+      ),
+    );
   }
   return { runId, status };
 });
@@ -122,10 +131,14 @@ const noHoldings = (portfolioId: string, asOf: string): PortfolioOutcome => ({
  * running. Fails when the engine can't be reached or crashes, so the caller
  * can retry: the engine replaces the as-of date's rows, so that's safe.
  */
-export const calculateRun = Effect.fn("Calculations.calculateRun")(function* (runId: string) {
+export const calculateRun = Effect.fn("Calculations.calculateRun")(function* (
+  runId: string,
+) {
   const store = yield* Calculations;
   const missing = () => Effect.succeed(null);
-  const run = yield* store.getRun(runId).pipe(Effect.catchIf((error) => error.kind === "not_found", missing));
+  const run = yield* store
+    .getRun(runId)
+    .pipe(Effect.catchIf((error) => error.kind === "not_found", missing));
   if (run === null || run.status !== "running") return null;
   const calculation = yield* store
     .get(run.calculationId)
@@ -133,14 +146,21 @@ export const calculateRun = Effect.fn("Calculations.calculateRun")(function* (ru
   if (calculation === null) return null;
 
   const portfolios = yield* Portfolios;
-  const loaded = yield* Effect.forEach(calculation.portfolioIds, (id) => portfolios.forEngine(id, run.asOf));
+  const loaded = yield* Effect.forEach(calculation.portfolioIds, (id) =>
+    portfolios.forEngine(id, run.asOf),
+  );
   const held = loaded.filter((portfolio) => portfolio.snapshots.length > 0);
-  const empty = loaded.filter((portfolio) => portfolio.snapshots.length === 0).map((p) => noHoldings(p.id, run.asOf));
+  const empty = loaded
+    .filter((portfolio) => portfolio.snapshots.length === 0)
+    .map((p) => noHoldings(p.id, run.asOf));
 
   if (loaded.length > 0 && held.length === 0) {
     const failed: FinishedRun = {
       status: "failed",
-      error: empty.length === 1 ? empty[0]!.error : `All ${empty.length} portfolios failed`,
+      error:
+        empty.length === 1
+          ? empty[0]!.error
+          : `All ${empty.length} portfolios failed`,
       portfolios: empty,
       rowCount: 0,
       outputEtag: null,
@@ -175,10 +195,27 @@ export const calculateRun = Effect.fn("Calculations.calculateRun")(function* (ru
   if (empty.length === 0) return result;
 
   // Merge in the portfolios that had no holdings, in the calculation's order.
-  const outcomes = new Map([...result.portfolios, ...empty].map((outcome) => [outcome.portfolioId, outcome]));
-  const merged = calculation.portfolioIds.flatMap((id) => outcomes.get(id) ?? []);
-  if (result.status !== "failed") return { ...result, status: "partial", portfolios: merged } satisfies FinishedRun;
+  const outcomes = new Map(
+    [...result.portfolios, ...empty].map((outcome) => [
+      outcome.portfolioId,
+      outcome,
+    ]),
+  );
+  const merged = calculation.portfolioIds.flatMap(
+    (id) => outcomes.get(id) ?? [],
+  );
+  if (result.status !== "failed")
+    return {
+      ...result,
+      status: "partial",
+      portfolios: merged,
+    } satisfies FinishedRun;
   // The run failed as a whole: keep the engine's reason.
-  if (result.portfolios.length === 0) return { ...result, portfolios: empty } satisfies FinishedRun;
-  return { ...result, error: `All ${merged.length} portfolios failed`, portfolios: merged } satisfies FinishedRun;
+  if (result.portfolios.length === 0)
+    return { ...result, portfolios: empty } satisfies FinishedRun;
+  return {
+    ...result,
+    error: `All ${merged.length} portfolios failed`,
+    portfolios: merged,
+  } satisfies FinishedRun;
 });

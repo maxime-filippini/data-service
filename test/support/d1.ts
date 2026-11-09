@@ -10,7 +10,9 @@ const migrations = new URL("../../migrations/", import.meta.url);
  */
 export const makeTestDatabase = () => {
   const sqlite = new DatabaseSync(":memory:");
-  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
+  for (const file of readdirSync(migrations)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()) {
     sqlite.exec(readFileSync(new URL(file, migrations), "utf8"));
   }
 
@@ -18,9 +20,19 @@ export const makeTestDatabase = () => {
     const prepared = sqlite.prepare(sql);
     if (prepared.columns().length > 0) {
       const results = prepared.all(...values);
-      return { results, meta: { changes: /^\s*(INSERT|UPDATE|DELETE)/iu.test(sql) ? results.length : 0 } };
+      return {
+        results,
+        meta: {
+          changes: /^\s*(INSERT|UPDATE|DELETE)/iu.test(sql)
+            ? results.length
+            : 0,
+        },
+      };
     }
-    return { results: [], meta: { changes: Number(prepared.run(...values).changes) } };
+    return {
+      results: [],
+      meta: { changes: Number(prepared.run(...values).changes) },
+    };
   };
 
   const statement = (sql: string, values: SQLInputValue[] = []) => ({

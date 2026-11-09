@@ -6,7 +6,11 @@ import { triggerScheduledCalculations } from "$/calculations/schedule";
 import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
-import { type IngestionMessage, isRetryable, runIngestion } from "$/market-data/ingestion-queue";
+import {
+  type IngestionMessage,
+  isRetryable,
+  runIngestion,
+} from "$/market-data/ingestion-queue";
 import { processJob, scheduleProcessing } from "$/market-data/processing";
 import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
 import { triggerScheduledRun } from "$/market-data/schedule/operations";
@@ -35,16 +39,27 @@ const sourceFor = (env: CloudflareBindings) => (provider: string) =>
     ? EodhdMarketDataSourceLive(env.EODHD_API_TOKEN)
     : Layer.effect(
         MarketDataSource,
-        Effect.fail(new MarketDataError({ kind: "configuration", message: `Unknown provider ${provider}` })),
+        Effect.fail(
+          new MarketDataError({
+            kind: "configuration",
+            message: `Unknown provider ${provider}`,
+          }),
+        ),
       );
 
-const ingest = async (batch: MessageBatch<IngestionMessage>, env: CloudflareBindings) => {
+const ingest = async (
+  batch: MessageBatch<IngestionMessage>,
+  env: CloudflareBindings,
+) => {
   const layer = Layer.mergeAll(
     D1SymbolRegistryLive(env.MARKET_DATA_DB),
     D1MarketDataControlPlaneLive(env.MARKET_DATA_DB),
     R2RawMarketDataStoreLive(env.MARKET_DATA_BUCKET),
   );
-  const dependencies = { sourceFor: sourceFor(env), processingQueue: env.PROCESSING_QUEUE };
+  const dependencies = {
+    sourceFor: sourceFor(env),
+    processingQueue: env.PROCESSING_QUEUE,
+  };
 
   for (const message of batch.messages) {
     const { dataset, symbol } = message.body;
@@ -54,7 +69,14 @@ const ingest = async (batch: MessageBatch<IngestionMessage>, env: CloudflareBind
       Effect.runPromise,
     );
     if (result._tag === "Success") {
-      console.log(JSON.stringify({ event: "ingestion", dataset, symbol, ...result.success }));
+      console.log(
+        JSON.stringify({
+          event: "ingestion",
+          dataset,
+          symbol,
+          ...result.success,
+        }),
+      );
       message.ack();
     } else {
       const retry = isRetryable(result.failure);
@@ -80,18 +102,31 @@ export default {
   async scheduled(controller, env) {
     const now = new Date(controller.scheduledTime);
 
-    const trigger = await triggerScheduledRun(now, env.SCHEDULED_DOWNLOADS).pipe(
+    const trigger = await triggerScheduledRun(
+      now,
+      env.SCHEDULED_DOWNLOADS,
+    ).pipe(
       Effect.provide(D1ScheduleStoreLive(env.MARKET_DATA_DB)),
       Effect.result,
       Effect.runPromise,
     );
     if (trigger._tag === "Success") {
       if (trigger.success.status === "started") {
-        console.log(JSON.stringify({ event: "schedule_run_started", runId: trigger.success.runId }));
+        console.log(
+          JSON.stringify({
+            event: "schedule_run_started",
+            runId: trigger.success.runId,
+          }),
+        );
       }
     } else {
       // The run is forgotten, so the next hourly tick tries again.
-      console.error(JSON.stringify({ event: "schedule_run_failed", message: trigger.failure.message }));
+      console.error(
+        JSON.stringify({
+          event: "schedule_run_failed",
+          message: trigger.failure.message,
+        }),
+      );
     }
 
     // Fail calculation runs whose Workflow stopped without reporting back.
@@ -101,24 +136,48 @@ export default {
       Effect.runPromise,
     );
     if (sweep._tag === "Success" && sweep.success > 0) {
-      console.log(JSON.stringify({ event: "calculation_runs_failed_as_stopped", count: sweep.success }));
+      console.log(
+        JSON.stringify({
+          event: "calculation_runs_failed_as_stopped",
+          count: sweep.success,
+        }),
+      );
     } else if (sweep._tag === "Failure") {
-      console.error(JSON.stringify({ event: "calculation_run_sweep_failed", message: sweep.failure.message }));
+      console.error(
+        JSON.stringify({
+          event: "calculation_run_sweep_failed",
+          message: sweep.failure.message,
+        }),
+      );
     }
 
     // Start calculations whose cron has fired since their last scheduled run.
-    const calculations = await triggerScheduledCalculations(now, env.CALCULATION_RUNS).pipe(
+    const calculations = await triggerScheduledCalculations(
+      now,
+      env.CALCULATION_RUNS,
+    ).pipe(
       Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
       Effect.result,
       Effect.runPromise,
     );
     if (calculations._tag === "Success") {
       for (const run of calculations.success) {
-        if ("error" in run) console.error(JSON.stringify({ event: "calculation_schedule_failed", ...run }));
-        else console.log(JSON.stringify({ event: "calculation_run_scheduled", ...run }));
+        if ("error" in run)
+          console.error(
+            JSON.stringify({ event: "calculation_schedule_failed", ...run }),
+          );
+        else
+          console.log(
+            JSON.stringify({ event: "calculation_run_scheduled", ...run }),
+          );
       }
     } else {
-      console.error(JSON.stringify({ event: "calculation_schedule_failed", message: calculations.failure.message }));
+      console.error(
+        JSON.stringify({
+          event: "calculation_schedule_failed",
+          message: calculations.failure.message,
+        }),
+      );
     }
 
     if (now.getUTCHours() === PROCESSING_SWEEP_HOUR) {
@@ -141,7 +200,12 @@ export default {
     for (const message of batch.messages) {
       const body = message.body as { jobId?: unknown };
       if (typeof body?.jobId !== "string") {
-        console.error(JSON.stringify({ event: "invalid_processing_message", messageId: message.id }));
+        console.error(
+          JSON.stringify({
+            event: "invalid_processing_message",
+            messageId: message.id,
+          }),
+        );
         message.ack();
         continue;
       }
@@ -152,10 +216,22 @@ export default {
         Effect.runPromise,
       );
       if (result._tag === "Success") {
-        console.log(JSON.stringify({ event: "processing_job", jobId: body.jobId, outcome: result.success }));
+        console.log(
+          JSON.stringify({
+            event: "processing_job",
+            jobId: body.jobId,
+            outcome: result.success,
+          }),
+        );
         message.ack();
       } else {
-        console.error(JSON.stringify({ event: "processing_retry", jobId: body.jobId, error: result.failure._tag }));
+        console.error(
+          JSON.stringify({
+            event: "processing_retry",
+            jobId: body.jobId,
+            error: result.failure._tag,
+          }),
+        );
         message.retry();
       }
     }
