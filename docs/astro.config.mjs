@@ -40,6 +40,7 @@ export default defineConfig({
           items: [
             "calculations/portfolios",
             "calculations/runs",
+            "calculations/returns",
             "calculations/scheduling",
             "calculations/types",
           ],

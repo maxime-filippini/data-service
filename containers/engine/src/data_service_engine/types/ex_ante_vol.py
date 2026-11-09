@@ -1,13 +1,22 @@
 """Ex-ante volatility: the as-of date's weights applied to past daily returns."""
 
+import logging
 from datetime import timedelta
 
 import numpy as np
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..framework import CalculationError, CalculationType, Context
+from ..errors import BatchCalculationFailed, CalculationError, describe_error
+from ..framework import CalculationResult, CalculationType, Context
+from ..market_data import PortfolioData, load_portfolio_data, market_data
+from ..models import PortfolioOutcome
+from ..portfolio_results import portfolio_result, portfolio_rows
+from ..returns import price_returns
 
+logger = logging.getLogger(__name__)
+
+NAME = "ex_ante_vol"
 OUTPUT = {
     "volatility": pl.Float64,
     "observations": pl.Int64,
@@ -45,34 +54,10 @@ class Params(BaseModel):
     )
 
 
-def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame:
-    """The last `window` simple returns on dates every symbol has a price."""
-    # Calendar days that comfortably hold `window` trading days.
-    start = ctx.as_of - timedelta(days=window * 2 + 30)
-    prices = ctx.load("prices_eod", symbols, start=start).pivot(
-        on="symbol", index="date", values="adjusted_close"
-    )
-    missing = [symbol for symbol in symbols if symbol not in prices.columns]
-    if missing:
-        raise CalculationError(f"No prices since {start} for {', '.join(missing)}")
-    returns = (
-        prices.drop_nulls()
-        .sort("date")
-        .select("date", *(pl.col(symbol).pct_change() for symbol in symbols))
-        .slice(1)
-        .tail(window)
-    )
-    if returns.height < window:
-        raise CalculationError(
-            f"Only {returns.height} daily returns up to {ctx.as_of}, need {window}"
-        )
-    return returns
+def calculate_portfolio(params: Params, inputs: PortfolioData) -> pl.DataFrame:
+    """Apply as-of holdings to aligned returns and estimate annualized volatility."""
 
-
-def run(params: Params, ctx: Context) -> pl.DataFrame:
-    assert ctx.portfolio is not None
-
-    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
+    snapshot = inputs.holdings
     symbols = snapshot.symbols
     weights = np.array([snapshot.weights[symbol] for symbol in symbols])
 
@@ -82,7 +67,11 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
             raise CalculationError("Weights sum to zero, so they can't be normalised")
         weights = weights / total
 
-    returns = daily_returns(ctx, symbols, params.window)
+    returns = price_returns(inputs.prices, symbols).tail(params.window)
+    if returns.height < params.window:
+        raise CalculationError(
+            f"Only {returns.height} daily returns up to {inputs.as_of}, need {params.window}"
+        )
     matrix = returns.select(symbols).to_numpy()
     if not np.isfinite(matrix).all():
         raise CalculationError("Prices include zeros, so returns are infinite")
@@ -108,9 +97,47 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
     )
 
 
+def run(params: Params, ctx: Context) -> CalculationResult:
+    """Load each portfolio's data, calculate directly and record its outcome."""
+    if not ctx.portfolios:
+        raise CalculationError(f"{NAME} needs at least one portfolio")
+    start = ctx.as_of - timedelta(days=params.window * 2 + 30)
+    frames, outcomes = [], []
+    with market_data(ctx.as_of, ctx.load_symbol) as data:
+        for index, portfolio in enumerate(ctx.portfolios):
+            try:
+                inputs = load_portfolio_data(portfolio, data, start=start)
+                rows = calculate_portfolio(params, inputs)
+                rows = portfolio_rows(
+                    rows,
+                    OUTPUT,
+                    portfolio.id,
+                    index=index if ctx.mode == "batch" else None,
+                )
+            except Exception as error:
+                logger.exception("%s failed for portfolio %s", NAME, portfolio.id)
+                if ctx.mode == "batch":
+                    raise BatchCalculationFailed(index, portfolio.id, error) from error
+                outcomes.append(
+                    PortfolioOutcome(
+                        portfolio_id=portfolio.id,
+                        status="failed",
+                        error=describe_error(error),
+                    )
+                )
+                continue
+            frames.append(rows)
+            outcomes.append(
+                PortfolioOutcome(
+                    portfolio_id=portfolio.id, status="completed", row_count=rows.height
+                )
+            )
+    return portfolio_result(frames, outcomes, OUTPUT, indexed=ctx.mode == "batch")
+
+
 # Registration needs the params model and run function defined above.
 TYPE = CalculationType(
-    name="ex_ante_vol",
+    name=NAME,
     description=(
         "Annualised volatility of the weights held at the as-of date over past "
         "daily returns of adjusted close prices."

@@ -7,11 +7,15 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import ValidationError
 
 from . import runtime
-from .framework import (
+from .errors import (
+    BatchCalculationFailed,
     CalculationError,
-    CalculationType,
+    CalculationFailed,
     UnknownTypeError,
     describe_error,
+)
+from .framework import (
+    CalculationType,
     get_type,
     registry,
 )
@@ -75,9 +79,18 @@ def calculate(request: CalculateRequest, http_request: Request):
         raise HTTPException(422, _params_errors(error)) from error
     try:
         rows = runtime.calculate(request)
+    except BatchCalculationFailed as error:
+        raise HTTPException(
+            error.status,
+            {
+                "portfolioIndex": error.index,
+                "portfolioId": error.portfolio_id,
+                "error": str(error),
+            },
+        ) from error
     except CalculationError as error:
         raise HTTPException(422, str(error)) from error
-    except runtime.CalculationFailed as error:
+    except CalculationFailed as error:
         raise HTTPException(500, str(error)) from error
     except Exception as error:
         logger.exception("Ad hoc %s failed", request.type)

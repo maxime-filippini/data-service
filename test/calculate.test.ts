@@ -398,3 +398,124 @@ test("the client validates params and reads run results", async () => {
     body: request,
   });
 });
+
+test("a heterogeneous batch resolves saved holdings by date and keeps input order", async () => {
+  const { post, calls } = setup(() =>
+    Response.json({
+      rows: [
+        {
+          portfolio_index: 0,
+          portfolio_id: PORTFOLIO_ID,
+          date: "2026-10-15",
+          return: 0.01,
+        },
+        {
+          portfolio_index: 1,
+          portfolio_id: null,
+          date: "2026-10-15",
+          return: -0.02,
+        },
+      ],
+    }),
+  );
+  const holdings = [{ symbol: "MSFT.US", weight: -0.5 }];
+  const response = await post({
+    type: "hypothetical_portfolio_returns",
+    asOf: "2026-10-16",
+    params: { start_date: "2020-01-01" },
+    portfolios: [
+      { portfolioId: PORTFOLIO_ID },
+      { holdings },
+      { portfolioId: PORTFOLIO_ID },
+    ],
+  });
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1, "one engine request for the complete batch");
+  const body = calls[0]!.body as {
+    asOf: string;
+    params: unknown;
+    portfolio?: unknown;
+    portfolios: {
+      id?: string;
+      snapshots?: { holdingsDate: string; holdings: unknown }[];
+      holdings?: unknown;
+    }[];
+  };
+  assert.equal(body.asOf, "2026-10-16");
+  assert.deepEqual(body.params, { start_date: "2020-01-01" });
+  assert.equal(body.portfolio, undefined);
+  assert.equal(body.portfolios.length, 3);
+  assert.deepEqual(body.portfolios[0]!.snapshots?.at(-1), {
+    holdingsDate: "2026-10-15",
+    holdings: [{ symbol: "AAPL.US", weight: 1 }],
+  });
+  assert.deepEqual(body.portfolios[1], { holdings });
+  assert.deepEqual(body.portfolios[2], body.portfolios[0]);
+  const result = (await response.json()) as {
+    rows: { portfolio_index: number }[];
+  };
+  assert.deepEqual(
+    result.rows.map((row) => row.portfolio_index),
+    [0, 1],
+  );
+});
+
+test("invalid batches fail before any engine call", async () => {
+  const { post, calls } = setup();
+  const inline = { holdings: [{ symbol: "AAPL.US", weight: 1 }] };
+  for (const patch of [
+    { portfolios: [] },
+    { portfolios: Array.from({ length: 101 }, () => inline) },
+    { portfolio: inline, portfolios: [inline] },
+    { portfolios: [{ portfolioId: PORTFOLIO_ID, ...inline }] },
+    { portfolios: [{ holdings: [{ symbol: "AAPL.US", weight: 0 }] }] },
+  ]) {
+    const response = await post({
+      type: "hypothetical_portfolio_returns",
+      asOf: "2026-10-16",
+      ...patch,
+    });
+    assert.equal(response.status, 400, JSON.stringify(patch));
+  }
+  const untracked = await post({
+    type: "hypothetical_portfolio_returns",
+    portfolios: [inline, { holdings: [{ symbol: "MISSING.US", weight: 1 }] }],
+  });
+  assert.equal(untracked.status, 400);
+  assert.match(
+    ((await untracked.json()) as { error: string }).error,
+    /index 1/,
+  );
+  const missing = await post({
+    type: "hypothetical_portfolio_returns",
+    asOf: "2026-09-01",
+    portfolios: [inline, { portfolioId: PORTFOLIO_ID }],
+  });
+  assert.equal(missing.status, 422);
+  assert.match(((await missing.json()) as { error: string }).error, /index 1/);
+  assert.equal(calls.length, 0);
+});
+
+test("batch Arrow responses and indexed engine errors pass through", async () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  const detail = {
+    portfolioIndex: 1,
+    portfolioId: null,
+    error: "No shared return history",
+  };
+  const { post } = setup((call) =>
+    call.accept === ARROW_STREAM
+      ? new Response(bytes, { headers: { "Content-Type": ARROW_STREAM } })
+      : Response.json({ detail }, { status: 422 }),
+  );
+  const body = {
+    type: "hypothetical_portfolio_returns",
+    portfolios: [{ holdings: [{ symbol: "AAPL.US", weight: 1 }] }],
+  };
+  const arrow = await post(body, { Accept: ARROW_STREAM });
+  assert.equal(arrow.status, 200);
+  assert.deepEqual(new Uint8Array(await arrow.arrayBuffer()), bytes);
+  const failed = await post(body);
+  assert.equal(failed.status, 422);
+  assert.deepEqual(await failed.json(), { error: "Invalid request", detail });
+});

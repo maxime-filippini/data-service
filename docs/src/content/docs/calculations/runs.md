@@ -69,9 +69,12 @@ sequenceDiagram
     WF->>D1: load each portfolio's snapshots ≤ asOf
     Note over WF: portfolios with no snapshot<br/>fail here, without the engine
     WF->>E: POST /runs (one step, 2 retries, 30 min timeout)
-    loop each portfolio
-      E->>R2: ctx.load(prices_eod, …)
-      E->>E: type.run(params, ctx)
+    E->>E: type.run(params, ctx) once with all inputs
+    opt type chooses portfolio iteration
+      loop each portfolio
+        E->>R2: data.load(prices_eod, …) via shared reader
+        E->>E: calculate portfolio rows
+      end
     end
     E->>R2: replace asOf rows in calculation=<id>/data.parquet<br/>(conditional write)
     E-->>WF: {status, portfolios[], rowCount, outputEtag}
@@ -105,9 +108,10 @@ stateDiagram-v2
 - **One at a time.** The partial unique index `calculation_runs_one_running`
   allows one `running` run per calculation. A run started meanwhile is
   recorded as `skipped`.
-- **Several portfolios.** A type that takes a portfolio runs once per
-  portfolio. If one fails, the others still complete and the run is `partial`,
-  with an error for each portfolio that failed.
+- **Several portfolios.** The built-in types use ordinary loops and call
+  data helpers directly for independent results. If one fails, the others still complete and the run
+  is `partial`. Aggregate types can instead consume all portfolios together;
+  every type is invoked once per request.
 - **Stuck runs.** A run `running` for over 5 minutes is checked against its
   Workflow. If the Workflow has errored, been terminated, finished without
   recording, or never started, the run is marked failed. This happens on every
@@ -122,8 +126,8 @@ Each calculation has one Parquet file:
 processed-market-data/calculation=<calculation-id>/data.parquet
 ```
 
-It holds the type's output columns plus `as_of` and `portfolio_id`, so it
-builds a history over time. A run replaces its own as-of date's rows, so
+It holds the type's output columns plus `as_of` and its identifying columns
+(`portfolio_id` for the built-in portfolio types), building a history over time. A run replaces its own as-of date's rows, so
 running the same date again is safe. New output columns are added with nulls
 for older rows. Results stay in R2 after the calculation is deleted.
 
@@ -169,3 +173,17 @@ previous UTC day. Send `Accept: application/vnd.apache.arrow.stream` for Arrow.
 | `404`  | Unknown type                                                  |
 | `422`  | Invalid params, or an expected failure such as missing prices |
 | `500`  | Any other failure                                             |
+
+### Portfolio batches and return histories
+
+Use `portfolios` instead of `portfolio` to submit an ordered batch of up to 100
+saved references and inline holdings. The built-in independent portfolio types
+add `portfolio_index` to every row, including when saved IDs repeat. Their batch
+shares price reads and either returns all results or fails; it never persists
+output. JSON and Arrow both support this field. Aggregate types can consume all
+selections together and choose their own identifying columns.
+
+The `hypothetical_portfolio_returns` type selects holdings at `asOf` and applies
+them to historical prices. `params.start_date` is optional; omission returns all
+available shared history. See [Hypothetical portfolio returns](/docs/calculations/returns/)
+for the full request, output columns, alignment rules and indexed batch errors.
