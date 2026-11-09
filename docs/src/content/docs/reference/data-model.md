@@ -66,6 +66,7 @@ erDiagram
   }
   portfolios {
     text portfolio_id PK
+    text asset_symbol "unique when set; single-asset portfolio"
     text name
   }
   portfolio_snapshots {

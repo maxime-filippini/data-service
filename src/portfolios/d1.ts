@@ -15,6 +15,7 @@ interface PortfolioRow {
   readonly name: string;
   readonly created_at: string;
   readonly updated_at: string;
+  readonly asset_symbol: string | null;
 }
 
 interface SummaryRow extends PortfolioRow {
@@ -31,6 +32,11 @@ interface HoldingRow {
 
 const databaseError = () => new PortfolioError({ kind: "database", message: "Could not access portfolios" });
 const notFound = () => new PortfolioError({ kind: "not_found", message: "The portfolio does not exist" });
+const managed = (symbol: string) =>
+  new PortfolioError({
+    kind: "conflict",
+    message: `This is the single-asset portfolio of ${symbol}, which can't be changed`,
+  });
 const dateTaken = (holdingsDate: string) =>
   new PortfolioError({ kind: "conflict", message: `The portfolio already has a snapshot for ${holdingsDate}` });
 
@@ -85,6 +91,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           name: row.name,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
+          assetSymbol: row.asset_symbol,
           snapshots: toSnapshots((holdings?.results ?? []) as HoldingRow[]),
         } satisfies Portfolio);
       }),
@@ -113,6 +120,20 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
               }),
             ),
       ),
+    );
+
+  /** Fails unless the portfolio exists and isn't a single-asset portfolio. */
+  const requireEditable = (id: string) =>
+    query(() =>
+      db
+        .prepare(`SELECT asset_symbol FROM portfolios WHERE portfolio_id = ?`)
+        .bind(id)
+        .first<{ asset_symbol: string | null }>(),
+    ).pipe(
+      Effect.flatMap((row) => {
+        if (row === null) return Effect.fail(notFound());
+        return row.asset_symbol === null ? Effect.void : Effect.fail(managed(row.asset_symbol));
+      }),
     );
 
   /** Statements that insert a snapshot. Holdings go in as one JSON parameter. */
@@ -161,6 +182,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
                 name: row.name,
                 createdAt: row.created_at,
                 updatedAt: row.updated_at,
+                assetSymbol: row.asset_symbol,
                 snapshotCount: row.snapshot_count,
                 latestHoldingsDate: row.latest_holdings_date,
               }),
@@ -183,15 +205,21 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
         }),
 
       rename: (id, name, now) =>
-        query(() =>
-          db
-            .prepare(`UPDATE portfolios SET name = ?, updated_at = ? WHERE portfolio_id = ? RETURNING portfolio_id`)
-            .bind(name, now, id)
-            .first(),
-        ).pipe(Effect.flatMap((row) => (row === null ? Effect.fail(notFound()) : load(id, null)))),
+        Effect.gen(function* () {
+          yield* requireEditable(id);
+          const row = yield* query(() =>
+            db
+              .prepare(`UPDATE portfolios SET name = ?, updated_at = ? WHERE portfolio_id = ? RETURNING portfolio_id`)
+              .bind(name, now, id)
+              .first(),
+          );
+          if (row === null) return yield* Effect.fail(notFound());
+          return yield* load(id, null);
+        }),
 
       remove: (id) =>
         Effect.gen(function* () {
+          yield* requireEditable(id);
           const { results: users } = yield* query(() =>
             db
               .prepare(
@@ -217,15 +245,16 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           const existing = yield* query(() =>
             db
               .prepare(
-                `SELECT EXISTS (
+                `SELECT asset_symbol, EXISTS (
                    SELECT 1 FROM portfolio_snapshots WHERE portfolio_id = ?1 AND holdings_date = ?2
                  ) AS taken
                  FROM portfolios WHERE portfolio_id = ?1`,
               )
               .bind(id, snapshot.holdingsDate)
-              .first<{ taken: number }>(),
+              .first<{ asset_symbol: string | null; taken: number }>(),
           );
           if (existing === null) return yield* Effect.fail(notFound());
+          if (existing.asset_symbol !== null) return yield* Effect.fail(managed(existing.asset_symbol));
           if (existing.taken === 1) return yield* Effect.fail(dateTaken(snapshot.holdingsDate));
           yield* requireTracked(symbolsOf(snapshot));
           yield* write(
@@ -243,25 +272,23 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
         }),
 
       removeSnapshot: (id, holdingsDate, now) =>
-        query(() =>
-          db
-            .prepare(
-              `DELETE FROM portfolio_snapshots WHERE portfolio_id = ? AND holdings_date = ? RETURNING holdings_date`,
-            )
-            .bind(id, holdingsDate)
-            .first(),
-        ).pipe(
-          Effect.flatMap((row) =>
-            row === null
-              ? Effect.fail(
-                  new PortfolioError({ kind: "not_found", message: `The portfolio has no snapshot for ${holdingsDate}` }),
-                )
-              : query(() =>
-                  db.prepare(`UPDATE portfolios SET updated_at = ? WHERE portfolio_id = ?`).bind(now, id).run(),
-                ),
-          ),
-          Effect.asVoid,
-        ),
+        Effect.gen(function* () {
+          yield* requireEditable(id);
+          const row = yield* query(() =>
+            db
+              .prepare(
+                `DELETE FROM portfolio_snapshots WHERE portfolio_id = ? AND holdings_date = ? RETURNING holdings_date`,
+              )
+              .bind(id, holdingsDate)
+              .first(),
+          );
+          if (row === null) {
+            return yield* Effect.fail(
+              new PortfolioError({ kind: "not_found", message: `The portfolio has no snapshot for ${holdingsDate}` }),
+            );
+          }
+          yield* query(() => db.prepare(`UPDATE portfolios SET updated_at = ? WHERE portfolio_id = ?`).bind(now, id).run());
+        }),
 
       requireTracked,
 

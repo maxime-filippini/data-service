@@ -69,7 +69,7 @@ const setup = (respond: (call: EngineCall) => Response | Promise<Response> = def
       .run(symbol);
   }
   for (const [id, name] of [[CORE, "Core"], [GROWTH, "Growth"]]) {
-    sqlite.prepare(`INSERT INTO portfolios VALUES (?, ?, '2026-09-01', '2026-09-01')`).run(id, name);
+    sqlite.prepare(`INSERT INTO portfolios (portfolio_id, name, created_at, updated_at) VALUES (?, ?, '2026-09-01', '2026-09-01')`).run(id, name);
   }
   const snapshot = (id: string, date: string, holdings: [string, number][]) => {
     sqlite.prepare(`INSERT INTO portfolio_snapshots VALUES (?, ?, '2026-09-01')`).run(id, date);

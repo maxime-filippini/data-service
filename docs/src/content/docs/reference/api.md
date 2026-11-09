@@ -122,8 +122,9 @@ curl -X DELETE "$URL/api/portfolios/$ID/snapshots/2026-10-15" -H "Authorization:
 ```
 
 Untracked symbols return `400` with their list in `symbols`; a second snapshot
-for the same date returns `409`. Deleting a portfolio a calculation uses
-returns `409` with those calculations in `calculations`. See
+for the same date, or a change to a single-asset portfolio, returns `409`.
+Deleting a portfolio a calculation uses returns `409` with those calculations
+in `calculations`. See
 [Portfolios](/docs/calculations/portfolios/).
 
 ## Calculations

@@ -11,6 +11,8 @@ export interface PortfolioSummary {
   readonly name: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** The symbol a single-asset portfolio holds, null for other portfolios. */
+  readonly assetSymbol: string | null;
   readonly snapshotCount: number;
   readonly latestHoldingsDate: string | null;
 }
@@ -26,6 +28,8 @@ export interface Portfolio {
   readonly name: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** The symbol a single-asset portfolio holds, null for other portfolios. */
+  readonly assetSymbol: string | null;
   /** Oldest first. */
   readonly snapshots: readonly Snapshot[];
 }

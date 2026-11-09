@@ -196,6 +196,11 @@ symbols count), weights are any non-zero numbers, and a portfolio has at most
 one snapshot per date. Snapshots can't be edited: delete one and add it again.
 See [Portfolios](docs/calculation-engine.md#portfolios).
 
+Registering a `prices_eod` symbol also creates its single-asset portfolio:
+named after the symbol, with one snapshot on `1900-01-01` holding it at weight
+1. These have `assetSymbol` set and can't be renamed, deleted or given other
+snapshots (`409`).
+
 ```sh
 # Create one, optionally with its first snapshot
 curl -X POST "$URL/api/portfolios" \
@@ -221,8 +226,9 @@ curl -X DELETE "$URL/api/portfolios/$ID/snapshots/2026-10-15" -H "Authorization:
 ```
 
 Untracked symbols return `400` with their list in `symbols`; a second snapshot
-for the same date returns `409`. Deleting a portfolio a calculation uses
-returns `409` with those calculations in `calculations`.
+for the same date, or a change to a single-asset portfolio, returns `409`.
+Deleting a portfolio a calculation uses returns `409` with those calculations
+in `calculations`.
 
 ## Calculations
 
@@ -302,7 +308,8 @@ there:
   (several at once) and edit them, put them on or off the daily schedule,
   download them now, and change, pause or run the schedule.
 - **`/portfolios`** creates, renames and deletes portfolios, and adds or deletes
-  their snapshots.
+  their snapshots. Single-asset portfolios are labelled, read-only, and can
+  be hidden from the list.
 - **`/calculations`** creates and edits calculations, pauses or enables them,
   runs them for any as-of date and shows their runs.
 - **`/explore`** browses each symbol's Parquet data and each calculation's

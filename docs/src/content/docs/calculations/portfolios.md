@@ -8,6 +8,18 @@ a holdings date and a list of `(symbol, weight)`: the holdings at the close of
 that date. It stays in effect until the next snapshot. The service stores
 snapshots, not trades or changes between them.
 
+## Single-asset portfolios
+
+Registering a `prices_eod` symbol also creates a portfolio named after it, with
+one snapshot on `1900-01-01` holding the symbol at weight 1, in the same D1
+batch as the registration. Re-registering leaves it alone. Migration `0008`
+creates these portfolios for symbols registered before the migration.
+
+The API returns `assetSymbol` (the symbol for a single-asset portfolio, `null`
+for a normal one). Single-asset portfolios cannot be renamed, deleted or given
+other snapshots; those changes return `409`. The app labels them and lets you
+hide them from the list.
+
 ## Which snapshot is in effect
 
 ```mermaid
@@ -47,7 +59,8 @@ gantt
   results.
 - **Deleting.** Deleting a portfolio that a calculation uses returns `409` with
   the calculations that use it. Disabling a held symbol is allowed: its Parquet
-  file stays, so calculations keep working on its old data.
+  file stays, so calculations keep working on its old data. A future symbol-delete
+  route will need to delete the symbol's single-asset portfolio first.
 
 ```mermaid
 erDiagram
@@ -75,5 +88,6 @@ curl -X DELETE "$URL/api/portfolios/$ID/snapshots/2026-10-15" -H "Authorization:
 ```
 
 Untracked symbols return `400` with their list in `symbols`; a second snapshot
-for the same date returns `409`. The full route list is in the
+for the same date, or a change to a single-asset portfolio, returns `409`.
+The full route list is in the
 [API reference](/docs/reference/api/#portfolios).

@@ -16,7 +16,8 @@ description: What the app (home page and dashboard) does, how it is built, and h
   download them now, and change, pause or run the schedule.
 - **Portfolios** (`/portfolios`, `/portfolios/:id`). Create, rename and delete
   portfolios; add or delete snapshots (type or paste rows, or start from the
-  latest snapshot).
+  latest snapshot). Single-asset portfolios are labelled, read-only, and can be
+  hidden from the list.
 - **Calculations** (`/calculations`, `/calculations/:id`). Create and edit
   calculations with a JSON params editor and the type's params schema as help;
   pause, enable or run them for any as-of date; see their runs with each
