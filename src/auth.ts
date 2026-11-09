@@ -41,7 +41,7 @@ export const requireManagementToken: MiddlewareHandler<{ Bindings: CloudflareBin
 };
 
 /** Settings for the dashboard's Cloudflare Access check. */
-interface AccessSettings {
+export interface AccessSettings {
   /** `https://<team>.cloudflareaccess.com` */
   readonly ACCESS_TEAM_DOMAIN?: string;
   /** The Access application's audience (AUD) tag. */
@@ -79,60 +79,75 @@ const originOf = (domain: string | undefined) => {
   }
 };
 
-const deny = (status: 401 | 403 | 503, error: string) =>
-  new HTTPException(status, { res: Response.json({ error }, { status }) });
-
 export type AccessVariables = { accessEmail: string };
 
+/** The outcome of checking a request's Cloudflare Access token. */
+export type AccessCheck =
+  | { readonly email: string }
+  | { readonly status: 401 | 403 | 503; readonly error: string };
+
 /**
- * Require a signed-in user from Cloudflare Access whose email is allowlisted.
+ * Check that a request comes from a signed-in Cloudflare Access user whose
+ * email is allowlisted.
  *
- * Access sits in front of the dashboard and adds a signed JWT to each request.
- * Checking it here keeps the dashboard closed if the Access app is removed or
- * its policy is loosened. Any missing setting denies every request.
+ * Access sits in front of the app and adds a signed JWT to each request.
+ * Checking it here keeps the app closed if the Access app is removed or its
+ * policy is loosened. Any missing setting denies every request.
  */
+export const checkAccess = async (
+  request: Request,
+  settings: AccessSettings,
+  keysFor: AccessKeys = remoteAccessKeys,
+): Promise<AccessCheck> => {
+  if (settings.DASHBOARD_LOCAL_BYPASS === "true" && LOCAL_HOSTNAMES.has(new URL(request.url).hostname)) {
+    return { email: "local@localhost" };
+  }
+
+  const teamDomain = originOf(settings.ACCESS_TEAM_DOMAIN);
+  const audience = settings.ACCESS_AUD;
+  const allowed = (settings.DASHBOARD_ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email !== "");
+  if (!teamDomain || !audience || allowed.length === 0) {
+    return { status: 503, error: "Dashboard access is not configured" };
+  }
+
+  const token = request.headers.get("Cf-Access-Jwt-Assertion");
+  if (!token) return { status: 401, error: "Sign in through Cloudflare Access" };
+
+  let email: unknown;
+  try {
+    const { payload } = await jwtVerify(token, keysFor(teamDomain), {
+      issuer: teamDomain,
+      audience,
+      algorithms: ["RS256"],
+    });
+    email = payload.email;
+  } catch {
+    return { status: 401, error: "Invalid Access token" };
+  }
+
+  // Service tokens have no email, so they never pass.
+  if (typeof email !== "string" || !allowed.includes(email.toLowerCase())) {
+    return { status: 403, error: "Forbidden" };
+  }
+  return { email };
+};
+
+/** Hono middleware for `checkAccess`: sets `accessEmail`, or answers with the denial. */
 export const requireAccessUser =
   (keysFor: AccessKeys = remoteAccessKeys): MiddlewareHandler<{
     Bindings: CloudflareBindings;
     Variables: AccessVariables;
   }> =>
   async (c, next) => {
-    const settings = c.env as AccessSettings;
-
-    if (settings.DASHBOARD_LOCAL_BYPASS === "true" && LOCAL_HOSTNAMES.has(new URL(c.req.url).hostname)) {
-      c.set("accessEmail", "local@localhost");
-      return next();
-    }
-
-    const teamDomain = originOf(settings.ACCESS_TEAM_DOMAIN);
-    const audience = settings.ACCESS_AUD;
-    const allowed = (settings.DASHBOARD_ALLOWED_EMAILS ?? "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter((email) => email !== "");
-    if (!teamDomain || !audience || allowed.length === 0) {
-      throw deny(503, "Dashboard access is not configured");
-    }
-
-    const token = c.req.header("Cf-Access-Jwt-Assertion");
-    if (!token) throw deny(401, "Sign in through Cloudflare Access");
-
-    let email: unknown;
-    try {
-      const { payload } = await jwtVerify(token, keysFor(teamDomain), {
-        issuer: teamDomain,
-        audience,
-        algorithms: ["RS256"],
+    const result = await checkAccess(c.req.raw, c.env as AccessSettings, keysFor);
+    if ("error" in result) {
+      throw new HTTPException(result.status, {
+        res: Response.json({ error: result.error }, { status: result.status }),
       });
-      email = payload.email;
-    } catch {
-      throw deny(401, "Invalid Access token");
     }
-
-    // Service tokens have no email, so they never pass.
-    if (typeof email !== "string" || !allowed.includes(email.toLowerCase())) {
-      throw deny(403, "Forbidden");
-    }
-    c.set("accessEmail", email);
+    c.set("accessEmail", result.email);
     await next();
   };

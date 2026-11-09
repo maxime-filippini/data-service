@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { Effect } from "effect";
 
-import { type CronSchedule, isCronError, latestSlot, parseCron } from "$/calculations/cron";
+import { type CronSchedule, isCronError, latestSlot, nextSlot, parseCron } from "$/calculations/cron";
 import { D1CalculationsLive } from "$/calculations/d1";
 import type { RunWorkflow } from "$/calculations/runs";
 import { triggerScheduledCalculations } from "$/calculations/schedule";
@@ -16,6 +16,19 @@ const cron = (expression: string): CronSchedule => {
 };
 
 const slot = (expression: string, now: string) => latestSlot(cron(expression), new Date(now))?.toISOString() ?? null;
+
+const next = (expression: string, now: string) => nextSlot(cron(expression), new Date(now))?.toISOString() ?? null;
+
+test("the next slot is the first whole hour after now's hour the cron fires in", () => {
+  // Later today, not the current hour, whose tick has already happened.
+  assert.equal(next("0 6,18 * * *", "2026-10-28T06:30:00Z"), "2026-10-28T18:00:00.000Z");
+  assert.equal(next("0 6 * * *", "2026-10-28T05:59:00Z"), "2026-10-28T06:00:00.000Z");
+  assert.equal(next("0 6 * * *", "2026-10-28T06:00:00Z"), "2026-10-29T06:00:00.000Z");
+  // Weekdays only: Friday evening goes to Monday.
+  assert.equal(next("0 7 * * 1-5", "2026-10-30T20:00:00Z"), "2026-11-02T07:00:00.000Z");
+  assert.equal(next("0 0 29 2 *", "2026-10-28T00:00:00Z"), "2028-02-29T00:00:00.000Z");
+  assert.equal(next("0 0 30 2 *", "2026-10-28T00:00:00Z"), null);
+});
 
 test("the latest slot is the most recent whole hour the cron fires in, minutes ignored", () => {
   // 2026-10-20 is a Tuesday.

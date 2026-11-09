@@ -1,0 +1,12 @@
+// Only for adapter-cloudflare, which reads `main` and `assets` to decide where
+// to write its output. It deletes and rewrites both, so they must not point at
+// the real Worker: the real config is ../wrangler.jsonc, whose entry point
+// (src/index.ts) imports the handler written to `main` here.
+{
+	"name": "data-service-app",
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"compatibility_date": "2026-10-02",
+	// The Worker's assets directory. The docs build is copied into dist/docs/
+	// after this build, which empties the directory first.
+	"assets": { "directory": "../dist", "binding": "ASSETS" },
+}

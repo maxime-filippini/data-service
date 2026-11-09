@@ -137,3 +137,19 @@ export const latestSlot = (schedule: CronSchedule, now: Date): Date | null => {
   }
   return null;
 };
+
+/**
+ * The first hour after `now`'s hour that the schedule fires in, or null if it
+ * never fires. The hourly tick at that hour starts the run.
+ */
+export const nextSlot = (schedule: CronSchedule, now: Date): Date | null => {
+  const hours = [...schedule.hours].sort((a, b) => a - b);
+  const today = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
+  for (let ahead = 0; ahead <= SEARCH_DAYS; ahead += 1) {
+    const day = new Date(today + ahead * DAY_MS);
+    if (!matchesDay(schedule, day)) continue;
+    const hour = ahead === 0 ? hours.find((h) => h > now.getUTCHours()) : hours[0];
+    if (hour !== undefined) return new Date(day.getTime() + hour * HOUR_MS);
+  }
+  return null;
+};

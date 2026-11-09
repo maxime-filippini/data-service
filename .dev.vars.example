@@ -3,8 +3,9 @@ MANAGEMENT_API_TOKEN=local-management-token
 R2_ENDPOINT_URL=https://example.invalid
 R2_ACCESS_KEY_ID=placeholder
 R2_SECRET_ACCESS_KEY=placeholder
-# The dashboard checks Cloudflare Access. Locally, skip that on localhost:
-DASHBOARD_LOCAL_BYPASS=true
+# The app checks Cloudflare Access. `pnpm dev` skips that for localhost
+# (--var DASHBOARD_LOCAL_BYPASS:true): wrangler only loads the secrets declared
+# in wrangler.jsonc from this file, so a bypass line here would be ignored.
 ACCESS_TEAM_DOMAIN=
 ACCESS_AUD=
 DASHBOARD_ALLOWED_EMAILS=
