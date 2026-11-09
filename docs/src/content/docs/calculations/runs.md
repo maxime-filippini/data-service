@@ -169,3 +169,15 @@ previous UTC day. Send `Accept: application/vnd.apache.arrow.stream` for Arrow.
 | `404`  | Unknown type                                                  |
 | `422`  | Invalid params, or an expected failure such as missing prices |
 | `500`  | Any other failure                                             |
+
+### Portfolio batches and return histories
+
+Use `portfolios` instead of `portfolio` to submit an ordered batch of up to 100
+saved references and inline holdings. Each row gains `portfolio_index`, including
+when saved IDs repeat. A batch shares price reads and either returns all results
+or fails; it never persists output. JSON and Arrow both support this field.
+
+The `hypothetical_portfolio_returns` type selects holdings at `asOf` and applies
+them to historical prices. `params.start_date` is optional; omission returns all
+available shared history. See [Hypothetical portfolio returns](/docs/calculations/returns/)
+for the full request, output columns, alignment rules and indexed batch errors.

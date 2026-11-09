@@ -7,6 +7,7 @@ import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..framework import CalculationError, CalculationType, Context
+from ..returns import price_returns
 
 OUTPUT = {
     "volatility": pl.Float64,
@@ -49,19 +50,7 @@ def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame
     """The last `window` simple returns on dates every symbol has a price."""
     # Calendar days that comfortably hold `window` trading days.
     start = ctx.as_of - timedelta(days=window * 2 + 30)
-    prices = ctx.load("prices_eod", symbols, start=start).pivot(
-        on="symbol", index="date", values="adjusted_close"
-    )
-    missing = [symbol for symbol in symbols if symbol not in prices.columns]
-    if missing:
-        raise CalculationError(f"No prices since {start} for {', '.join(missing)}")
-    returns = (
-        prices.drop_nulls()
-        .sort("date")
-        .select("date", *(pl.col(symbol).pct_change() for symbol in symbols))
-        .slice(1)
-        .tail(window)
-    )
+    returns = price_returns(ctx, symbols, price_start=start).tail(window)
     if returns.height < window:
         raise CalculationError(
             f"Only {returns.height} daily returns up to {ctx.as_of}, need {window}"

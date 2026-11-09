@@ -305,6 +305,13 @@ It returns `{"rows": [...]}`, or an Arrow IPC stream with
 invalid params and expected failures, such as missing prices, return `422`;
 other failures return `500`.
 
+The same endpoint accepts a heterogeneous `portfolios` list (up to 100 entries)
+instead of singular `portfolio`. Use `type: "hypothetical_portfolio_returns"`
+with `asOf` and optional `params.start_date` to obtain historical returns of
+calculation-date holdings, without saving anything. Batch rows include
+`portfolio_index`; JSON and Arrow are supported. See
+[the return-history contract](docs/src/content/docs/calculations/returns.md).
+
 ## The app
 
 `$URL/` is a SvelteKit app. Its home page sums up both pipelines: symbol

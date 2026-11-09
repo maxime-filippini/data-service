@@ -60,7 +60,8 @@ export type AdHocPortfolio =
 
 /**
  * Worker-to-Python `/calculate` payload for a one-off result returned as JSON
- * or Arrow. `asOf` limits visible data; omit `portfolio` for types that take none.
+ * or Arrow. `asOf` limits visible data. Use `portfolios` for a batch (rows gain
+ * `portfolio_index`); omit both selections for types that take no portfolio.
  * Unlike `RunRequest`, this carries no persistence destination or saved run ID.
  */
 export interface CalculateRequest {
@@ -69,6 +70,8 @@ export interface CalculateRequest {
   readonly asOf: string;
   /** Left out for types that don't take a portfolio. */
   readonly portfolio?: AdHocPortfolio;
+  /** Alternative ordered batch; never supplied together with `portfolio`. */
+  readonly portfolios?: readonly AdHocPortfolio[];
 }
 
 /**

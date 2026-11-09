@@ -185,15 +185,23 @@ class ValidateRequest(Contract):
 class CalculateRequest(Contract):
     """POST /calculate payload for one result returned to the caller.
 
-    Matches the Worker CalculateRequest. The as-of date limits visible data;
-    portfolio input may be saved history or inline holdings, or absent for
-    a type that takes none. Execution does not persist result history.
+    Matches the Worker CalculateRequest. Choose one portfolio or an ordered
+    batch, each with saved snapshots or inline holdings. The calculation date
+    limits data and holdings visibility. Batch rows gain portfolio_index;
+    nothing is persisted, and duplicate IDs/inline entries remain distinct.
     """
 
     type: str = Field(min_length=1)
     params: dict[str, Any]
     as_of: date = Field(alias="asOf")
     portfolio: Portfolio | None = None
+    portfolios: tuple[Portfolio, ...] | None = Field(None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _one_selection(self):
+        if self.portfolio is not None and self.portfolios is not None:
+            raise ValueError("Supply either portfolio or portfolios, not both")
+        return self
 
 
 class RunRequest(Contract):

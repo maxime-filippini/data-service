@@ -172,3 +172,10 @@ Returns `{"rows": [...]}`, or an Arrow IPC stream with
 `Accept: application/vnd.apache.arrow.stream`. Unknown types return `404`;
 invalid params and expected failures, such as missing prices, return `422`;
 other failures return `500`.
+
+For synchronous hypothetical return histories, use the same endpoint with
+`type: "hypothetical_portfolio_returns"`, `asOf` as the calculation date, and
+`portfolios: [{ "portfolioId": "..." }, { "holdings": [...] }]`. Optional
+`params.start_date` bounds observation dates; omission returns all available
+shared history. Batch rows include their zero-based `portfolio_index`.
+See [Hypothetical portfolio returns](/docs/calculations/returns/) for the contract.

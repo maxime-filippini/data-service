@@ -11,25 +11,39 @@ import {
 } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 
+/** Maximum heterogeneous portfolios evaluated in one synchronous request. */
+export const MAX_AD_HOC_PORTFOLIOS = 100;
+
+/** One saved portfolio reference or a complete inline holdings set. */
+const AdHocPortfolioSchema = Schema.Union([
+  Schema.Struct({ portfolioId: PortfolioIdSchema }),
+  Schema.Struct({ holdings: HoldingsSchema }),
+]);
+
 /**
- * HTTP input for a one-off calculation without a saved configuration or R2
- * result write. A portfolio reference is resolved by the Worker; inline holdings
- * are checked for tracked symbols before being sent to the engine.
+ * One-off calculation input. Use either `portfolio` for a single result or
+ * `portfolios` for a heterogeneous batch; batch rows include `portfolio_index`.
+ * The Worker resolves saved references and validates tracking before engine I/O.
  */
 export const AdHocCalculationSchema = Schema.Struct({
   type: CalculationTypeNameSchema,
-  /** Checked by the engine. Defaults to `{}`. */
   params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-  /** Defaults to the previous UTC day. */
+  /** Calculation date: holdings selection and market-data upper cutoff. */
   asOf: Schema.optionalKey(MarketDateSchema),
-  /** A saved portfolio, or holdings held at all times. Left out for types that don't take one. */
-  portfolio: Schema.optionalKey(
-    Schema.Union([
-      Schema.Struct({ portfolioId: PortfolioIdSchema }),
-      Schema.Struct({ holdings: HoldingsSchema }),
-    ]),
+  portfolio: Schema.optionalKey(AdHocPortfolioSchema),
+  portfolios: Schema.optionalKey(
+    Schema.Array(AdHocPortfolioSchema).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(MAX_AD_HOC_PORTFOLIOS),
+    ),
   ),
-});
+}).check(
+  Schema.makeFilter((input) =>
+    input.portfolio !== undefined && input.portfolios !== undefined
+      ? "Supply either portfolio or portfolios, not both"
+      : true,
+  ),
+);
 
 /**
  * Decoded one-off request consumed by `calculateAdHoc`. Still needs date/param
@@ -38,37 +52,62 @@ export const AdHocCalculationSchema = Schema.Struct({
  */
 export type AdHocCalculation = typeof AdHocCalculationSchema.Type;
 
+/** Resolve one selection without mutating saved holdings or creating a portfolio. */
+const resolvePortfolio = Effect.fn("Calculations.resolvePortfolio")(function* (
+  input: typeof AdHocPortfolioSchema.Type,
+  asOf: string,
+) {
+  const portfolios = yield* Portfolios;
+  if ("portfolioId" in input) {
+    const portfolio = yield* portfolios.forEngine(input.portfolioId, asOf);
+    if (portfolio.snapshots.length === 0) {
+      return yield* Effect.fail(
+        new PortfolioError({
+          kind: "no_holdings",
+          message: `The portfolio has no snapshot on or before ${asOf}`,
+        }),
+      );
+    }
+    return portfolio;
+  }
+  yield* portfolios.requireTracked(
+    input.holdings.map((holding) => holding.symbol),
+  );
+  return { holdings: input.holdings } satisfies AdHocPortfolio;
+});
+
 /**
- * Run an ad hoc calculation. A saved portfolio sends its snapshots up to the
- * as-of date; plain holdings are checked to be tracked first. Returns the
- * engine's response (JSON or Arrow, by `accept`).
+ * Resolve all selections before one engine call. Batches retain request order,
+ * including duplicate saved IDs and multiple inline holdings sets. The engine
+ * returns JSON or Arrow; no calculation, run or result object is persisted.
  */
 export const calculateAdHoc = Effect.fn("Calculations.calculateAdHoc")(
   function* (input: AdHocCalculation, now: Date, accept?: string) {
     const asOf = input.asOf ?? previousDay(now);
-    const portfolios = yield* Portfolios;
-
-    let portfolio: AdHocPortfolio | undefined;
-    if (input.portfolio !== undefined && "portfolioId" in input.portfolio) {
-      portfolio = yield* portfolios.forEngine(
-        input.portfolio.portfolioId,
-        asOf,
-      );
-      if (portfolio.snapshots.length === 0) {
-        return yield* Effect.fail(
-          new PortfolioError({
-            kind: "no_holdings",
-            message: `The portfolio has no snapshot on or before ${asOf}`,
-          }),
-        );
-      }
-    } else if (input.portfolio !== undefined) {
-      yield* portfolios.requireTracked(
-        input.portfolio.holdings.map((holding) => holding.symbol),
-      );
-      portfolio = { holdings: input.portfolio.holdings };
-    }
-
+    const portfolio =
+      input.portfolio === undefined
+        ? undefined
+        : yield* resolvePortfolio(input.portfolio, asOf);
+    const portfolios =
+      input.portfolios === undefined
+        ? undefined
+        : yield* Effect.forEach(input.portfolios, (selection, index) =>
+            resolvePortfolio(selection, asOf).pipe(
+              Effect.mapError(
+                (error) =>
+                  new PortfolioError({
+                    kind: error.kind,
+                    message: `Portfolio at index ${index}: ${error.message}`,
+                    ...(error.symbols === undefined
+                      ? {}
+                      : { symbols: error.symbols }),
+                    ...(error.calculations === undefined
+                      ? {}
+                      : { calculations: error.calculations }),
+                  }),
+              ),
+            ),
+          );
     const engine = yield* Engine;
     return yield* engine.calculate(
       {
@@ -76,6 +115,7 @@ export const calculateAdHoc = Effect.fn("Calculations.calculateAdHoc")(
         params: input.params ?? {},
         asOf,
         ...(portfolio === undefined ? {} : { portfolio }),
+        ...(portfolios === undefined ? {} : { portfolios }),
       },
       accept,
     );

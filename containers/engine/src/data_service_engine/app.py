@@ -75,6 +75,15 @@ def calculate(request: CalculateRequest, http_request: Request):
         raise HTTPException(422, _params_errors(error)) from error
     try:
         rows = runtime.calculate(request)
+    except runtime.BatchCalculationFailed as error:
+        raise HTTPException(
+            error.status,
+            {
+                "portfolioIndex": error.index,
+                "portfolioId": error.portfolio_id,
+                "error": str(error),
+            },
+        ) from error
     except CalculationError as error:
         raise HTTPException(422, str(error)) from error
     except runtime.CalculationFailed as error:

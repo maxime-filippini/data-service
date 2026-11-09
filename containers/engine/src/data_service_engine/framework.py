@@ -122,11 +122,14 @@ class CalculationType:
         as_of: date,
         portfolios: Sequence[Portfolio],
         load_symbol: SymbolLoader,
+        *,
+        fail_fast: bool = False,
     ) -> tuple[pl.DataFrame, list[PortfolioOutcome]]:
         """Run once per portfolio (or once, without one).
 
         One portfolio failing doesn't stop the others; its outcome holds the
         error. Invalid params or the wrong number of portfolios raise.
+        fail_fast propagates execution errors for atomic synchronous batches.
         """
         validated = self.validate_params(params)
 
@@ -143,6 +146,8 @@ class CalculationType:
                 df = self._finish(self.run(validated, ctx), as_of, portfolio_id)
             except Exception as error:
                 logger.exception("%s failed for portfolio %s", self.name, portfolio_id)
+                if fail_fast:
+                    raise
                 outcomes.append(
                     PortfolioOutcome(
                         portfolio_id=portfolio_id,

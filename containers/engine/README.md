@@ -7,6 +7,15 @@ portfolios, calculations and runs in D1; this service only reads and writes
 R2. See [calculations and runs](../../docs/src/content/docs/calculations/runs.md)
 and the [maintainer guide](../../docs/src/content/docs/maintaining.md).
 
+The `hypothetical_portfolio_returns` type returns historical constant-weight
+returns using the holdings selected at `asOf`. The Worker's synchronous route
+resolves mixed saved references/inline holdings into an ordered `portfolios`
+batch. The engine shares a `SymbolReader` across entries, adds `portfolio_index`,
+and returns JSON or Arrow without R2 writes. Any batch error aborts the response;
+expected calculation errors retain an indexed 422, and infrastructure errors
+retain an indexed 500. See the
+[return-history contract](../../docs/src/content/docs/calculations/returns.md).
+
 ## Adding a calculation type
 
 Add one module to `src/data_service_engine/types/` that defines

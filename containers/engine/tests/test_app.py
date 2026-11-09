@@ -47,7 +47,9 @@ def client(engine_r2):
 
 def test_health_and_types(client):
     assert client.get("/health").json() == {"status": "ok"}
-    [vol] = client.get("/types").json()
+    types = {item["name"]: item for item in client.get("/types").json()}
+    assert "hypothetical_portfolio_returns" in types
+    vol = types["ex_ante_vol"]
     assert vol["name"] == "ex_ante_vol"
     assert vol["takesPortfolio"] is True
     assert vol["paramsSchema"]["properties"]["window"]["default"] == 252
@@ -185,3 +187,119 @@ def test_calculate_errors(client):
     )
     assert failed.status_code == 500
     assert failed.json()["detail"] == "No prices_eod data for MISSING.US"
+
+
+def test_return_history_batch_mixes_saved_and_inline_and_reads_each_symbol_once(
+    client, engine_r2
+):
+    saved = portfolio("p1", "A.US", "2026-10-15")
+    saved["snapshots"].append(
+        {
+            "holdingsDate": "2026-10-17",
+            "holdings": [{"symbol": "MISSING.US", "weight": 1}],
+        }
+    )
+    batch = {
+        "type": "hypothetical_portfolio_returns",
+        "params": {},
+        "asOf": AS_OF,
+        "portfolios": [saved, {"holdings": [{"symbol": "A.US", "weight": -2}]}, saved],
+    }
+    response = client.post("/calculate", json=batch)
+    assert response.status_code == 200, response.text
+    rows = response.json()["rows"]
+    assert len(rows) == 12
+    groups = [
+        [row for row in rows if row["portfolio_index"] == index] for index in range(3)
+    ]
+    assert [group[0]["portfolio_id"] for group in groups] == ["p1", None, "p1"]
+    assert groups[0][0]["date"] < "2026-10-15", (
+        "use the as-of holdings even before their date"
+    )
+    assert [row["return"] for row in groups[1]] == pytest.approx(
+        [-2 * row["return"] for row in groups[0]]
+    )
+    assert [row["return"] for row in groups[2]] == [row["return"] for row in groups[0]]
+    assert engine_r2.reads.count(prices_key("A.US")) == 1
+    assert engine_r2.writes == []
+
+    arrow = client.post("/calculate", json=batch, headers={"accept": ARROW_STREAM})
+    assert arrow.status_code == 200
+    frame = pl.read_ipc_stream(io.BytesIO(arrow.content))
+    assert frame["portfolio_index"].to_list() == [
+        row["portfolio_index"] for row in rows
+    ]
+    assert frame["return"].to_list() == [row["return"] for row in rows]
+    assert engine_r2.writes == []
+
+
+def test_batch_errors_identify_the_entry_and_never_return_partial_rows(
+    client, engine_r2
+):
+    request = {
+        "type": "hypothetical_portfolio_returns",
+        "params": {},
+        "asOf": AS_OF,
+        "portfolios": [
+            portfolio("ok"),
+            {"holdings": [{"symbol": "MISSING.US", "weight": 1}]},
+        ],
+    }
+    response = client.post("/calculate", json=request)
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "portfolioIndex": 1,
+            "portfolioId": None,
+            "error": "No prices_eod data for MISSING.US",
+        }
+    }
+    assert engine_r2.writes == []
+
+    request["portfolios"][1] = portfolio("too-new", holdings_date="2026-10-17")
+    response = client.post("/calculate", json=request)
+    assert response.status_code == 422
+    assert response.json()["detail"]["portfolioIndex"] == 1
+    assert response.json()["detail"]["portfolioId"] == "too-new"
+
+
+def test_unexpected_batch_infrastructure_failures_remain_server_errors(
+    client, engine_r2, monkeypatch
+):
+    def broken(**kwargs):
+        raise RuntimeError("storage unavailable")
+
+    monkeypatch.setattr(engine_r2, "get_object", broken)
+    response = client.post(
+        "/calculate",
+        json={
+            "type": "hypothetical_portfolio_returns",
+            "params": {},
+            "asOf": AS_OF,
+            "portfolios": [portfolio("p1")],
+        },
+    )
+    assert response.status_code == 500
+    assert response.json()["detail"]["portfolioIndex"] == 0
+    assert engine_r2.writes == []
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"portfolios": []},
+        {"portfolios": [portfolio("p1")] * 101},
+        {"portfolio": portfolio("p1"), "portfolios": [portfolio("p1")]},
+    ],
+)
+def test_batch_shape_is_validated(client, patch):
+    response = client.post(
+        "/calculate",
+        json={
+            "type": "hypothetical_portfolio_returns",
+            "params": {},
+            "asOf": AS_OF,
+            **patch,
+        },
+    )
+    assert response.status_code == 422
