@@ -42,8 +42,9 @@ What client apps read.
   key, rebuilt in full from the latest completed run. Switching provider
   doesn't move it.
 - **Calculation results.** One Parquet file per calculation: the type's output
-  columns plus `as_of` and `portfolio_id`, one set of rows per as-of date. They
-  stay after the calculation is deleted.
+  columns plus `as_of` and identifying columns (`portfolio_id` for the built-in
+  portfolio types), one set of rows per as-of date. Results stay after the
+  calculation is deleted.
 
 ## Reading the files
 

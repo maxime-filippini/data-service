@@ -22,7 +22,8 @@ const AdHocPortfolioSchema = Schema.Union([
 
 /**
  * One-off calculation input. Use either `portfolio` for a single result or
- * `portfolios` for a heterogeneous batch; batch rows include `portfolio_index`.
+ * `portfolios` for heterogeneous selections. Independent portfolio calculations
+ * include `portfolio_index` in batch rows; aggregate types own their row shape.
  * The Worker resolves saved references and validates tracking before engine I/O.
  */
 export const AdHocCalculationSchema = Schema.Struct({

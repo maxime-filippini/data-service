@@ -6,9 +6,14 @@ import numpy as np
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..framework import CalculationError, CalculationType, Context
+from ..errors import CalculationError
+from ..framework import CalculationResult, CalculationType, Context
+from ..market_data import MarketData, market_data
+from ..models import Portfolio
+from ..portfolio_calculations import for_portfolios
 from ..returns import price_returns
 
+NAME = "hypothetical_portfolio_returns"
 OUTPUT = {
     "date": pl.Date,
     "previous_date": pl.Date,
@@ -33,23 +38,24 @@ class Params(BaseModel):
     )
 
 
-def run(params: Params, ctx: Context) -> pl.DataFrame:
+def calculate_portfolio(
+    params: Params, data: MarketData, portfolio: Portfolio
+) -> pl.DataFrame:
     """Apply calculation-date weights to every historical return interval.
 
     Saved snapshots before/after the selected snapshot never change past
     exposures. Constant weights imply rebalancing each interval; this is a
     hypothetical series, rather than realized performance or buy-and-hold drift.
     """
-    assert ctx.portfolio is not None
-    if params.start_date is not None and params.start_date > ctx.as_of:
+    if params.start_date is not None and params.start_date > data.as_of:
         raise CalculationError("start_date must be on or before the calculation date")
-    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
+    snapshot = portfolio.holdings_at(data.as_of)
     symbols = snapshot.symbols
-    returns = price_returns(ctx, symbols)
+    returns = price_returns(data, symbols)
     if params.start_date is not None:
         returns = returns.filter(pl.col("date") >= params.start_date)
     if returns.is_empty():
-        raise CalculationError(f"No shared return history up to {ctx.as_of}")
+        raise CalculationError(f"No shared return history up to {data.as_of}")
     matrix = returns.select(symbols).to_numpy()
     if not np.isfinite(matrix).all():
         raise CalculationError("Prices produce non-finite returns")
@@ -63,9 +69,20 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
     )
 
 
+def run(params: Params, ctx: Context) -> CalculationResult:
+    """Choose shared data access and independent portfolio execution explicitly."""
+    with market_data(ctx.as_of, ctx.load_symbol) as data:
+        return for_portfolios(
+            ctx,
+            OUTPUT,
+            lambda portfolio: calculate_portfolio(params, data, portfolio),
+            name=NAME,
+        )
+
+
 # Registration depends on the params model and implementation above.
 TYPE = CalculationType(
-    name="hypothetical_portfolio_returns",
+    name=NAME,
     description="Historical constant-weight returns of holdings selected at the calculation date.",
     params=Params,
     output=OUTPUT,

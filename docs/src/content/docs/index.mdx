@@ -87,8 +87,8 @@ Two pipelines share the Worker, D1 and the processed bucket:
   </Card>
   <Card title="Calculations" icon="puzzle">
     Saved calculations run on their own cron (or on demand) through a Workflow
-    that calls the engine container, once per portfolio. Results accumulate in
-    one Parquet file per calculation.
+    that calls the engine container. Each type chooses how to process its inputs
+    and retrieve data. Results accumulate in one Parquet file per calculation.
   </Card>
 </CardGrid>
 

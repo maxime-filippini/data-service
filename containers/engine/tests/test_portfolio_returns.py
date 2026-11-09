@@ -3,7 +3,7 @@ from datetime import date
 import polars as pl
 import pytest
 
-from data_service_engine.framework import get_type
+from data_service_engine.framework import Context, get_type
 from data_service_engine.models import Portfolio
 from data_service_engine.storage import SymbolReader
 
@@ -27,9 +27,11 @@ def reader(r2):
 
 
 def calculate(reader, portfolio, params=None):
-    rows, outcomes = RETURNS.calculate(params or {}, AS_OF, [portfolio], reader)
-    assert outcomes[0].error is None, outcomes[0].error
-    return rows
+    result = RETURNS.calculate(
+        params or {}, Context(AS_OF, [portfolio], load_symbol=reader)
+    )
+    assert result.portfolios[0].error is None, result.portfolios[0].error
+    return result.rows
 
 
 def test_selects_as_of_holdings_and_applies_them_even_before_the_snapshot(reader):
@@ -96,10 +98,10 @@ def test_only_shared_price_dates_are_used_and_gaps_are_explicit(reader, r2):
 )
 def test_invalid_history_has_an_explicit_failure(reader, params, symbol, expected):
     portfolio = Portfolio(holdings=[{"symbol": symbol, "weight": 1}])
-    rows, outcomes = RETURNS.calculate(params, AS_OF, [portfolio], reader)
-    assert rows.is_empty()
-    assert outcomes[0].status == "failed"
-    assert outcomes[0].error.startswith(expected)
+    result = RETURNS.calculate(params, Context(AS_OF, [portfolio], load_symbol=reader))
+    assert result.rows.is_empty()
+    assert result.status == "failed"
+    assert result.portfolios[0].error.startswith(expected)
 
 
 @pytest.mark.parametrize(
@@ -112,9 +114,11 @@ def test_invalid_history_has_an_explicit_failure(reader, params, symbol, expecte
 def test_insufficient_or_non_finite_history_is_not_returned(r2, prices, expected):
     r2.put_df(prices_key("A.US"), prices_df(prices))
     portfolio = Portfolio(holdings=[{"symbol": "A.US", "weight": 1}])
-    rows, outcomes = RETURNS.calculate({}, AS_OF, [portfolio], SymbolReader(r2, BUCKET))
-    assert rows.is_empty()
-    assert outcomes[0].error.startswith(expected)
+    result = RETURNS.calculate(
+        {}, Context(AS_OF, [portfolio], load_symbol=SymbolReader(r2, BUCKET))
+    )
+    assert result.rows.is_empty()
+    assert result.portfolios[0].error.startswith(expected)
 
 
 def test_params_reject_unknown_fields_and_malformed_dates():

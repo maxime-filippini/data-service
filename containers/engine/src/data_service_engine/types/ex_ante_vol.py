@@ -6,9 +6,14 @@ import numpy as np
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..framework import CalculationError, CalculationType, Context
+from ..errors import CalculationError
+from ..framework import CalculationResult, CalculationType, Context
+from ..market_data import MarketData, market_data
+from ..models import Portfolio
+from ..portfolio_calculations import for_portfolios
 from ..returns import price_returns
 
+NAME = "ex_ante_vol"
 OUTPUT = {
     "volatility": pl.Float64,
     "observations": pl.Int64,
@@ -46,22 +51,24 @@ class Params(BaseModel):
     )
 
 
-def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame:
+def daily_returns(data: MarketData, symbols: list[str], window: int) -> pl.DataFrame:
     """The last `window` simple returns on dates every symbol has a price."""
     # Calendar days that comfortably hold `window` trading days.
-    start = ctx.as_of - timedelta(days=window * 2 + 30)
-    returns = price_returns(ctx, symbols, price_start=start).tail(window)
+    start = data.as_of - timedelta(days=window * 2 + 30)
+    returns = price_returns(data, symbols, price_start=start).tail(window)
     if returns.height < window:
         raise CalculationError(
-            f"Only {returns.height} daily returns up to {ctx.as_of}, need {window}"
+            f"Only {returns.height} daily returns up to {data.as_of}, need {window}"
         )
     return returns
 
 
-def run(params: Params, ctx: Context) -> pl.DataFrame:
-    assert ctx.portfolio is not None
+def calculate_portfolio(
+    params: Params, data: MarketData, portfolio: Portfolio
+) -> pl.DataFrame:
+    """Apply as-of holdings to aligned returns and estimate annualized volatility."""
 
-    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
+    snapshot = portfolio.holdings_at(data.as_of)
     symbols = snapshot.symbols
     weights = np.array([snapshot.weights[symbol] for symbol in symbols])
 
@@ -71,7 +78,7 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
             raise CalculationError("Weights sum to zero, so they can't be normalised")
         weights = weights / total
 
-    returns = daily_returns(ctx, symbols, params.window)
+    returns = daily_returns(data, symbols, params.window)
     matrix = returns.select(symbols).to_numpy()
     if not np.isfinite(matrix).all():
         raise CalculationError("Prices include zeros, so returns are infinite")
@@ -97,9 +104,20 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
     )
 
 
+def run(params: Params, ctx: Context) -> CalculationResult:
+    """Choose shared data access and independent portfolio execution explicitly."""
+    with market_data(ctx.as_of, ctx.load_symbol) as data:
+        return for_portfolios(
+            ctx,
+            OUTPUT,
+            lambda portfolio: calculate_portfolio(params, data, portfolio),
+            name=NAME,
+        )
+
+
 # Registration needs the params model and run function defined above.
 TYPE = CalculationType(
-    name="ex_ante_vol",
+    name=NAME,
     description=(
         "Annualised volatility of the weights held at the as-of date over past "
         "daily returns of adjusted close prices."

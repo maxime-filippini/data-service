@@ -187,8 +187,9 @@ class CalculateRequest(Contract):
 
     Matches the Worker CalculateRequest. Choose one portfolio or an ordered
     batch, each with saved snapshots or inline holdings. The calculation date
-    limits data and holdings visibility. Batch rows gain portfolio_index;
-    nothing is persisted, and duplicate IDs/inline entries remain distinct.
+    limits data and holdings visibility. The independent-portfolio helper adds
+    portfolio_index to batch rows; aggregate types choose their own row shape.
+    Nothing is persisted, and duplicate IDs/inline entries remain distinct.
     """
 
     type: str = Field(min_length=1)
@@ -202,6 +203,18 @@ class CalculateRequest(Contract):
         if self.portfolio is not None and self.portfolios is not None:
             raise ValueError("Supply either portfolio or portfolios, not both")
         return self
+
+    @property
+    def selections(self) -> tuple[Portfolio, ...]:
+        """Normalize the two HTTP selection forms without choosing how to execute."""
+        if self.portfolios is not None:
+            return self.portfolios
+        return (self.portfolio,) if self.portfolio is not None else ()
+
+    @property
+    def mode(self) -> Literal["single", "batch"]:
+        """Caller-requested synchronous response/error policy."""
+        return "batch" if self.portfolios is not None else "single"
 
 
 class RunRequest(Contract):
@@ -235,8 +248,8 @@ class RunRequest(Contract):
 class PortfolioOutcome(Contract):
     """Result of executing one type for one portfolio, before persistence.
 
-    Used in saved-run responses and to determine ad hoc success. A null
-    portfolio ID means the type ran without a portfolio. A completed outcome
+    Provided by the opt-in portfolio helper for saved-run reporting. A null
+    portfolio ID identifies inline holdings. A completed outcome
     counts produced rows; the subsequent R2 write can still fail.
     """
 

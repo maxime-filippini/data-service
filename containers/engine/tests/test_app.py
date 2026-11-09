@@ -4,8 +4,11 @@ from datetime import date
 import polars as pl
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from data_service_engine.app import ARROW_STREAM, app
+from data_service_engine.framework import CalculationResult, CalculationType, registry
+from data_service_engine.market_data import market_data
 
 from .conftest import prices_df, prices_key
 
@@ -303,3 +306,79 @@ def test_batch_shape_is_validated(client, patch):
         },
     )
     assert response.status_code == 422
+
+
+def test_symbol_type_controls_its_reads_and_persists_without_portfolio_columns(
+    client, engine_r2, monkeypatch
+):
+    class SymbolParams(BaseModel):
+        symbols: list[str]
+
+    calls = []
+
+    def symbol_prices(params, ctx):
+        calls.append(ctx)
+        with market_data(ctx.as_of, ctx.load_symbol) as data:
+            rows = (
+                data.load("prices_eod", params.symbols)
+                .group_by("symbol")
+                .agg(pl.col("date").max().alias("last_price_date"))
+                .sort("symbol")
+            )
+        return CalculationResult(rows)
+
+    monkeypatch.setitem(
+        registry(),
+        "symbol_prices",
+        CalculationType(
+            name="symbol_prices",
+            description="",
+            params=SymbolParams,
+            output={"last_price_date": pl.Date},
+            run=symbol_prices,
+        ),
+    )
+    engine_r2.put_df(prices_key("B.US"), prices_df([4, 5, 6], end=date(2026, 10, 19)))
+    request = {
+        "type": "symbol_prices",
+        "params": {"symbols": ["A.US", "B.US"]},
+        "asOf": AS_OF,
+    }
+    response = client.post("/calculate", json=request)
+    assert response.status_code == 200, response.text
+    assert response.json()["rows"] == [
+        {"as_of": AS_OF, "symbol": "A.US", "last_price_date": AS_OF},
+        {"as_of": AS_OF, "symbol": "B.US", "last_price_date": AS_OF},
+    ]
+    assert len(calls) == 1
+    assert engine_r2.writes == []
+
+    saved = client.post(
+        "/runs", json={**request, "runId": "symbol-run", "outputKey": OUTPUT_KEY}
+    )
+    assert saved.status_code == 200
+    assert saved.json()["status"] == "completed"
+    assert saved.json()["portfolios"] == []
+    assert saved.json()["rowCount"] == 2
+    assert len(calls) == 2
+    assert engine_r2.read_df(OUTPUT_KEY).columns == [
+        "as_of",
+        "symbol",
+        "last_price_date",
+    ]
+
+    # The generic history writer also replaces/merges this schema on later runs.
+    earlier = client.post(
+        "/runs",
+        json={
+            **request,
+            "asOf": "2026-10-15",
+            "runId": "earlier",
+            "outputKey": OUTPUT_KEY,
+        },
+    )
+    assert earlier.json()["status"] == "completed"
+    assert (
+        engine_r2.read_df(OUTPUT_KEY)["as_of"].to_list()
+        == [date(2026, 10, 15)] * 2 + [date(2026, 10, 16)] * 2
+    )

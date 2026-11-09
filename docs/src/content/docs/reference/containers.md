@@ -64,7 +64,9 @@ envelope literal in `models.py` and its Parquet schema in `processor.py`.
 ## Engine
 
 Holds every calculation type, validates params, runs calculations over the
-canonical files and writes their results. Code: `containers/engine/`.
+canonical files and writes their results. Each type is invoked once with all
+request inputs and chooses its own data access and iteration helpers. Runtime
+handles dispatch and persistence. Code: `containers/engine/`.
 
 | Endpoint                     | Does                                                                                         |
 | ---------------------------- | -------------------------------------------------------------------------------------------- |
