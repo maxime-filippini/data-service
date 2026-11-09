@@ -5,10 +5,10 @@ import {
   type NewSnapshot,
   type Portfolio,
   PortfolioError,
-  Portfolios,
   type PortfolioSummary,
   type Snapshot,
-} from "$/portfolios";
+} from "$/portfolios/contracts";
+import { Portfolios } from "$/portfolios/store";
 
 interface PortfolioRow {
   readonly portfolio_id: string;

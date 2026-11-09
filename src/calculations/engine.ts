@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
 import type { CalculationParams, CalculationTypeInfo, PortfolioOutcome } from "$/calculations/views";
-import type { EnginePortfolio, Holding } from "$/portfolios";
+import type { EnginePortfolio, Holding } from "$/portfolios/contracts";
 
 /** How long an ad hoc calculation may take, including a cold start. */
 export const CALCULATE_TIMEOUT_MS = 60_000;

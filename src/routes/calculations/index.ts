@@ -1,22 +1,21 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 
+import { createCalculation, updateCalculation } from "$/calculations/configure";
 import {
   type CalculationError,
   CalculationIdSchema,
-  Calculations,
   CreateCalculationSchema,
   RunIdSchema,
   StartRunSchema,
   UpdateCalculationSchema,
-} from "$/calculations";
-import { createCalculation, updateCalculation } from "$/calculations/configure";
+} from "$/calculations/contracts";
 import type { Engine, EngineError } from "$/calculations/engine";
 import { type RunWorkflow, startRun } from "$/calculations/runs";
+import { Calculations } from "$/calculations/store";
 import { effectValidator } from "$/effect-validator";
+import { runHttp } from "$/http/run-effect";
 import { previousDay } from "$/market-data/ingestion-queue";
-import { engineStatusOf } from "$/routes/calculate";
 
 type Env = { Bindings: CloudflareBindings };
 
@@ -32,20 +31,13 @@ const RunsQuerySchema = Schema.Struct({
   ),
 });
 
-export const calculationStatusOf = {
-  not_found: 404,
-  invalid: 422,
-  workflow: 500,
-  database: 500,
-} as const satisfies Record<CalculationError["kind"], number>;
-
 /**
  * Saved calculations and their runs: create, change and delete calculations,
  * start a run now and see past runs. Served by the management API and the
  * dashboard, each with its own auth.
  */
 export const createCalculationRoutes = (
-  services: {
+  dependencies: {
     readonly calculationsFor: (env: CloudflareBindings) => Layer.Layer<Calculations>;
     readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
     readonly runWorkflowFor: (env: CloudflareBindings) => RunWorkflow;
@@ -55,23 +47,8 @@ export const createCalculationRoutes = (
   const app = new Hono<Env>();
   app.use("*", auth);
 
-  const run = async <A>(
-    env: CloudflareBindings,
-    program: Effect.Effect<A, CalculationError | EngineError, Calculations | Engine>,
-  ) => {
-    const layer = Layer.merge(services.calculationsFor(env), services.engineFor(env));
-    const result = await program.pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
-    if (Result.isFailure(result)) {
-      const error = result.failure;
-      const status = error._tag === "EngineError" ? engineStatusOf[error.kind] : calculationStatusOf[error.kind];
-      const extra =
-        error._tag === "EngineError"
-          ? error.detail === undefined ? {} : { detail: error.detail }
-          : error.portfolioIds === undefined ? {} : { portfolioIds: error.portfolioIds };
-      throw new HTTPException(status, { res: Response.json({ error: error.message, ...extra }, { status }) });
-    }
-    return result.success;
-  };
+  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, CalculationError | EngineError, Calculations | Engine>) =>
+    runHttp(program, Layer.merge(dependencies.calculationsFor(env), dependencies.engineFor(env)));
 
   app.get("/", async (c) => {
     const calculations = await run(c.env, Calculations.use((store) => store.list()));
@@ -138,7 +115,7 @@ export const createCalculationRoutes = (
       const now = new Date();
       const started = await run(
         c.env,
-        startRun(id, { trigger: "manual", asOf: asOf ?? previousDay(now) }, now, services.runWorkflowFor(c.env)),
+        startRun(id, { trigger: "manual", asOf: asOf ?? previousDay(now) }, now, dependencies.runWorkflowFor(c.env)),
       );
       return c.json(started, 202);
     },

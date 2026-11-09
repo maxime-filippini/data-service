@@ -43,7 +43,7 @@ Client apps read it directly from R2.
 
 A kind of calculation, such as `ex_ante_vol`. Each one is a Python module in
 the engine container with its own params and output columns. See
-[the calculation engine spec](docs/calculation-engine.md).
+[the calculation engine spec](docs/src/content/docs/calculations/types.md).
 
 ## Portfolio
 

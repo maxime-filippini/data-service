@@ -24,6 +24,14 @@ How it works, with diagrams: the docs site at `$URL/docs/` (source in
 | `docs/` | The docs site (Astro Starlight), served by the Worker at `/docs/` |
 | `migrations/` | D1 migrations |
 
+## Finding your way around
+
+Start with the [maintainer guide](docs/src/content/docs/maintaining.md): it maps
+operations to files, walks through Effect using calculations, and explains the
+local test loop. [CONTEXT.md](CONTEXT.md) is the short domain glossary.
+The published docs are the current reference; `.agent/` contains historical
+design notes.
+
 ## Setup
 
 ```sh
@@ -169,7 +177,7 @@ straight away. A symbol that already has a download in progress is skipped.
 
 Every enabled symbol is downloaded once a day, after the schedule's UTC hour.
 The schedule starts **paused**; resume it to start daily downloads. See
-[Daily schedule](docs/ARCHITECTURE.md#daily-schedule) for how runs work.
+[Daily schedule](docs/src/content/docs/pipeline/schedule.md) for how runs work.
 
 ```sh
 # Show it, with the next run time
@@ -194,7 +202,7 @@ A portfolio is a name and a series of dated holdings snapshots, which
 calculations run over. Every symbol must be tracked in `prices_eod` (disabled
 symbols count), weights are any non-zero numbers, and a portfolio has at most
 one snapshot per date. Snapshots can't be edited: delete one and add it again.
-See [Portfolios](docs/calculation-engine.md#portfolios).
+See [Portfolios](docs/src/content/docs/calculations/portfolios.md).
 
 Registering a `prices_eod` symbol also creates its single-asset portfolio:
 named after the symbol, with one snapshot on `1900-01-01` holding it at weight
@@ -235,7 +243,7 @@ in `calculations`.
 A calculation is a saved calculation type with its params, the portfolios it
 runs over, a cron expression (UTC) and an enabled flag. Its results go to
 `calculation=<id>/data.parquet` in the processed bucket. See
-[the calculation engine spec](docs/calculation-engine.md), and
+[the calculation engine spec](docs/src/content/docs/calculations/runs.md), and
 [the engine README](containers/engine/README.md) to add a type.
 
 ```sh

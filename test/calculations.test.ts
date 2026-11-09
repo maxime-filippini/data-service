@@ -4,13 +4,16 @@ import test from "node:test";
 import { Effect, Layer } from "effect";
 
 import { requireManagementToken } from "$/auth";
-import type { CalculationRun } from "$/calculations";
+import type { CalculationRun } from "$/calculations/contracts";
 import { isCronError, parseCron } from "$/calculations/cron";
 import { D1CalculationsLive } from "$/calculations/d1";
-import { executeRun, type RunWorkflow, type Steps, startRun } from "$/calculations/runs";
+import { type RunWorkflow, startRun } from "$/calculations/runs";
+import { executeRun } from "$/calculations/workflow";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createPortfolioRoutes } from "$/routes/portfolios";
+import type { Steps } from "$/workflows/steps";
+
 import { makeTestDatabase } from "./support/d1";
 import { type EngineCall, exAnteVol, makeFakeEngine } from "./support/engine";
 
@@ -83,12 +86,12 @@ const setup = (respond: (call: EngineCall) => Response | Promise<Response> = def
 
   const engine = makeFakeEngine(respond);
   const runs = makeWorkflow();
-  const services = {
+  const dependencies = {
     calculationsFor: () => D1CalculationsLive(db),
     engineFor: () => engine.layer,
     runWorkflowFor: () => runs.workflow,
   };
-  const app = createCalculationRoutes(services, requireManagementToken);
+  const app = createCalculationRoutes(dependencies, requireManagementToken);
   const portfolios = createPortfolioRoutes(() => D1PortfoliosLive(db), requireManagementToken);
   const env = { MANAGEMENT_API_TOKEN: "management" } as CloudflareBindings;
   const request = (path: string, method = "GET", body?: unknown, token = "management") =>

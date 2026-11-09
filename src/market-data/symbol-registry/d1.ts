@@ -1,12 +1,12 @@
 import { Effect, Layer } from "effect";
 
+import type { Dataset } from "$/market-data/schemas";
 import {
   SymbolRegistry,
   SymbolRegistryError,
   type TrackedSymbol,
 } from "$/market-data/symbol-registry";
-import type { Dataset } from "$/market-data/schemas";
-import { SINGLE_ASSET_HOLDINGS_DATE } from "$/portfolios";
+import { SINGLE_ASSET_HOLDINGS_DATE } from "$/portfolios/contracts";
 
 interface SymbolRow {
   readonly dataset: Dataset;

@@ -1,14 +1,18 @@
 import { Effect, type Layer, Result, Schema } from "effect";
 
-import { Calculations, CalculationIdSchema } from "$/calculations";
+import { CalculationIdSchema } from "$/calculations/contracts";
 import { isCronError, nextSlot, parseCron } from "$/calculations/cron";
+import { Calculations } from "$/calculations/store";
 import type { Calculation } from "$/calculations/views";
-import { ScheduleStore, scheduleView } from "$/market-data/schedule";
+import { type Dependencies, dependencies as liveDependencies } from "$/dependencies";
+import { scheduleView } from "$/market-data/schedule/operations";
+import { ScheduleStore } from "$/market-data/schedule/store";
 import { datasetProviders } from "$/market-data/schemas";
 import { PipelineStatus } from "$/market-data/status";
 import type { RunStatus, SymbolStatusView } from "$/market-data/status/views";
-import { PortfolioIdSchema, Portfolios } from "$/portfolios";
-import { type Services, services as liveServices } from "$/services";
+import { PortfolioIdSchema } from "$/portfolios/contracts";
+import { Portfolios } from "$/portfolios/store";
+
 import type * as Facade from "./app";
 import type { PageData, SymbolCounts, UpcomingCalculation } from "./views";
 
@@ -68,11 +72,11 @@ export const upcomingCalculations = (calculations: readonly Calculation[], now: 
     .sort((a, b) => a.nextRunAt.localeCompare(b.nextRunAt));
 
 /** The page data (see `PageData`) on a request's bindings. */
-export const pageData = (env: CloudflareBindings, services: Services = liveServices): PageData => {
-  const status = runWith(services.statusFor(env));
-  const store = runWith(services.storeFor(env));
-  const portfolios = runWith(services.portfoliosFor(env));
-  const calculations = runWith(services.calculationsFor(env));
+export const pageData = (env: CloudflareBindings, dependencies: Dependencies = liveDependencies): PageData => {
+  const status = runWith(dependencies.statusFor(env));
+  const store = runWith(dependencies.scheduleFor(env));
+  const portfolios = runWith(dependencies.portfoliosFor(env));
+  const calculations = runWith(dependencies.calculationsFor(env));
 
   const listSymbols = () => status(PipelineStatus.use((s) => s.listSymbols({})));
   const schedule = (now: Date) => store(scheduleView(now));

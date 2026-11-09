@@ -9,11 +9,11 @@ import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
 import { type IngestionMessage, isRetryable, runIngestion } from "$/market-data/ingestion-queue";
 import { processJob, scheduleProcessing } from "$/market-data/processing";
 import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
-import { triggerScheduledRun } from "$/market-data/schedule";
+import { triggerScheduledRun } from "$/market-data/schedule/operations";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createRoutes } from "$/routes";
-import { services } from "$/services";
+import { dependencies } from "$/dependencies";
 // SvelteKit's handler, built by `pnpm --filter app build` (wrangler's build
 // command runs it before dev and deploy). It has no type declarations.
 // @ts-expect-error -- generated JavaScript, missing until the app is built
@@ -24,7 +24,7 @@ export { CalculationEngine } from "./engine-container";
 export { MarketDataProcessor } from "./processor-container";
 export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
 
-const app = createRoutes(services, sveltekit);
+const app = createRoutes(dependencies, sveltekit);
 
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
 const PROCESSING_SWEEP_HOUR = 2;

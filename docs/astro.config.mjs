@@ -22,6 +22,7 @@ export default defineConfig({
         "index",
         "concepts",
         "architecture",
+        "maintaining",
         { label: "Market data", items: ["pipeline/schedule", "pipeline/ingestion", "pipeline/processing"] },
         {
           label: "Calculations",

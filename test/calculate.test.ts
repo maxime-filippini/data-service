@@ -7,6 +7,7 @@ import { requireManagementToken } from "$/auth";
 import { ARROW_STREAM, Engine, type EngineError } from "$/calculations/engine";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
+
 import { makeTestDatabase } from "./support/d1";
 import { type EngineCall, exAnteVol, makeFakeEngine } from "./support/engine";
 
@@ -35,9 +36,9 @@ const setup = (respond?: (call: EngineCall) => Response | Promise<Response>) => 
   snapshot("2026-10-31", [["MSFT.US", 1]]);
 
   const engine = makeFakeEngine(respond);
-  const services = { engineFor: () => engine.layer, portfoliosFor: () => D1PortfoliosLive(db) };
-  const types = createCalculationTypeRoutes(services.engineFor, requireManagementToken);
-  const calculate = createCalculateRoutes(services, requireManagementToken);
+  const dependencies = { engineFor: () => engine.layer, portfoliosFor: () => D1PortfoliosLive(db) };
+  const types = createCalculationTypeRoutes(dependencies.engineFor, requireManagementToken);
+  const calculate = createCalculateRoutes(dependencies, requireManagementToken);
   const env = { MANAGEMENT_API_TOKEN: "management" } as CloudflareBindings;
   const headers = (extra: Record<string, string> = {}) => ({
     Authorization: "Bearer management",

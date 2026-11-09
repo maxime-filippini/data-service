@@ -1,12 +1,8 @@
 import { Effect } from "effect";
 
-import {
-  CalculationError,
-  Calculations,
-  type CreateCalculation,
-  type UpdateCalculation,
-} from "$/calculations";
+import { CalculationError, type CreateCalculation, type UpdateCalculation } from "$/calculations/contracts";
 import { Engine, type CalculationTypeInfo } from "$/calculations/engine";
+import { Calculations } from "$/calculations/store";
 
 const invalid = (message: string) => new CalculationError({ kind: "invalid", message });
 
@@ -41,7 +37,8 @@ export const createCalculation = Effect.fn("Calculations.create")(function* (
   const type = yield* typeInfo(input.type);
   const portfolioIds = input.portfolioIds ?? [];
   yield* checkPortfolios(type, portfolioIds);
-  const params = yield* (yield* Engine).validate(type.name, input.params ?? {});
+  const engine = yield* Engine;
+  const params = yield* engine.validate(type.name, input.params ?? {});
   const store = yield* Calculations;
   return yield* store.create(
     { id, name: input.name, type: type.name, params, portfolioIds, cron: input.cron, enabled: input.enabled ?? true },
@@ -69,7 +66,10 @@ export const updateCalculation = Effect.fn("Calculations.update")(function* (
   if (patch.params !== undefined || patch.portfolioIds !== undefined) {
     const type = yield* typeInfo(current.type);
     if (patch.portfolioIds !== undefined) yield* checkPortfolios(type, patch.portfolioIds);
-    if (patch.params !== undefined) params = yield* (yield* Engine).validate(type.name, patch.params);
+    if (patch.params !== undefined) {
+      const engine = yield* Engine;
+      params = yield* engine.validate(type.name, patch.params);
+    }
   }
 
   return yield* store.update(

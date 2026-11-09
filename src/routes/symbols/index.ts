@@ -1,8 +1,8 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, type Layer, Schema } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 
 import { effectValidator } from "$/effect-validator";
+import { runHttp } from "$/http/run-effect";
 import { DatasetSchema, MarketSymbolSchema } from "$/market-data/schemas";
 import {
   RegisterSymbolSchema,
@@ -31,16 +31,8 @@ export const createSymbolRoutes = (
   const app = new Hono<{ Bindings: CloudflareBindings }>();
   app.use("*", auth);
 
-  const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, SymbolRegistryError, SymbolRegistry>) => {
-    const result = await program.pipe(Effect.provide(registryFor(env)), Effect.result, Effect.runPromise);
-    if (Result.isFailure(result)) {
-      const status = result.failure.kind === "not_found" ? 404 : 500;
-      throw new HTTPException(status, {
-        res: Response.json({ error: result.failure.message }, { status }),
-      });
-    }
-    return result.success;
-  };
+  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, SymbolRegistryError, SymbolRegistry>) =>
+    runHttp(program, registryFor(env));
 
   // Register or update a symbol. Re-registering a disabled symbol enables it.
   app.post("/", effectValidator("json", RegisterSymbolSchema, { onExcessProperty: "error" }), async (c) => {

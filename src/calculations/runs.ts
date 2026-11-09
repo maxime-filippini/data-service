@@ -1,8 +1,14 @@
 import { Effect } from "effect";
 
-import { CalculationError, Calculations, calculationOutputKey, type FinishedRun, type RunTrigger } from "$/calculations";
+import {
+  CalculationError,
+  calculationOutputKey,
+  type FinishedRun,
+  type RunTrigger,
+} from "$/calculations/contracts";
 import { Engine, type PortfolioOutcome } from "$/calculations/engine";
-import { Portfolios } from "$/portfolios";
+import { Calculations } from "$/calculations/store";
+import { Portfolios } from "$/portfolios/store";
 
 /** What a run sends to its Workflow. The Workflow instance ID is the run ID. */
 export interface RunWorkflowParams {
@@ -167,51 +173,3 @@ export const calculateRun = Effect.fn("Calculations.calculateRun")(function* (ru
   if (result.portfolios.length === 0) return { ...result, portfolios: empty } satisfies FinishedRun;
   return { ...result, error: `All ${merged.length} portfolios failed`, portfolios: merged } satisfies FinishedRun;
 });
-
-/** The durable step runner a Workflow provides. Each named step runs once. */
-export interface Steps {
-  readonly do: <T>(name: string, run: () => Promise<T>, config?: StepConfig) => Promise<T>;
-}
-
-export interface StepConfig {
-  readonly retries?: {
-    readonly limit: number;
-    readonly delay: `${number} ${"second" | "minute"}${"s" | ""}`;
-    readonly backoff?: "constant" | "linear" | "exponential";
-  };
-  readonly timeout?: `${number} ${"minute" | "hour"}${"s" | ""}`;
-}
-
-/**
- * The engine step: a few retries for a cold or crashed container, and a
- * timeout so a hung request doesn't hold the calculation's run slot forever.
- */
-export const ENGINE_STEP: StepConfig = {
-  retries: { limit: 2, delay: "1 minute", backoff: "exponential" },
-  timeout: "30 minutes",
-};
-
-/**
- * The Workflow's body: run the calculation, then record the result. A
- * failure is recorded before the Workflow gives up.
- */
-export const executeRun = async (
-  params: RunWorkflowParams,
-  steps: Steps,
-  run: <A, E>(program: Effect.Effect<A, E, Calculations | Portfolios | Engine>) => Promise<A>,
-) => {
-  try {
-    const result = await steps.do("run calculation", () => run(calculateRun(params.runId)), ENGINE_STEP);
-    if (result === null) return null;
-    await steps.do("record result", () =>
-      run(Calculations.use((store) => store.finishRun(params.runId, result, new Date().toISOString()))),
-    );
-    return result.status;
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    await steps.do("record failure", () =>
-      run(Calculations.use((store) => store.failRun(params.runId, message, new Date().toISOString()))),
-    );
-    throw cause;
-  }
-};

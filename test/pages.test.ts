@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { D1CalculationsLive } from "$/calculations/d1";
+import type { Dependencies } from "$/dependencies";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { PageDataError, pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
-import type { Services } from "$/services";
+
 import { makeTestDatabase } from "./support/d1";
 import { makeFakeEngine } from "./support/engine";
 
@@ -21,17 +22,17 @@ const setup = () => {
     create: async () => ({ id: "unused" }) as WorkflowInstance,
     get: async (id: string) => ({ id }) as WorkflowInstance,
   };
-  const services: Services = {
+  const dependencies: Dependencies = {
     statusFor: () => D1PipelineStatusLive(db),
     registryFor: () => D1SymbolRegistryLive(db),
-    storeFor: () => D1ScheduleStoreLive(db),
-    workflowFor: () => workflow,
+    scheduleFor: () => D1ScheduleStoreLive(db),
+    downloadWorkflowFor: () => workflow,
     portfoliosFor: () => D1PortfoliosLive(db),
     engineFor: () => makeFakeEngine().layer,
     calculationsFor: () => D1CalculationsLive(db),
     runWorkflowFor: () => workflow,
-  } as unknown as Services;
-  return { sqlite, pages: pageData({} as CloudflareBindings, services) };
+  } as unknown as Dependencies;
+  return { sqlite, pages: pageData({} as CloudflareBindings, dependencies) };
 };
 
 type Sqlite = ReturnType<typeof makeTestDatabase>["sqlite"];

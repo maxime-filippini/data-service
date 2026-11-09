@@ -5,11 +5,11 @@ import {
   CalculationError,
   calculationOutputKey,
   type CalculationRun,
-  Calculations,
   type NewCalculation,
   type RunStatus,
   type RunTrigger,
-} from "$/calculations";
+} from "$/calculations/contracts";
+import { Calculations } from "$/calculations/store";
 
 interface CalculationRow {
   readonly calculation_id: string;

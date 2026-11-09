@@ -7,6 +7,9 @@ Everything runs on Cloudflare. One Worker (`data-service`) holds all state
 transitions; the two Python containers do the heavy data work and never touch
 D1.
 
+For a source-code map and an Effect walkthrough, see
+[Maintaining the code](/docs/maintaining/).
+
 ## Parts
 
 ```mermaid

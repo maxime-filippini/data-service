@@ -4,7 +4,8 @@ Python container for the data-service Worker ([README](../../README.md)).
 It runs calculations, such as ex-ante volatility, over the canonical Parquet
 datasets and writes their results next to them in R2. The Worker owns
 portfolios, calculations and runs in D1; this service only reads and writes
-R2. See [the spec](../../docs/calculation-engine.md).
+R2. See [calculations and runs](../../docs/src/content/docs/calculations/runs.md)
+and the [maintainer guide](../../docs/src/content/docs/maintaining.md).
 
 ## Adding a calculation type
 

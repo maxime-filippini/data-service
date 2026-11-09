@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 
+import type { Dependencies } from "$/dependencies";
 import { createRoutes } from "$/routes";
-import type { Services } from "$/services";
 
 const TEAM = "https://team.cloudflareaccess.com";
 const AUD = "app-aud";
@@ -38,8 +38,8 @@ const env = {
   },
 };
 
-// The services aren't reached by these requests.
-const routes = createRoutes({} as Services, {
+// The dependencies aren't reached by these requests.
+const routes = createRoutes({} as Dependencies, {
   fetch: async (request) => {
     appRequests.push(request);
     return new Response(`app ${new URL(request.url).pathname}`, {

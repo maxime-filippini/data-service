@@ -1,11 +1,11 @@
 import { Effect, Schema } from "effect";
 
+import { CalculationTypeNameSchema } from "$/calculations/contracts";
 import { type AdHocPortfolio, Engine } from "$/calculations/engine";
 import { previousDay } from "$/market-data/ingestion-queue";
 import { MarketDateSchema } from "$/market-data/schemas";
-import { HoldingsSchema, PortfolioError, PortfolioIdSchema, Portfolios } from "$/portfolios";
-
-export const CalculationTypeNameSchema = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(100));
+import { HoldingsSchema, PortfolioError, PortfolioIdSchema } from "$/portfolios/contracts";
+import { Portfolios } from "$/portfolios/store";
 
 /** The body of `POST /calculate`. */
 export const AdHocCalculationSchema = Schema.Struct({

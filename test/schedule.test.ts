@@ -1,25 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
 import { Effect, Layer } from "effect";
 
 import { requireManagementToken } from "$/auth";
 import type { IngestionMessage } from "$/market-data/ingestion-queue";
+import { type DownloadSchedule, type ScheduleRun } from "$/market-data/schedule/contracts";
+import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import {
-  type DownloadSchedule,
   isDue,
   nextRunAt,
-  runScheduledDownload,
   type ScheduledDownloadParams,
-  type ScheduleRun,
-  ScheduleStore,
   type ScheduleWorkflow,
   startManualRun,
-  type Steps,
   triggerScheduledRun,
-} from "$/market-data/schedule";
-import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
+} from "$/market-data/schedule/operations";
+import { ScheduleStore } from "$/market-data/schedule/store";
+import { runScheduledDownload } from "$/market-data/schedule/workflow";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createScheduleRoutes } from "$/routes/schedule";
+import type { Steps } from "$/workflows/steps";
+
 import { makeTestDatabase } from "./support/d1";
 
 const schedule = (overrides: Partial<DownloadSchedule> = {}): DownloadSchedule => ({
@@ -282,7 +283,7 @@ test("a failing Workflow records the error before giving up", async () => {
 test("the schedule API shows, changes and runs the schedule", async () => {
   const { db, workflow, created } = setup();
   const app = createScheduleRoutes(
-    { storeFor: () => D1ScheduleStoreLive(db), workflowFor: () => workflow },
+    { scheduleFor: () => D1ScheduleStoreLive(db), downloadWorkflowFor: () => workflow },
     requireManagementToken,
   );
   const env = { MANAGEMENT_API_TOKEN: "management" } as CloudflareBindings;

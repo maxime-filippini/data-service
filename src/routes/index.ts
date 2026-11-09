@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 
 import { type AccessKeys, remoteAccessKeys, requireManagementToken } from "$/auth";
+import type { Dependencies } from "$/dependencies";
 import { type AppHandler, createAppRoutes } from "$/routes/app";
 import { createAppApiRoutes } from "$/routes/app-api";
 import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
@@ -10,7 +11,6 @@ import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
-import type { Services } from "$/services";
 
 /**
  * Every route on the hostname:
@@ -24,23 +24,23 @@ import type { Services } from "$/services";
  * All but `/api` need an allowlisted Access user.
  */
 export const createRoutes = (
-  services: Services,
+  dependencies: Dependencies,
   appHandler: AppHandler,
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
   const api = new Hono<{ Bindings: CloudflareBindings }>();
-  api.route("/symbols", createSymbolRoutes(services.registryFor, requireManagementToken));
-  api.route("/ingestions", createIngestionRoutes(services.registryFor, requireManagementToken));
-  api.route("/schedule", createScheduleRoutes(services, requireManagementToken));
-  api.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, requireManagementToken));
-  api.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, requireManagementToken));
-  api.route("/calculate", createCalculateRoutes(services, requireManagementToken));
-  api.route("/calculations", createCalculationRoutes(services, requireManagementToken));
+  api.route("/symbols", createSymbolRoutes(dependencies.registryFor, requireManagementToken));
+  api.route("/ingestions", createIngestionRoutes(dependencies.registryFor, requireManagementToken));
+  api.route("/schedule", createScheduleRoutes(dependencies, requireManagementToken));
+  api.route("/portfolios", createPortfolioRoutes(dependencies.portfoliosFor, requireManagementToken));
+  api.route("/calculation-types", createCalculationTypeRoutes(dependencies.engineFor, requireManagementToken));
+  api.route("/calculate", createCalculateRoutes(dependencies, requireManagementToken));
+  api.route("/calculations", createCalculationRoutes(dependencies, requireManagementToken));
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
   const app = new Hono<{ Bindings: CloudflareBindings }>();
   app.route("/api", api);
-  app.route("/app-api", createAppApiRoutes(services, keysFor));
+  app.route("/app-api", createAppApiRoutes(dependencies, keysFor));
   app.route("/docs", createDocsRoutes(keysFor));
   // The dashboard used to live here; its pages are now at the top level.
   app.get("/dashboard", (c) => c.redirect("/", 302));

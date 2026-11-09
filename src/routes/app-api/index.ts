@@ -1,13 +1,11 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 
 import { type AccessKeys, type AccessVariables, remoteAccessKeys, requireAccessUser } from "$/auth";
-import { CalculationIdSchema, type Calculations, calculationOutputKey } from "$/calculations";
-import type { Engine } from "$/calculations/engine";
-import type { RunWorkflow } from "$/calculations/runs";
+import { CalculationIdSchema, calculationOutputKey } from "$/calculations/contracts";
+import type { Dependencies } from "$/dependencies";
 import { effectValidator } from "$/effect-validator";
-import type { ScheduleStore, ScheduleWorkflow } from "$/market-data/schedule";
+import { runHttp } from "$/http/run-effect";
 import { canonicalKey, DatasetSchema, datasetProviders, MarketSymbolSchema } from "$/market-data/schemas";
 import {
   CursorSchema,
@@ -18,8 +16,6 @@ import {
   type RunPage,
   type SymbolStatusView,
 } from "$/market-data/status";
-import type { SymbolRegistry } from "$/market-data/symbol-registry";
-import type { Portfolios } from "$/portfolios";
 import { createCalculateRoutes, createCalculationTypeRoutes } from "$/routes/calculate";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createIngestionRoutes } from "$/routes/ingestions";
@@ -81,30 +77,16 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * through the same routes as the management API.
  */
 export const createAppApiRoutes = (
-  services: {
-    readonly statusFor: (env: CloudflareBindings) => Layer.Layer<PipelineStatus>;
-    readonly registryFor: (env: CloudflareBindings) => Layer.Layer<SymbolRegistry>;
-    readonly storeFor: (env: CloudflareBindings) => Layer.Layer<ScheduleStore>;
-    readonly workflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
-    readonly portfoliosFor: (env: CloudflareBindings) => Layer.Layer<Portfolios>;
-    readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
-    readonly calculationsFor: (env: CloudflareBindings) => Layer.Layer<Calculations>;
-    readonly runWorkflowFor: (env: CloudflareBindings) => RunWorkflow;
-  },
+  dependencies: Dependencies,
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
-  const { statusFor } = services;
+  const { statusFor } = dependencies;
   const app = new Hono<AppApiEnv>();
 
   app.use("*", requireAccessUser(keysFor));
 
-  const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, PipelineStatusError, PipelineStatus>) => {
-    const result = await program.pipe(Effect.provide(statusFor(env)), Effect.result, Effect.runPromise);
-    if (Result.isFailure(result)) {
-      throw new HTTPException(500, { res: Response.json({ error: result.failure.message }, { status: 500 }) });
-    }
-    return result.success;
-  };
+  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, PipelineStatusError, PipelineStatus>) =>
+    runHttp(program, statusFor(env));
 
   app.use("*", requireSameOrigin);
   app.use("*", async (c, next) => {
@@ -190,13 +172,13 @@ export const createAppApiRoutes = (
   // Choices for the registry form.
   app.get("/options", (c) => c.json({ datasetProviders }));
 
-  app.route("/registry", createSymbolRoutes(services.registryFor, accessChecked));
-  app.route("/ingestions", createIngestionRoutes(services.registryFor, accessChecked));
-  app.route("/schedule", createScheduleRoutes(services, accessChecked));
-  app.route("/portfolios", createPortfolioRoutes(services.portfoliosFor, accessChecked));
-  app.route("/calculation-types", createCalculationTypeRoutes(services.engineFor, accessChecked));
-  app.route("/calculate", createCalculateRoutes(services, accessChecked));
-  app.route("/calculations", createCalculationRoutes(services, accessChecked));
+  app.route("/registry", createSymbolRoutes(dependencies.registryFor, accessChecked));
+  app.route("/ingestions", createIngestionRoutes(dependencies.registryFor, accessChecked));
+  app.route("/schedule", createScheduleRoutes(dependencies, accessChecked));
+  app.route("/portfolios", createPortfolioRoutes(dependencies.portfoliosFor, accessChecked));
+  app.route("/calculation-types", createCalculationTypeRoutes(dependencies.engineFor, accessChecked));
+  app.route("/calculate", createCalculateRoutes(dependencies, accessChecked));
+  app.route("/calculations", createCalculationRoutes(dependencies, accessChecked));
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));
 

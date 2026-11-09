@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { Hono } from "hono";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 
+import { D1CalculationsLive } from "$/calculations/d1";
 import type { IngestionMessage } from "$/market-data/ingestion-queue";
-import type { ScheduledDownloadParams } from "$/market-data/schedule";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
+import type { ScheduledDownloadParams } from "$/market-data/schedule/operations";
+import type { RunPage, SymbolStatusView } from "$/market-data/status";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
-import type { RunPage, SymbolStatusView } from "$/market-data/status";
-import { D1CalculationsLive } from "$/calculations/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
-import { Hono } from "hono";
-
 import { createAppApiRoutes } from "$/routes/app-api";
+
 import { makeTestDatabase } from "./support/d1";
 import { exAnteVol, makeFakeEngine } from "./support/engine";
 
@@ -48,7 +48,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
     {
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
-      storeFor: () => D1ScheduleStoreLive(db),
+      scheduleFor: () => D1ScheduleStoreLive(db),
       portfoliosFor: () => D1PortfoliosLive(db),
       engineFor: () => engine.layer,
       calculationsFor: () => D1CalculationsLive(db),
@@ -56,7 +56,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
         create: async (options) => ({ id: options!.id! }) as WorkflowInstance,
         get: async (id) => ({ id }) as WorkflowInstance,
       }),
-      workflowFor: () => ({
+      downloadWorkflowFor: () => ({
         create: async (options) => {
           workflowRuns.push(options!.params as ScheduledDownloadParams);
           return { id: options!.id! } as WorkflowInstance;

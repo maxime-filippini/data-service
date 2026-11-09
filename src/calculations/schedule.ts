@@ -1,8 +1,9 @@
 import { Effect } from "effect";
 
-import { type Calculation, Calculations } from "$/calculations";
+import { type Calculation } from "$/calculations/contracts";
 import { isCronError, latestSlot, parseCron } from "$/calculations/cron";
 import { type RunWorkflow, startRun } from "$/calculations/runs";
+import { Calculations } from "$/calculations/store";
 import { previousDay } from "$/market-data/ingestion-queue";
 
 /**

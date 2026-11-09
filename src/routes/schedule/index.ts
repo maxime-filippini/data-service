@@ -1,16 +1,11 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, type Layer, Schema } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 
 import { effectValidator } from "$/effect-validator";
-import {
-  type ScheduleError,
-  ScheduleStore,
-  type ScheduleWorkflow,
-  scheduleView,
-  startManualRun,
-  UpdateScheduleSchema,
-} from "$/market-data/schedule";
+import { runHttp } from "$/http/run-effect";
+import { type ScheduleError, UpdateScheduleSchema } from "$/market-data/schedule/contracts";
+import { type ScheduleWorkflow, scheduleView, startManualRun } from "$/market-data/schedule/operations";
+import { ScheduleStore } from "$/market-data/schedule/store";
 
 const RunsQuerySchema = Schema.Struct({
   limit: Schema.optionalKey(
@@ -27,21 +22,16 @@ const RunsQuerySchema = Schema.Struct({
  */
 export const createScheduleRoutes = (
   dependencies: {
-    readonly storeFor: (env: CloudflareBindings) => Layer.Layer<ScheduleStore>;
-    readonly workflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
+    readonly scheduleFor: (env: CloudflareBindings) => Layer.Layer<ScheduleStore>;
+    readonly downloadWorkflowFor: (env: CloudflareBindings) => ScheduleWorkflow;
   },
   auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
 ) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
   app.use("*", auth);
 
-  const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, ScheduleError, ScheduleStore>) => {
-    const result = await program.pipe(Effect.provide(dependencies.storeFor(env)), Effect.result, Effect.runPromise);
-    if (Result.isFailure(result)) {
-      throw new HTTPException(500, { res: Response.json({ error: result.failure.message }, { status: 500 }) });
-    }
-    return result.success;
-  };
+  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, ScheduleError, ScheduleStore>) =>
+    runHttp(program, dependencies.scheduleFor(env));
 
   app.get("/", async (c) => c.json(await run(c.env, scheduleView(new Date()))));
 
@@ -67,7 +57,7 @@ export const createScheduleRoutes = (
 
   // Run the schedule now: queue a download for every enabled symbol.
   app.post("/runs", async (c) => {
-    const started = await run(c.env, startManualRun(new Date(), dependencies.workflowFor(c.env)));
+    const started = await run(c.env, startManualRun(new Date(), dependencies.downloadWorkflowFor(c.env)));
     return c.json(started, 202);
   });
 

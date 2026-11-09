@@ -1,40 +1,13 @@
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 
 import { AdHocCalculationSchema, calculateAdHoc } from "$/calculations/ad-hoc";
-import { Engine, type EngineError } from "$/calculations/engine";
+import { Engine } from "$/calculations/engine";
 import { effectValidator } from "$/effect-validator";
-import type { PortfolioError, Portfolios } from "$/portfolios";
-import { portfolioStatusOf } from "$/routes/portfolios";
+import { runHttp } from "$/http/run-effect";
+import type { Portfolios } from "$/portfolios/store";
 
 type Env = { Bindings: CloudflareBindings };
-
-export const engineStatusOf = {
-  not_found: 404,
-  invalid: 422,
-  failed: 500,
-  unavailable: 503,
-  timeout: 504,
-} as const satisfies Record<EngineError["kind"], number>;
-
-/** Runs a program, turning engine and portfolio errors into JSON error responses. */
-const runWith = async <A, R>(
-  layer: Layer.Layer<R>,
-  program: Effect.Effect<A, EngineError | PortfolioError, R>,
-) => {
-  const result = await program.pipe(Effect.provide(layer), Effect.result, Effect.runPromise);
-  if (Result.isFailure(result)) {
-    const error = result.failure;
-    const status = error._tag === "EngineError" ? engineStatusOf[error.kind] : portfolioStatusOf[error.kind];
-    const extra =
-      error._tag === "EngineError"
-        ? error.detail === undefined ? {} : { detail: error.detail }
-        : error.symbols === undefined ? {} : { symbols: error.symbols };
-    throw new HTTPException(status, { res: Response.json({ error: error.message, ...extra }, { status }) });
-  }
-  return result.success;
-};
 
 /**
  * `GET /calculation-types`: the engine's calculation types, with their params
@@ -49,7 +22,7 @@ export const createCalculationTypeRoutes = (
   app.use("*", auth);
 
   app.get("/", async (c) => {
-    const types = await runWith(engineFor(c.env), Engine.use((engine) => engine.listTypes()));
+    const types = await runHttp(Engine.use((engine) => engine.listTypes()), engineFor(c.env));
     return c.json({ types });
   });
 
@@ -62,7 +35,7 @@ export const createCalculationTypeRoutes = (
  * `Accept: application/vnd.apache.arrow.stream`.
  */
 export const createCalculateRoutes = (
-  services: {
+  dependencies: {
     readonly engineFor: (env: CloudflareBindings) => Layer.Layer<Engine>;
     readonly portfoliosFor: (env: CloudflareBindings) => Layer.Layer<Portfolios>;
   },
@@ -72,9 +45,9 @@ export const createCalculateRoutes = (
   app.use("*", auth);
 
   app.post("/", effectValidator("json", AdHocCalculationSchema, { onExcessProperty: "error" }), async (c) => {
-    const response = await runWith(
-      Layer.merge(services.engineFor(c.env), services.portfoliosFor(c.env)),
+    const response = await runHttp(
       calculateAdHoc(c.req.valid("json"), new Date(), c.req.header("Accept")),
+      Layer.merge(dependencies.engineFor(c.env), dependencies.portfoliosFor(c.env)),
     );
     return new Response(response.body, {
       headers: { "Content-Type": response.headers.get("Content-Type") ?? "application/json" },

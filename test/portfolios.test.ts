@@ -4,11 +4,12 @@ import test from "node:test";
 import { Effect } from "effect";
 
 import { requireManagementToken } from "$/auth";
-import { Portfolios } from "$/portfolios";
 import { SymbolRegistry } from "$/market-data/symbol-registry";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
+import { Portfolios } from "$/portfolios/store";
 import { createPortfolioRoutes } from "$/routes/portfolios";
+
 import { makeTestDatabase } from "./support/d1";
 
 interface PortfolioBody {

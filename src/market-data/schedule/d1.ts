@@ -5,9 +5,9 @@ import {
   ScheduleError,
   type ScheduleRun,
   type ScheduleRunStatus,
-  ScheduleStore,
   type ScheduleTrigger,
-} from "$/market-data/schedule";
+} from "$/market-data/schedule/contracts";
+import { ScheduleStore } from "$/market-data/schedule/store";
 
 interface ScheduleRow {
   readonly hour_utc: number;

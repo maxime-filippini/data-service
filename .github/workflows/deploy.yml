@@ -34,6 +34,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm app:check
+      - run: pnpm --filter app build
       - run: pnpm docs:build
 
   check-processor:

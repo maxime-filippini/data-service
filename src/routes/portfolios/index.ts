@@ -1,28 +1,20 @@
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, type Layer, Schema } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
-import { HTTPException } from "hono/http-exception";
 
 import { effectValidator } from "$/effect-validator";
+import { runHttp } from "$/http/run-effect";
 import { MarketDateSchema } from "$/market-data/schemas";
 import {
   CreatePortfolioSchema,
   NewSnapshotSchema,
   type PortfolioError,
   PortfolioIdSchema,
-  Portfolios,
   RenamePortfolioSchema,
-} from "$/portfolios";
+} from "$/portfolios/contracts";
+import { Portfolios } from "$/portfolios/store";
 
 const IdParamSchema = Schema.Struct({ id: PortfolioIdSchema });
 const SnapshotParamSchema = Schema.Struct({ id: PortfolioIdSchema, holdingsDate: MarketDateSchema });
-
-export const portfolioStatusOf = {
-  not_found: 404,
-  conflict: 409,
-  untracked_symbols: 400,
-  no_holdings: 422,
-  database: 500,
-} as const satisfies Record<PortfolioError["kind"], number>;
 
 /**
  * Portfolios and their holdings snapshots. Snapshots are added or deleted,
@@ -36,16 +28,8 @@ export const createPortfolioRoutes = (
   const app = new Hono<{ Bindings: CloudflareBindings }>();
   app.use("*", auth);
 
-  const run = async <A>(env: CloudflareBindings, program: Effect.Effect<A, PortfolioError, Portfolios>) => {
-    const result = await program.pipe(Effect.provide(portfoliosFor(env)), Effect.result, Effect.runPromise);
-    if (Result.isFailure(result)) {
-      const { kind, message, symbols, calculations } = result.failure;
-      const status = portfolioStatusOf[kind];
-      const extra = { ...(symbols === undefined ? {} : { symbols }), ...(calculations === undefined ? {} : { calculations }) };
-      throw new HTTPException(status, { res: Response.json({ error: message, ...extra }, { status }) });
-    }
-    return result.success;
-  };
+  const run = <A>(env: CloudflareBindings, program: Effect.Effect<A, PortfolioError, Portfolios>) =>
+    runHttp(program, portfoliosFor(env));
 
   app.get("/", async (c) => {
     const portfolios = await run(c.env, Portfolios.use((store) => store.list()));
