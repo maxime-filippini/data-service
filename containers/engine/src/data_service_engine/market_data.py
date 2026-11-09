@@ -4,7 +4,7 @@ Open market_data() inside the calculation that needs it. One scope shares a
 lazy symbol cache across all reads, and closes its storage connection on exit.
 """
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
@@ -67,7 +67,7 @@ class MarketData:
 @contextmanager
 def market_data(
     as_of: date, load_symbol: SymbolLoader | None = None
-) -> Iterator[MarketData]:
+) -> Generator[MarketData]:
     """Acquire a request-scoped reader only when the calculation calls it.
 
     Production reads canonical Parquet from the configured bucket and caches
