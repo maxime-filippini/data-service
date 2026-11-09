@@ -1,6 +1,6 @@
 """Calculation registration and one invocation per request.
 
-Each type owns its execution flow and chooses its data and iteration helpers.
+Each type owns its execution flow and chooses its data helpers.
 The registry supplies metadata and parameter/output validation, not a strategy
 for portfolio, symbol or aggregate calculations.
 """

@@ -76,21 +76,39 @@ def test_validate_fills_defaults_or_lists_errors(client):
     assert client.post("/types/nope/validate", json={"params": {}}).status_code == 404
 
 
-def test_run_writes_results_and_reports_each_portfolio(client, engine_r2):
+@pytest.mark.parametrize(
+    "type_name, params, row_count",
+    [
+        ("ex_ante_vol", {"window": 3}, 1),
+        ("hypothetical_portfolio_returns", {}, 4),
+    ],
+)
+def test_run_writes_results_and_reports_each_portfolio(
+    client, engine_r2, type_name, params, row_count
+):
     response = client.post(
         "/runs",
-        json=run_request(portfolios=[portfolio("p1"), portfolio("p2", "MISSING.US")]),
+        json=run_request(
+            type=type_name,
+            params=params,
+            portfolios=[portfolio("p1"), portfolio("p2", "MISSING.US")],
+        ),
     )
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "partial"
-    assert body["rowCount"] == 1
+    assert body["rowCount"] == row_count
     assert (
         body["outputEtag"]
         == engine_r2.objects["processed-market-data-dev", OUTPUT_KEY][1]
     )
     assert body["portfolios"] == [
-        {"portfolioId": "p1", "status": "completed", "rowCount": 1, "error": None},
+        {
+            "portfolioId": "p1",
+            "status": "completed",
+            "rowCount": row_count,
+            "error": None,
+        },
         {
             "portfolioId": "p2",
             "status": "failed",
@@ -99,7 +117,10 @@ def test_run_writes_results_and_reports_each_portfolio(client, engine_r2):
         },
     ]
     df = engine_r2.read_df(OUTPUT_KEY)
-    assert df.select("as_of", "portfolio_id").rows() == [(date(2026, 10, 16), "p1")]
+    assert (
+        df.select("as_of", "portfolio_id").rows()
+        == [(date(2026, 10, 16), "p1")] * row_count
+    )
 
 
 @pytest.mark.parametrize(
@@ -236,12 +257,19 @@ def test_return_history_batch_mixes_saved_and_inline_and_reads_each_symbol_once(
     assert engine_r2.writes == []
 
 
+@pytest.mark.parametrize(
+    "type_name, params",
+    [
+        ("ex_ante_vol", {"window": 3}),
+        ("hypothetical_portfolio_returns", {}),
+    ],
+)
 def test_batch_errors_identify_the_entry_and_never_return_partial_rows(
-    client, engine_r2
+    client, engine_r2, type_name, params
 ):
     request = {
-        "type": "hypothetical_portfolio_returns",
-        "params": {},
+        "type": type_name,
+        "params": params,
         "asOf": AS_OF,
         "portfolios": [
             portfolio("ok"),

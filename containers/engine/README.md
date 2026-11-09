@@ -23,31 +23,30 @@ Add one module to `src/data_service_engine/types/` that exports
 and returns a `CalculationResult`. The runtime invokes it once, then either
 returns its rows or persists its successful result for a saved run.
 
-The calculation chooses its helpers:
-
-- `market_data(as_of, load_symbol=None)` opens date-bounded canonical data access.
-  `data.load(dataset, symbols, start=None, end=None)` reads only the symbols the
-  calculation asks for. One scope caches each object once and closes the
-  connection on exit. The optional loader supplies local frames for tests.
-- `for_portfolios(ctx, output, calculate, name=...)` is an opt-in loop for
-  independent portfolio results. It filters snapshots at the as-of date,
-  validates each output frame, adds portfolio identifiers and reports partial
-  saved-run failures or atomic synchronous batch errors.
-- `price_returns(data, symbols, price_start=None)` aligns adjusted prices and
-  computes returns. It works independently of portfolio orchestration.
-
-Both built-in types explicitly compose these helpers:
+The calculation chooses its data helpers and calls them directly:
 
 ```python
-def run(params: Params, ctx: Context) -> CalculationResult:
-    with market_data(ctx.as_of, ctx.load_symbol) as data:
-        return for_portfolios(
-            ctx,
-            OUTPUT,
-            lambda portfolio: calculate_portfolio(params, data, portfolio),
-            name=NAME,
-        )
+with market_data(ctx.as_of, ctx.load_symbol) as data:
+    for portfolio in ctx.portfolios:
+        inputs = load_portfolio_data(portfolio, data)
+        rows = calculate_portfolio(params, inputs)
 ```
+
+- `market_data(as_of, load_symbol=None)` opens date-bounded canonical access.
+  `data.load(dataset, symbols, start=None, end=None)` reads requested symbols.
+  One scope caches each object once and closes the connection on exit. An
+  optional loader supplies local frames for tests.
+- `load_portfolio_data(portfolio, data, start=None)` returns `PortfolioData`:
+  the calculation-date holdings snapshot, raw price rows and their as-of date.
+  Saved IDs are resolved to compositions by the Worker before reaching Python.
+- `price_returns(prices, symbols)` aligns already-loaded adjusted prices and
+  computes unweighted asset returns. It performs no I/O.
+
+Each type's `run` owns its ordinary loop and `try`/`except` error handling.
+`calculate_portfolio` takes prepared data and performs the numerical work.
+`portfolio_rows` validates and tags completed rows; `portfolio_result` combines
+already-produced frames and outcomes. Neither helper executes a calculation,
+loads data or catches errors.
 
 A symbol calculation can load symbols from its parameters and return rows
 without a portfolio loop. An aggregate calculation can consume `ctx.portfolios`

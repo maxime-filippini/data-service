@@ -108,8 +108,8 @@ stateDiagram-v2
 - **One at a time.** The partial unique index `calculation_runs_one_running`
   allows one `running` run per calculation. A run started meanwhile is
   recorded as `skipped`.
-- **Several portfolios.** The built-in types explicitly use `for_portfolios`
-  for independent results. If one fails, the others still complete and the run
+- **Several portfolios.** The built-in types use ordinary loops and call
+  data helpers directly for independent results. If one fails, the others still complete and the run
   is `partial`. Aggregate types can instead consume all portfolios together;
   every type is invoked once per request.
 - **Stuck runs.** A run `running` for over 5 minutes is checked against its

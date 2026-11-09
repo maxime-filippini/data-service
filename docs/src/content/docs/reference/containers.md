@@ -65,7 +65,7 @@ envelope literal in `models.py` and its Parquet schema in `processor.py`.
 
 Holds every calculation type, validates params, runs calculations over the
 canonical files and writes their results. Each type is invoked once with all
-request inputs and chooses its own data access and iteration helpers. Runtime
+request inputs and chooses its own data access and execution flow. Runtime
 handles dispatch and persistence. Code: `containers/engine/`.
 
 | Endpoint                     | Does                                                                                         |

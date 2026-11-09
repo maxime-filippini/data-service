@@ -26,7 +26,7 @@ class CalculationFailed(Exception):
 
 
 class BatchCalculationFailed(Exception):
-    """Atomic portfolio-helper failure with input position and error category."""
+    """Atomic portfolio computation failure with input position and error category."""
 
     def __init__(self, index: int, portfolio_id: str | None, cause: Exception):
         self.index = index

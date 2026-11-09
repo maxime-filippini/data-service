@@ -187,7 +187,7 @@ class CalculateRequest(Contract):
 
     Matches the Worker CalculateRequest. Choose one portfolio or an ordered
     batch, each with saved snapshots or inline holdings. The calculation date
-    limits data and holdings visibility. The independent-portfolio helper adds
+    limits data and holdings visibility. The independent portfolio types add
     portfolio_index to batch rows; aggregate types choose their own row shape.
     Nothing is persisted, and duplicate IDs/inline entries remain distinct.
     """
@@ -248,7 +248,7 @@ class RunRequest(Contract):
 class PortfolioOutcome(Contract):
     """Result of executing one type for one portfolio, before persistence.
 
-    Provided by the opt-in portfolio helper for saved-run reporting. A null
+    Recorded by independent portfolio calculations for saved-run reporting. A null
     portfolio ID identifies inline holdings. A completed outcome
     counts produced rows; the subsequent R2 write can still fail.
     """

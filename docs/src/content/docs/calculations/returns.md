@@ -91,8 +91,8 @@ JSON uses the existing `{ "rows": [...] }` envelope. Every row in a batch has:
 
 Rows follow input order, then ascending observation date. Singular requests
 omit `portfolio_index`. Repeated saved IDs remain separate batch entries.
-The portfolio helper reserves `portfolio_index` for batch identification, so
-types using that helper must not declare it in their value-column schema.
+`portfolio_rows` reserves `portfolio_index` for batch identification, so types
+using that formatting helper must not declare it in their value-column schema.
 
 Use `Accept: application/vnd.apache.arrow.stream` for the same columns in an
 Arrow IPC stream. A caller such as tail-lib can select an input index, then use

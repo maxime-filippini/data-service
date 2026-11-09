@@ -12,9 +12,25 @@ from datetime import date
 import polars as pl
 
 from . import storage
+from .models import Portfolio, Snapshot
 
 # Reads a complete canonical (dataset, symbol) object or raises MissingDataError.
 SymbolLoader = Callable[[str, str], pl.DataFrame]
+
+
+@dataclass(frozen=True)
+class PortfolioData:
+    """Calculation-date holdings and canonical prices prepared for computation.
+
+    holdings is the snapshot effective at as_of. prices contains symbol/date
+    rows for exactly those holdings, with dates bounded by the requested range
+    and as_of. Exposures are unchanged, including negative/non-unit weights.
+    This value owns no connection and can be passed to ordinary pure functions.
+    """
+
+    as_of: date
+    holdings: Snapshot
+    prices: pl.DataFrame
 
 
 @dataclass(frozen=True)
@@ -64,3 +80,22 @@ def market_data(
     settings = storage.load_settings()
     with storage.s3_client(settings) as s3:
         yield MarketData(as_of, storage.SymbolReader(s3, settings.processed_bucket))
+
+
+def load_portfolio_data(
+    portfolio: Portfolio,
+    data: MarketData,
+    *,
+    start: date | None = None,
+) -> PortfolioData:
+    """Resolve as-of holdings and load their adjusted-price source rows.
+
+    portfolio is a resolved saved history or inline composition. The Worker
+    resolves saved IDs through D1 before calling Python. No future holdings or
+    prices are used. The caller chooses history bounds and performs the actual
+    calculation after this function returns; no callback or iteration is owned
+    here. Shared data scopes reuse symbol reads across calls.
+    """
+    holdings = portfolio.holdings_at(data.as_of)
+    prices = data.load("prices_eod", holdings.symbols, start=start)
+    return PortfolioData(data.as_of, holdings, prices)

@@ -87,7 +87,7 @@ Start with one operation rather than the root Worker:
 5. `src/calculations/runs.ts`, `src/calculations/workflow.ts`, then
    `src/calculation-run-workflow.ts` for background execution.
 6. Python `types/ex_ante_vol.py`, then `market_data.py`,
-   `portfolio_calculations.py`, `framework.py` and `runtime.py` under
+   `portfolio_results.py`, `returns.py`, `framework.py` and `runtime.py` under
    `containers/engine/src/data_service_engine/`.
 7. Finally `src/index.ts`: by then its cron and queue wiring has context.
 
@@ -243,7 +243,7 @@ the calculation and recording its outcome. `calculateRun` loads portfolios,
 calls the engine and combines the portfolio outcomes.
 
 The engine validates params and invokes the selected Python type once with the
-whole request. The type chooses its data and iteration helpers and returns a
+whole request. The type chooses its data helpers and returns a
 `CalculationResult`; the runtime conditionally writes successful result history
 to R2. The Worker records the response in D1. Python never updates D1 itself.
 
@@ -253,11 +253,14 @@ Start at `types/ex_ante_vol.py` or `types/hypothetical_portfolio_returns.py`:
 
 1. `run(params, ctx)` opens `market_data(ctx.as_of, ctx.load_symbol)`. Data
    acquisition belongs to the calculation; no symbols are preloaded by runtime.
-2. The type opts into `for_portfolios`, passing a callback that computes one
-   portfolio's rows. This helper filters future snapshots, validates output,
-   attaches identifiers and applies the caller's failure policy.
-3. The callback selects holdings and calls `price_returns(data, symbols)`.
-   `MarketData.load` clamps dates; `SymbolReader` caches objects within the scope.
+2. In its own loop, the type calls `load_portfolio_data(portfolio, data)`. This
+   functional helper selects calculation-date holdings and loads their raw
+   prices. `MarketData.load` clamps dates; `SymbolReader` caches object reads.
+3. The type calls `calculate_portfolio(params, inputs)` directly. That function
+   uses `price_returns(inputs.prices, symbols)` and performs the numerical work
+   without I/O. The type's explicit `try`/`except` handles failures;
+   `portfolio_rows` tags completed rows and `portfolio_result` summarizes the
+   recorded outcomes. These helpers never invoke calculation code.
 4. `CalculationType.calculate` checks declared value columns and stamps `as_of`.
 5. `runtime.py` returns the rows for synchronous calls or persists a successful
    saved result. It uses the result status without inferring it from portfolios.
