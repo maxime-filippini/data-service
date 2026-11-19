@@ -218,8 +218,15 @@ const attemptStep = Effect.fn("Workflows.attemptStep")(function* (
   return outputs;
 });
 
+/**
+ * A failed step's message. Cloudflare prefixes a rethrown non-retryable
+ * error's message with its name; the diagnostic doesn't need it.
+ */
 const errorMessage = (cause: unknown) =>
-  cause instanceof Error ? cause.message : String(cause);
+  (cause instanceof Error ? cause.message : String(cause)).replace(
+    /^NonRetryableError: /u,
+    "",
+  );
 
 /**
  * A run's Workflow body: the one interpreter of a captured definition. It
