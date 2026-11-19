@@ -231,7 +231,8 @@ export interface WorkflowDispatchParams {
   readonly scheduledTime: string;
 }
 
-interface DispatchPlatform {
+/** The Workflow binding the hourly tick starts its dispatch instance on. */
+export interface DispatchPlatform {
   readonly create: (options: {
     readonly id: string;
     readonly params: WorkflowDispatchParams;

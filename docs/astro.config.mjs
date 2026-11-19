@@ -68,6 +68,7 @@ export default defineConfig({
             "operations/local",
             "operations/deploying",
             "operations/workflow-smoke",
+            "operations/workflow-cutover",
           ],
         },
       ],
