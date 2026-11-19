@@ -21,7 +21,9 @@
     "engine:test": "uv run --directory containers/engine pytest",
     "engine:lint": "uv run --directory containers/engine ruff check src tests && uv run --directory containers/engine ruff format --check src tests",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "operations:generate": "node --import tsx scripts/generate-operation-contracts.ts",
+    "operations:check": "node --import tsx scripts/generate-operation-contracts.ts --check"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",

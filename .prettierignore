@@ -11,3 +11,6 @@
 # Generated files are maintained by their own tools.
 pnpm-lock.yaml
 worker-configuration.d.ts
+
+# Exported by the Python service (`pnpm operations:generate`).
+src/operations/schemas.json
