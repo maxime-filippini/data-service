@@ -33,11 +33,13 @@ import {
   createCalculateRoutes,
   createCalculationTypeRoutes,
 } from "$/routes/calculate";
+import { createAssetRoutes } from "$/routes/assets";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
+import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
 
 const DEFAULT_RUN_PAGE_SIZE = 50;
 
@@ -117,7 +119,8 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * `/app-api`). Every request needs a Cloudflare Access user on the allowlist.
  * Besides reading pipeline status, it can edit the registry and the schedule
  * and start downloads, manage portfolios and calculations and run them,
- * through the same routes as the management API.
+ * and manage assets, workflow definitions and their assignments, through
+ * the same routes as the management API.
  */
 export const createAppApiRoutes = (
   dependencies: Dependencies,
@@ -270,6 +273,19 @@ export const createAppApiRoutes = (
   app.route(
     "/calculations",
     createCalculationRoutes(dependencies, accessChecked),
+  );
+
+  app.route(
+    "/assets",
+    createAssetRoutes(dependencies.assetsFor, accessChecked),
+  );
+  app.route(
+    "/workflows",
+    createWorkflowRoutes(dependencies.workflowsFor, accessChecked),
+  );
+  app.route(
+    "/step-types",
+    createStepTypeRoutes(dependencies.workflowsFor, accessChecked),
   );
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));

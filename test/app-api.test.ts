@@ -11,8 +11,13 @@ import type { ScheduledDownloadParams } from "$/market-data/schedule/operations"
 import type { RunPage, SymbolStatusView } from "$/market-data/status";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
+import { Layer } from "effect";
+
+import { D1AssetsLive } from "$/assets/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createAppApiRoutes } from "$/routes/app-api";
+import { D1WorkflowsLive } from "$/workflows/d1";
+import { StepRegistryLive } from "$/workflows/registry";
 
 import { makeTestDatabase } from "./support/d1";
 import { exAnteVol, makeFakeEngine } from "./support/engine";
@@ -64,6 +69,8 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
       portfoliosFor: () => D1PortfoliosLive(db),
       engineFor: () => engine.layer,
       calculationsFor: () => D1CalculationsLive(db),
+      assetsFor: () => D1AssetsLive(db),
+      workflowsFor: () => Layer.merge(D1WorkflowsLive(db), StepRegistryLive),
       runWorkflowFor: () => ({
         create: async (options) => ({ id: options!.id! }) as WorkflowInstance,
         get: async (id) => ({ id }) as WorkflowInstance,
@@ -687,4 +694,78 @@ test("the app serves the calculation routes", async () => {
   assert.equal((await send("POST", path)).status, 401);
   assert.equal((await send("POST", path, { token, headers: {} })).status, 403);
   assert.equal((await send("POST", path, { token })).status, 404);
+});
+
+test("the app serves assets, workflow definitions and the step catalog behind Access", async () => {
+  const { request, send } = setup();
+  const token = await signToken();
+
+  assert.equal((await request("/app-api/step-types")).status, 401);
+  assert.equal(
+    (await request("/app-api/workflows", await signToken({ email: "x@y.z" })))
+      .status,
+    403,
+  );
+  const catalog = await request("/app-api/step-types", token);
+  assert.equal(catalog.status, 200);
+  const { stepTypes } = (await catalog.json()) as {
+    stepTypes: { type: string }[];
+  };
+  assert.deepEqual(
+    stepTypes.map((stepType) => stepType.type),
+    ["download-prices"],
+  );
+
+  const asset = {
+    symbol: "AAPL.US",
+    provider: "eodhd",
+    backfillStartDate: "2016-01-01",
+  };
+  assert.equal(
+    (await send("POST", "/app-api/assets", { body: asset, token, headers: {} }))
+      .status,
+    403,
+    "changes must come from the app's own pages",
+  );
+  assert.equal(
+    (await send("POST", "/app-api/assets", { body: asset, token })).status,
+    201,
+  );
+  const workflow = await send("POST", "/app-api/workflows", {
+    token,
+    body: {
+      name: "Daily asset prices",
+      scope: "asset",
+      enabled: true,
+      schedule: { hourUtc: 2 },
+      steps: [
+        {
+          id: "download",
+          type: "download-prices",
+          inputs: {
+            asset: { ref: "context.subject" },
+            throughDate: { ref: "context.processingDate" },
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(workflow.status, 201);
+  const { id } = (await workflow.json()) as { id: string };
+  assert.equal(
+    (
+      await send("POST", `/app-api/workflows/${id}/assignments`, {
+        token,
+        body: { subject: { kind: "asset", symbol: "AAPL.US" } },
+      })
+    ).status,
+    201,
+  );
+  const assets = (await (await request("/app-api/assets", token)).json()) as {
+    assets: { symbol: string }[];
+  };
+  assert.deepEqual(
+    assets.assets.map((a) => a.symbol),
+    ["AAPL.US"],
+  );
 });

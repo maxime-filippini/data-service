@@ -1,5 +1,7 @@
 import { Effect, type Layer, Result, Schema } from "effect";
 
+import { AssetSymbolSchema } from "$/assets/contracts";
+import { Assets } from "$/assets/store";
 import { CalculationIdSchema } from "$/calculations/contracts";
 import { isCronError, nextSlot, parseCron } from "$/calculations/cron";
 import { Calculations } from "$/calculations/store";
@@ -15,6 +17,12 @@ import { PipelineStatus } from "$/market-data/status";
 import type { RunStatus, SymbolStatusView } from "$/market-data/status/views";
 import { PortfolioIdSchema } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
+import { WorkflowIdSchema } from "$/workflows/contracts";
+import {
+  inspectWorkflowById,
+  subjectAssignments,
+} from "$/workflows/operations";
+import { Workflows } from "$/workflows/store";
 
 import type * as Facade from "./app";
 import type { PageData, SymbolCounts, UpcomingCalculation } from "./views";
@@ -39,7 +47,10 @@ export class PageDataError extends Error {
 }
 
 const isUuid = (
-  schema: typeof CalculationIdSchema | typeof PortfolioIdSchema,
+  schema:
+    | typeof CalculationIdSchema
+    | typeof PortfolioIdSchema
+    | typeof WorkflowIdSchema,
   id: string,
 ) => Schema.is(schema)(id);
 
@@ -107,6 +118,8 @@ export const pageData = (
   const store = runWith(dependencies.scheduleFor(env));
   const portfolios = runWith(dependencies.portfoliosFor(env));
   const calculations = runWith(dependencies.calculationsFor(env));
+  const assets = runWith(dependencies.assetsFor(env));
+  const workflows = runWith(dependencies.workflowsFor(env));
 
   const listSymbols = () =>
     status(PipelineStatus.use((s) => s.listSymbols({})));
@@ -149,6 +162,26 @@ export const pageData = (
     },
 
     calculations: () => listCalculations(),
+
+    assets: () => assets(Assets.use((a) => a.list())),
+
+    asset: async (symbol) => {
+      if (!Schema.is(AssetSymbolSchema)(symbol))
+        throw new PageDataError(404, "Asset not found");
+      const [asset, assignments] = await Promise.all([
+        assets(Assets.use((a) => a.get(symbol))),
+        workflows(subjectAssignments({ kind: "asset", symbol })),
+      ]);
+      return { asset, assignments };
+    },
+
+    workflows: () => workflows(Workflows.use((w) => w.list())),
+
+    workflow: async (id) => {
+      if (!isUuid(WorkflowIdSchema, id))
+        throw new PageDataError(404, "Workflow not found");
+      return workflows(inspectWorkflowById(id));
+    },
 
     calculation: async (id, runLimit = 50) => {
       if (!isUuid(CalculationIdSchema, id))

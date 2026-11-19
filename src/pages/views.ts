@@ -2,6 +2,7 @@
 // imports only types from other views files (relatively), so the SvelteKit app
 // can typecheck it without the Workers runtime types.
 
+import type { Asset } from "../assets/views";
 import type { Calculation, CalculationRun } from "../calculations/views";
 import type { ScheduleRun, ScheduleView } from "../market-data/schedule/views";
 import type {
@@ -10,6 +11,11 @@ import type {
   SymbolStatusView,
 } from "../market-data/status/views";
 import type { Portfolio, PortfolioSummary } from "../portfolios/views";
+import type {
+  WorkflowAssignment,
+  WorkflowInspection,
+  WorkflowSummary,
+} from "../workflows/views";
 
 /**
  * Home-page summary of tracked symbols and their latest pipeline outcomes.
@@ -102,4 +108,19 @@ export interface PageData {
     readonly runs: readonly CalculationRun[];
   }>;
   readonly home: () => Promise<HomeData>;
+  readonly assets: () => Promise<readonly Asset[]>;
+  /** An asset and the definitions assigned to it. 404 for an unknown symbol. */
+  readonly asset: (symbol: string) => Promise<{
+    readonly asset: Asset;
+    readonly assignments: readonly WorkflowAssignment[];
+  }>;
+  readonly workflows: () => Promise<readonly WorkflowSummary[]>;
+  /**
+   * A definition's ordered steps with their parameters and reference
+   * connections, and its assignments. 404 for an unknown ID.
+   */
+  readonly workflow: (id: string) => Promise<{
+    readonly inspection: WorkflowInspection;
+    readonly assignments: readonly WorkflowAssignment[];
+  }>;
 }
