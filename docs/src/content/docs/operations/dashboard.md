@@ -18,6 +18,12 @@ description: What the app (home page and dashboard) does, how it is built, and h
   portfolios; add or delete snapshots (type or paste rows, or start from the
   latest snapshot). Single-asset portfolios are labelled, read-only, and can be
   hidden from the list.
+- **Assets** (`/assets`, `/assets/:symbol`). Read-only assets and the workflow
+  definitions assigned to each.
+- **Workflows** (`/workflows`, `/workflows/:id`). Read-only workflow
+  definitions: schedule, assignments and ordered steps with parameters, input
+  sources and output connections. See
+  [Assets and workflow definitions](/docs/workflows/definitions/).
 - **Calculations** (`/calculations`, `/calculations/:id`). Create and edit
   calculations with a JSON params editor and the type's params schema as help;
   pause, enable or run them for any as-of date; see their runs with each
@@ -86,10 +92,10 @@ management token is never sent to the browser.
 
 ## The app's JSON API
 
-| Kind    | Routes                                                                                                      |
-| ------- | ----------------------------------------------------------------------------------------------------------- |
-| Reads   | `/me`, `/runs`, `/symbols`, `/options`, `/datasets/:dataset/:symbol`, `/calculations/:id/results`           |
-| Changes | `/registry`, `/ingestions`, `/schedule`, `/portfolios`, `/calculation-types`, `/calculate`, `/calculations` |
+| Kind    | Routes                                                                                                                                              |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reads   | `/me`, `/runs`, `/symbols`, `/options`, `/datasets/:dataset/:symbol`, `/calculations/:id/results`                                                   |
+| Changes | `/registry`, `/ingestions`, `/schedule`, `/portfolios`, `/calculation-types`, `/calculate`, `/calculations`, `/assets`, `/workflows`, `/step-types` |
 
 All under `/app-api`. The change routes mount the same modules as the
 management API, with Access in place of the token. Browsers send the Access

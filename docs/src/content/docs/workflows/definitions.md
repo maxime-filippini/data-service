@@ -1,0 +1,134 @@
+---
+title: Assets and workflow definitions
+description: Assets, complete workflow specifications, step types and their contracts, validation and assignments.
+---
+
+The workflow service is being introduced beside the current downloader (see
+the [specification](https://github.com/maxime-filippini/data-service/blob/develop/docs/specs/workflow-service.md)).
+Configuration can already be created, validated, assigned and inspected.
+Workflows don't run yet: the current [daily schedule](/docs/pipeline/schedule/)
+still owns downloads.
+
+## Assets
+
+An asset is an instrument identified by its symbol, such as `AAPL.US` or
+`BRK-B.US`. Provider-qualified symbols are kept exactly as given. Datasets are
+not part of an asset's identity, and creating one downloads nothing and
+creates no portfolio. `provider` and `backfillStartDate` are its download
+settings; `enabled: false` pauses it without deleting it. Deleting an asset
+removes its workflow assignments.
+
+Assets are separate from the legacy `tracked_symbols` registry, which keeps
+working unchanged.
+
+## Definitions
+
+A workflow definition is one complete specification, submitted with `POST`
+and replaced as a whole with `PUT`:
+
+```json
+{
+  "name": "Daily asset prices",
+  "scope": "asset",
+  "enabled": true,
+  "schedule": { "hourUtc": 2 },
+  "steps": [
+    {
+      "id": "download",
+      "type": "download-prices",
+      "params": { "startDate": "2010-01-04" },
+      "inputs": {
+        "asset": { "ref": "context.subject" },
+        "throughDate": { "ref": "context.processingDate" }
+      }
+    }
+  ]
+}
+```
+
+- `scope` is the subject kind it runs for: `asset` or `portfolio`.
+- `schedule.hourUtc` is the whole UTC hour (0–23) it runs daily.
+- `steps` run in the listed order. Each has a unique `id`, a registered
+  `type`, literal `params` and `inputs` bindings. Omitted `params` and
+  `inputs` are saved as `{}`.
+
+Each input binding is either a literal, `{ "value": ... }`, or a reference,
+`{ "ref": ... }`, to:
+
+- a run-context field: `context.subject` (the run's asset or portfolio) or
+  `context.processingDate` (its UTC processing date), or
+- a named output of an earlier step: `steps.<id>.outputs.<name>`.
+
+References are not expressions: no property access, no forward references.
+One output can feed several later steps.
+
+## Step types and contracts
+
+Step types are registered in TypeScript (`src/workflows/registry`). Each
+declares the scopes it runs in, an Effect Schema for its params, and named
+inputs and outputs, each with a contract. A contract has an explicit identity
+(such as `asset-subject`, `date` or `raw-prices-eod`) and the schema its
+values satisfy. A reference connects only to an input with the same contract
+identity; there is no structural subtyping.
+
+`GET /api/step-types` returns the catalog: every step type with its params
+JSON Schema and its ports, every contract with its JSON Schema, and the
+run-context fields with the contract each provides per scope.
+
+| Step type         | Scopes | Inputs                                            | Outputs                  |
+| ----------------- | ------ | ------------------------------------------------- | ------------------------ |
+| `download-prices` | asset  | `asset` (`asset-subject`), `throughDate` (`date`) | `raw` (`raw-prices-eod`) |
+
+`download-prices` takes an optional `startDate` param overriding the asset's
+backfill start. Its contract is registered now; it executes from the next
+workflow ticket.
+
+## Validation
+
+`POST` and `PUT` reject a malformed body with `400`. A well-formed
+specification that does not fit the registry gets `422` with every issue,
+each with a `path` into the submitted JSON:
+
+- a step ID used twice, or an unknown step type;
+- a step type that does not support the definition's scope;
+- params that don't match the step type's schema (including unknown keys);
+- a missing binding for a declared input, or a binding for an undeclared one;
+- a literal that does not satisfy the input's contract;
+- a reference that is malformed, names an unknown context field, an unknown
+  step, the step itself, a later step, or an output the step does not have;
+- a reference whose contract differs from the input's.
+
+```json
+{
+  "error": "The workflow specification is invalid",
+  "issues": [
+    {
+      "path": ["steps", "0", "inputs", "throughDate", "ref"],
+      "message": "Input \"throughDate\" expects contract \"date\" but \"context.subject\" provides \"asset-subject\""
+    }
+  ]
+}
+```
+
+Validation runs before anything is written, so a rejected `PUT` leaves the
+saved definition unchanged.
+
+## Assignments
+
+An assignment links one definition to one existing subject of its scope, at
+most once. Assignments can be disabled to pause one subject without changing
+the shared definition. A definition's scope can't change while it has
+assignments (`409`); remove them first. Deleting a definition removes its
+assignments.
+
+## In the app
+
+- **Assets** (`/assets`, `/assets/:symbol`) list assets and the definitions
+  assigned to each.
+- **Workflows** (`/workflows`, `/workflows/:id`) list definitions and show one
+  with its schedule, assignments and ordered steps: each step's parameters,
+  where each input comes from (a literal, the run context, or a link to the
+  earlier step), and which later steps use each output.
+
+These pages are read-only; change configuration through the API. See
+[Management API](/docs/reference/api/#assets) for the routes.
