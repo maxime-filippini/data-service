@@ -42,6 +42,10 @@ import { createRunRoutes } from "$/routes/runs";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
+import {
+  createAssignmentRoutes,
+  createWorkflowDefaultRoutes,
+} from "$/routes/workflows/defaults";
 
 const DEFAULT_RUN_PAGE_SIZE = 50;
 
@@ -121,7 +125,7 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * `/app-api`). Every request needs a Cloudflare Access user on the allowlist.
  * Besides reading pipeline status, it can edit the registry and the schedule
  * and start downloads, manage portfolios and calculations and run them,
- * and manage assets, workflow definitions and their assignments, through
+ * and manage assets, workflow definitions, their assignments and defaults, through
  * the same routes as the management API.
  */
 export const createAppApiRoutes = (
@@ -288,6 +292,14 @@ export const createAppApiRoutes = (
   app.route(
     "/step-types",
     createStepTypeRoutes(dependencies.workflowsFor, accessChecked),
+  );
+  app.route(
+    "/workflow-defaults",
+    createWorkflowDefaultRoutes(dependencies.workflowsFor, accessChecked),
+  );
+  app.route(
+    "/workflow-assignments",
+    createAssignmentRoutes(dependencies.workflowsFor, accessChecked),
   );
   // `/runs` here is the legacy ingestion history, so workflow runs live at
   // `/workflow-runs` (the management API serves them at `/api/runs`).

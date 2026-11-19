@@ -4,7 +4,9 @@ import {
   type StepSpec,
   type Subject,
   subjectId,
+  type SubjectKind,
   type WorkflowAssignment,
+  type WorkflowDefault,
   type WorkflowDefinition,
   WorkflowError,
   type WorkflowSpec,
@@ -30,10 +32,12 @@ interface SummaryRow extends DefinitionRow {
   readonly assignment_count: number;
 }
 
-/** Private `workflow_assignments` row joined with its definition's name. */
+/** Private `workflow_assignments` row joined with its definition. */
 interface AssignmentRow {
   readonly workflow_id: string;
   readonly workflow_name: string;
+  readonly workflow_enabled: number;
+  readonly schedule_hour_utc: number;
   readonly subject_kind: "asset" | "portfolio";
   readonly subject_id: string;
   readonly enabled: number;
@@ -65,9 +69,21 @@ const toSummary = (row: SummaryRow): WorkflowSummary => ({
   updatedAt: row.updated_at,
 });
 
+/** Private `workflow_defaults` row joined with its definition. */
+interface DefaultRow {
+  readonly subject_kind: "asset" | "portfolio";
+  readonly workflow_id: string;
+  readonly workflow_name: string;
+  readonly workflow_enabled: number;
+  readonly schedule_hour_utc: number;
+  readonly created_at: string;
+}
+
 const toAssignment = (row: AssignmentRow): WorkflowAssignment => ({
   workflowId: row.workflow_id,
   workflowName: row.workflow_name,
+  workflowEnabled: row.workflow_enabled === 1,
+  schedule: { hourUtc: row.schedule_hour_utc },
   subject:
     row.subject_kind === "asset"
       ? { kind: "asset", symbol: row.subject_id }
@@ -75,6 +91,15 @@ const toAssignment = (row: AssignmentRow): WorkflowAssignment => ({
   enabled: row.enabled === 1,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+});
+
+const toDefault = (row: DefaultRow): WorkflowDefault => ({
+  subjectKind: row.subject_kind,
+  workflowId: row.workflow_id,
+  workflowName: row.workflow_name,
+  workflowEnabled: row.workflow_enabled === 1,
+  schedule: { hourUtc: row.schedule_hour_utc },
+  createdAt: row.created_at,
 });
 
 const query = <A>(operation: () => Promise<A>) =>
@@ -101,9 +126,51 @@ const describe = (subject: Subject) =>
 const notAssigned = (subject: Subject) =>
   fail("not_found", `The workflow is not assigned to ${describe(subject)}`);
 
-const ASSIGNMENT_SELECT = `SELECT a.*, d.name AS workflow_name
+const ASSIGNMENT_SELECT = `SELECT a.*, d.name AS workflow_name,
+    d.enabled AS workflow_enabled, d.schedule_hour_utc
   FROM workflow_assignments a
   JOIN workflow_definitions d USING (workflow_id)`;
+
+const DEFAULT_SELECT = `SELECT f.subject_kind, f.workflow_id, f.created_at,
+    d.name AS workflow_name, d.enabled AS workflow_enabled, d.schedule_hour_utc
+  FROM workflow_defaults f
+  JOIN workflow_definitions d USING (workflow_id)`;
+
+/** Every subject of the kind ?1, as `subjects(id)`. */
+const SUBJECTS_OF_KIND = `subjects (id) AS (
+  SELECT symbol FROM assets WHERE ?1 = 'asset'
+  UNION ALL
+  SELECT portfolio_id FROM portfolios WHERE ?1 = 'portfolio')`;
+
+/**
+ * The statement that gives a subject its kind's default assignments, enabled,
+ * when the subject is created. Put it in the same batch as, and before, the
+ * statement inserting the subject: it only assigns while the subject does not
+ * exist yet, so a rejected duplicate creation assigns nothing, and the batch
+ * makes subject and assignments appear together. Asset creation uses it;
+ * portfolio creation is meant to as well.
+ */
+export const assignDefaultsOnCreate = (
+  db: D1Database,
+  subject: Subject,
+  now: string,
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT INTO workflow_assignments
+         (workflow_id, subject_kind, subject_id, enabled, created_at, updated_at)
+       SELECT f.workflow_id, f.subject_kind, ?2, 1, ?3, ?3
+       FROM workflow_defaults f
+       WHERE f.subject_kind = ?1 AND NOT ${SUBJECT_EXISTS_12}
+       ON CONFLICT DO NOTHING`,
+    )
+    .bind(subject.kind, subjectId(subject), now);
+
+/** Whether the subject exists, as an SQL expression over ?1 (kind) and ?2 (ID). */
+const SUBJECT_EXISTS_12 = `(
+  (?1 = 'asset' AND EXISTS (SELECT 1 FROM assets WHERE symbol = ?2))
+  OR (?1 = 'portfolio' AND EXISTS (SELECT 1 FROM portfolios WHERE portfolio_id = ?2))
+)`;
 
 /** Whether the subject exists, as an SQL expression over ?2 (kind) and ?3 (ID). */
 const SUBJECT_EXISTS = `(
@@ -193,7 +260,8 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
             .first<DefinitionRow>(),
         ).pipe(Effect.map((row) => toDefinition(row!))),
 
-      // One conditional statement: the scope only changes without assignments.
+      // One conditional statement: the scope only changes without assignments
+      // or default links.
       replace: (id, spec, now) =>
         query(() =>
           db.batch([
@@ -203,8 +271,9 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
                    name = ?2, scope = ?3, enabled = ?4, schedule_hour_utc = ?5,
                    steps_json = ?6, updated_at = ?7
                  WHERE workflow_id = ?1
-                   AND (scope = ?3 OR NOT EXISTS (
-                     SELECT 1 FROM workflow_assignments WHERE workflow_id = ?1))
+                   AND (scope = ?3 OR (
+                     NOT EXISTS (SELECT 1 FROM workflow_assignments WHERE workflow_id = ?1)
+                     AND NOT EXISTS (SELECT 1 FROM workflow_defaults WHERE workflow_id = ?1)))
                  RETURNING *`,
               )
               .bind(
@@ -231,7 +300,7 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
             return exists
               ? fail(
                   "conflict",
-                  "The scope can't change while the workflow has assignments; remove them first",
+                  "The scope can't change while the workflow has assignments or is a default; remove them first",
                 )
               : definitionNotFound();
           }),
@@ -241,6 +310,12 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
       remove: (id) =>
         query(() =>
           db.batch([
+            db
+              .prepare(
+                `DELETE FROM workflow_defaults
+                 WHERE workflow_id = ?1 AND NOT EXISTS (${ACTIVE_RUN} AND r.workflow_id = ?1)`,
+              )
+              .bind(id),
             db
               .prepare(
                 `DELETE FROM workflow_assignments
@@ -261,7 +336,7 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
               .bind(id),
           ]),
         ).pipe(
-          Effect.flatMap(([, deleted, active]) => {
+          Effect.flatMap(([, , deleted, active]) => {
             if ((deleted?.results.length ?? 0) > 0) return Effect.void;
             const run = (
               active?.results as { run_id: string }[] | undefined
@@ -404,6 +479,121 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
                   "conflict",
                   `Run ${run.run_id} of this assignment is still active; remove the assignment once it finishes`,
                 );
+          }),
+        ),
+
+      listDefaults: (kind) =>
+        query(() =>
+          db
+            .prepare(
+              `${DEFAULT_SELECT}
+               WHERE ?1 IS NULL OR f.subject_kind = ?1
+               ORDER BY f.subject_kind, d.name, f.workflow_id`,
+            )
+            .bind(kind ?? null)
+            .all<DefaultRow>(),
+        ).pipe(Effect.map(({ results }) => results.map(toDefault))),
+
+      // Only a definition of the kind's scope; when nothing is there
+      // afterwards, the scope read explains why.
+      addDefault: (kind, workflowId, now) =>
+        query(() =>
+          db.batch([
+            db
+              .prepare(
+                `INSERT INTO workflow_defaults (subject_kind, workflow_id, created_at)
+                 SELECT ?1, workflow_id, ?3 FROM workflow_definitions
+                 WHERE workflow_id = ?2 AND scope = ?1
+                 ON CONFLICT DO NOTHING`,
+              )
+              .bind(kind, workflowId, now),
+            db
+              .prepare(
+                `${DEFAULT_SELECT} WHERE f.subject_kind = ? AND f.workflow_id = ?`,
+              )
+              .bind(kind, workflowId),
+            db
+              .prepare(
+                `SELECT scope FROM workflow_definitions WHERE workflow_id = ?`,
+              )
+              .bind(workflowId),
+          ]),
+        ).pipe(
+          Effect.flatMap(([, saved, definition]) => {
+            const row = (saved?.results as DefaultRow[] | undefined)?.[0];
+            if (row !== undefined) return Effect.succeed(toDefault(row));
+            const scope = (
+              definition?.results as { scope: SubjectKind }[] | undefined
+            )?.[0]?.scope;
+            return scope === undefined
+              ? definitionNotFound()
+              : fail(
+                  "invalid",
+                  `${scope === "asset" ? "An" : "A"} ${scope} workflow can't be a ${kind} default`,
+                );
+          }),
+        ),
+
+      removeDefault: (kind, workflowId) =>
+        query(() =>
+          db
+            .prepare(
+              `DELETE FROM workflow_defaults
+               WHERE subject_kind = ? AND workflow_id = ?
+               RETURNING workflow_id`,
+            )
+            .bind(kind, workflowId)
+            .first(),
+        ).pipe(
+          Effect.flatMap((row) =>
+            row === null
+              ? fail("not_found", `The workflow is not a ${kind} default`)
+              : Effect.void,
+          ),
+        ),
+
+      // One batch: insert what is missing (never touching an existing,
+      // possibly disabled, assignment), then read the views of what was added.
+      applyDefaults: (kind, now) =>
+        query(() =>
+          db.batch([
+            db
+              .prepare(
+                `WITH ${SUBJECTS_OF_KIND}
+                 INSERT INTO workflow_assignments
+                   (workflow_id, subject_kind, subject_id, enabled, created_at, updated_at)
+                 SELECT f.workflow_id, f.subject_kind, s.id, 1, ?2, ?2
+                 FROM workflow_defaults f, subjects s
+                 WHERE f.subject_kind = ?1
+                 ON CONFLICT DO NOTHING
+                 RETURNING workflow_id, subject_id`,
+              )
+              .bind(kind, now),
+            db
+              .prepare(
+                `${ASSIGNMENT_SELECT}
+                 WHERE a.subject_kind = ?1 AND a.created_at = ?2
+                   AND a.workflow_id IN (
+                     SELECT workflow_id FROM workflow_defaults WHERE subject_kind = ?1)
+                 ORDER BY d.name, a.workflow_id, a.subject_id`,
+              )
+              .bind(kind, now),
+          ]),
+        ).pipe(
+          Effect.map(([inserted, candidates]) => {
+            const added = new Set(
+              (
+                (inserted?.results ?? []) as {
+                  workflow_id: string;
+                  subject_id: string;
+                }[]
+              ).map((row) => `${row.workflow_id}\u0000${row.subject_id}`),
+            );
+            return ((candidates?.results ?? []) as AssignmentRow[])
+              .filter((row) =>
+                added.has(`${row.workflow_id}\u0000${row.subject_id}`),
+              )
+              .map(toAssignment);
           }),
         ),
     }),

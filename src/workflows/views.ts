@@ -48,15 +48,32 @@ export interface WorkflowSummary {
 
 /**
  * One definition assigned to one subject. Disabling it pauses that subject
- * without changing the shared definition.
+ * without changing the shared definition. `schedule` and `workflowEnabled`
+ * are the definition's: the assignment is dispatched daily at that UTC hour
+ * while it, its definition and its subject are enabled.
  */
 export interface WorkflowAssignment {
   readonly workflowId: string;
   readonly workflowName: string;
+  readonly workflowEnabled: boolean;
+  readonly schedule: { readonly hourUtc: number };
   readonly subject: SubjectView;
   readonly enabled: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/**
+ * A definition assigned automatically to every new subject of its kind.
+ * Existing subjects only get it when defaults are applied explicitly.
+ */
+export interface WorkflowDefault {
+  readonly subjectKind: "asset" | "portfolio";
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly workflowEnabled: boolean;
+  readonly schedule: { readonly hourUtc: number };
+  readonly createdAt: string;
 }
 
 /** A JSON Schema (draft 2020-12) object. */
