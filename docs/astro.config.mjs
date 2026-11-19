@@ -67,6 +67,7 @@ export default defineConfig({
             "operations/dashboard",
             "operations/local",
             "operations/deploying",
+            "operations/workflow-smoke",
           ],
         },
       ],
