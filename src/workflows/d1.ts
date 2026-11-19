@@ -126,6 +126,15 @@ const describe = (subject: Subject) =>
 const notAssigned = (subject: Subject) =>
   fail("not_found", `The workflow is not assigned to ${describe(subject)}`);
 
+/**
+ * Whether a subject exists, as an SQL expression over the given kind and ID
+ * parameters (such as `?2` and `?3`).
+ */
+const subjectExists = (kind: string, id: string) => `(
+  (${kind} = 'asset' AND EXISTS (SELECT 1 FROM assets WHERE symbol = ${id}))
+  OR (${kind} = 'portfolio' AND EXISTS (SELECT 1 FROM portfolios WHERE portfolio_id = ${id}))
+)`;
+
 const ASSIGNMENT_SELECT = `SELECT a.*, d.name AS workflow_name,
     d.enabled AS workflow_enabled, d.schedule_hour_utc
   FROM workflow_assignments a
@@ -161,22 +170,13 @@ export const assignDefaultsOnCreate = (
          (workflow_id, subject_kind, subject_id, enabled, created_at, updated_at)
        SELECT f.workflow_id, f.subject_kind, ?2, 1, ?3, ?3
        FROM workflow_defaults f
-       WHERE f.subject_kind = ?1 AND NOT ${SUBJECT_EXISTS_12}
+       WHERE f.subject_kind = ?1 AND NOT ${subjectExists("?1", "?2")}
        ON CONFLICT DO NOTHING`,
     )
     .bind(subject.kind, subjectId(subject), now);
 
-/** Whether the subject exists, as an SQL expression over ?1 (kind) and ?2 (ID). */
-const SUBJECT_EXISTS_12 = `(
-  (?1 = 'asset' AND EXISTS (SELECT 1 FROM assets WHERE symbol = ?2))
-  OR (?1 = 'portfolio' AND EXISTS (SELECT 1 FROM portfolios WHERE portfolio_id = ?2))
-)`;
-
-/** Whether the subject exists, as an SQL expression over ?2 (kind) and ?3 (ID). */
-const SUBJECT_EXISTS = `(
-  (?2 = 'asset' AND EXISTS (SELECT 1 FROM assets WHERE symbol = ?3))
-  OR (?2 = 'portfolio' AND EXISTS (SELECT 1 FROM portfolios WHERE portfolio_id = ?3))
-)`;
+/** Whether the subject exists, over ?2 (kind) and ?3 (ID). */
+const SUBJECT_EXISTS = subjectExists("?2", "?3");
 
 /** Active workflow runs (alias `r`), to be narrowed with `AND ...`. */
 const ACTIVE_RUN_FROM = `FROM workflow_runs r
