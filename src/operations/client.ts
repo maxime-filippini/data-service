@@ -6,6 +6,16 @@ import {
   operations,
 } from "./contracts.generated";
 
+/** Widen each generated schema while keeping the types tied to its operation name. */
+const operationContracts: {
+  readonly [N in OperationName]: {
+    readonly request: Schema.Codec<OperationRequest<N>, unknown>;
+    readonly response: Schema.Codec<OperationResponse<N>, unknown>;
+  };
+} = operations;
+
+const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
+
 /**
  * Calls to the Python service's uniform operations (`POST /operations/{name}`).
  * Requests and responses are validated at runtime against the contracts
@@ -20,14 +30,6 @@ export type OperationRequest<N extends OperationName> =
   Operations[N]["request"]["Type"];
 export type OperationResponse<N extends OperationName> =
   Operations[N]["response"]["Type"];
-
-/** Widen each generated schema while keeping the types tied to its operation name. */
-const operationContracts: {
-  readonly [N in OperationName]: {
-    readonly request: Schema.Codec<OperationRequest<N>, unknown>;
-    readonly response: Schema.Codec<OperationResponse<N>, unknown>;
-  };
-} = operations;
 
 /**
  * A failed call. `transient` (unreachable service, storage trouble, an
@@ -58,8 +60,6 @@ export class PythonOperations extends Context.Service<
 export interface OperationsFetcher {
   readonly fetch: (url: string, init: RequestInit) => Promise<Response>;
 }
-
-const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 
 const validate = <A>(
   schema: Schema.Codec<A, unknown>,

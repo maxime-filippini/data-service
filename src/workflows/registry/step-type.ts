@@ -10,7 +10,7 @@ import type { MarketDataSources } from "$/market-data/sources";
 import type { PythonOperations } from "$/operations/client";
 import type { Portfolios } from "$/portfolios/store";
 import type { RunArtifacts } from "$/workflows/artifacts";
-import type { Subject, SubjectKind } from "$/workflows/contracts";
+import type { StepSpec, Subject, SubjectKind } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
 import {
   assetSubject,
@@ -140,6 +140,12 @@ export interface StepType<
   readonly outputs: O;
   /** Retries and timeout; `DEFAULT_STEP_POLICY` when omitted. */
   readonly policy?: WorkflowStepConfig;
+  /** Check relationships between decoded parameters, scope and literal inputs. */
+  validateConfiguration?(
+    params: P,
+    scope: SubjectKind,
+    inputs: StepSpec["inputs"],
+  ): readonly { readonly path: readonly string[]; readonly message: string }[];
   /** Method syntax keeps registrations with specific types assignable. */
   implementation?(
     request: StepRequest<P, PortValues<I>>,

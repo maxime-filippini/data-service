@@ -311,6 +311,68 @@ test("the step catalog exposes the registered step contracts", async () => {
   ]);
 });
 
+test("an asset workflow cannot publish a portfolio dataset", async () => {
+  const { api, json } = setup();
+  const response = await json<Record<string, unknown>>(
+    api("/workflows", "POST", {
+      ...assetPrices,
+      steps: [
+        ...assetPrices.steps,
+        {
+          id: "publish",
+          type: "publish-dataset",
+          params: { dataset: "portfolio_volatility" },
+          inputs: {
+            data: {
+              value: {
+                id: "runs/fe8a9dca-0389-454b-aabf-427493a2f082/normalize/prices.parquet",
+                format: "parquet",
+                schema: "prices-eod/v1",
+              },
+            },
+          },
+        },
+      ],
+    }),
+    422,
+  );
+  assert.match(
+    JSON.stringify(response),
+    /portfolio_volatility can only be published/u,
+  );
+});
+
+test("a literal publication artifact must match the selected dataset", async () => {
+  const { api, json } = setup();
+  const response = await json<Record<string, unknown>>(
+    api("/workflows", "POST", {
+      ...assetPrices,
+      steps: [
+        ...assetPrices.steps,
+        {
+          id: "publish",
+          type: "publish-dataset",
+          params: { dataset: "prices_eod" },
+          inputs: {
+            data: {
+              value: {
+                id: "runs/fe8a9dca-0389-454b-aabf-427493a2f082/volatility/volatility.parquet",
+                format: "parquet",
+                schema: "portfolio-volatility/v1",
+              },
+            },
+          },
+        },
+      ],
+    }),
+    422,
+  );
+  assert.match(
+    JSON.stringify(response),
+    /prices_eod must be published from prices-eod\/v1/u,
+  );
+});
+
 test("a complete specification round-trips through POST, list, detail and PUT", async () => {
   const { api, json, createWorkflow } = setup();
 
