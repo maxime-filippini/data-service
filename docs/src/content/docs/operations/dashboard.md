@@ -1,44 +1,41 @@
 ---
 title: The app and sign-in
-description: What the app (home page and dashboard) does, how it is built, and how Cloudflare Access protects it.
+description: What the SvelteKit app shows, how it uses shared operations, and how Cloudflare Access protects it.
 ---
 
-`$URL/` is a SvelteKit app for operating the service:
+`$URL/` is a SvelteKit app for inspecting workflows, runs, and published data
+and managing dated portfolio holdings:
 
-- **Home** (`/`). How both pipelines are doing: symbol counts and failed
-  downloads or rebuilds, the daily schedule and its latest run (with a "Run
-  schedule now" button), the latest failed downloads, each calculation's latest
-  run and the next scheduled ones. Links to every section and to these docs.
-- **Ingestion runs** (`/runs`). Ingestion runs with their Parquet rebuilds,
-  filtered by `?symbol=` and `?status=`.
-- **Symbols** (`/symbols`). Tracked symbols with their latest activity. Add
-  symbols (several at once), edit them, put them on or off the schedule,
-  download them now, and change, pause or run the schedule.
-- **Portfolios** (`/portfolios`, `/portfolios/:id`). Create, rename and delete
-  portfolios; add or delete snapshots (type or paste rows, or start from the
-  latest snapshot). Single-asset portfolios are labelled, read-only, and can be
-  hidden from the list.
-- **Assets** (`/assets`, `/assets/:symbol`). Read-only assets and the workflow
-  definitions assigned to each.
-- **Workflows** (`/workflows`, `/workflows/:id`). Read-only workflow
-  definitions and the defaults for new subjects: schedule, whether a
-  definition is a default, assignments and ordered steps with parameters,
-  input sources and output connections. See
-  [Assets and workflow definitions](/docs/workflows/definitions/).
-- **Calculations** (`/calculations`, `/calculations/:id`). Create and edit
-  calculations with a JSON params editor and the type's params schema as help;
-  pause, enable or run them for any as-of date; see their runs with each
-  portfolio's outcome.
-- **Explorer** (`/explore`). Browse any symbol's Parquet data or calculation's
-  results: sort, filter by date, download.
+- **Home** (`/`): summary counts for assets, portfolios, workflow definitions,
+  and published datasets, plus workflow definitions, recent runs, and recent
+  publications.
+- **Assets** (`/assets`, `/assets/:symbol`): registered assets with provider
+  settings, assigned workflows and daily schedules, published datasets, and
+  recent runs (read-only; manage via `/api/assets`).
+- **Portfolios** (`/portfolios`, `/portfolios/:id`): create, rename, and delete
+  portfolios; add or delete dated holdings snapshots (type or paste rows, with
+  registered asset symbol suggestions); inspect assigned workflows, published
+  datasets, and recent runs.
+- **Workflows** (`/workflows`, `/workflows/:id`): read-only inspection of
+  workflow definitions, defaults for new subjects, assignments, schedules, and
+  ordered steps with parameters and visible input/output connections.
+- **Runs** (`/workflow-runs`, `/workflow-runs/:id`): filter runs by asset
+  symbol, status, and trigger; inspect every step's status, waiting deadline
+  and missing inputs, retry count, errors, inline outputs, temporary artifact
+  downloads, and published dataset links.
+- **Explore data** (`/explore`): browse any published asset (`prices_eod`) or
+  portfolio (`portfolio_volatility`) Parquet dataset: sort, filter by date, and
+  download.
+- **Docs** (`/docs/`): this documentation site.
 
-The old `/dashboard/` URLs redirect to the home page.
+The old `/dashboard/` URLs redirect to `/`. A drag-and-drop workflow builder
+is deliberately out of scope.
 
 ## How it is built
 
-The app lives in `app/`. adapter-cloudflare builds it into a request handler,
-which the Worker's entry point (`src/index.ts`) imports, and into static files
-in `dist/`, next to the docs. The Worker routes every request:
+The app lives in `app/`. `@sveltejs/adapter-cloudflare` builds it into a
+request handler imported by `src/index.ts` and static files in `dist/` next to
+the docs. The Worker routes every request:
 
 | Path          | Goes to                                         | Auth              |
 | ------------- | ----------------------------------------------- | ----------------- |
@@ -47,11 +44,9 @@ in `dist/`, next to the docs. The Worker routes every request:
 | `/docs/*`     | These docs (static files)                       | Cloudflare Access |
 | anything else | The SvelteKit app: pages and their static files | Cloudflare Access |
 
-Each page loads its data on the server, in its `+page.server.ts`, by reading
-D1 through the Worker's own modules (`src/pages`). Changes, "load more" and
-refreshes after a change go through `/app-api` from the browser. The calculation
-types come from the engine container, which may be starting up, so pages load
-them in the browser after the page itself.
+Pages load data on the server in `+page.server.ts` through the shared read-only
+facade (`src/pages/`), using the same D1/Effect adapters as `/api/*`. Browser
+mutations and Parquet downloads go through `/app-api/*`.
 
 ## Request path
 
@@ -64,76 +59,68 @@ sequenceDiagram
   participant D1
   participant R2 as R2 processed
 
-  B->>A: GET /runs
+  B->>A: GET /workflows
   A->>B: GitHub login (first visit)
-  B->>A: GET /runs (Access cookie)
+  B->>A: GET /workflows (Access cookie)
   A->>W: request + Cf-Access-Jwt-Assertion
   W->>W: verify JWT (team keys, AUD)<br/>and email ∈ DASHBOARD_ALLOWED_EMAILS
   alt not allowed / settings missing
     W-->>B: 401 / 403 / 503
   else allowed
     W->>K: request + X-Access-Email
-    K->>D1: page data
-    K-->>B: HTML (CSP with a nonce) + security headers
-    B->>W: POST /app-api/schedule/runs
-    W->>D1: start the run
+    K->>D1: page data (src/pages)
+    K-->>B: HTML (CSP with nonce) + security headers
+    B->>W: POST /app-api/portfolios (same-origin)
+    W->>D1: create portfolio + defaults
     W-->>B: JSON (no-store)
-    B->>W: GET /app-api/datasets/prices_eod/AAPL.US<br/>If-None-Match
-    W->>R2: get (etagDoesNotMatch)
+    B->>W: GET /app-api/publications/prices_eod/asset/AAPL.US/data<br/>If-None-Match
+    W->>R2: get published Parquet
     W-->>B: Parquet or 304
   end
 ```
 
-Access covers the whole hostname except `/api`, which scripts and other apps
-reach with the management token. The Worker **also** verifies the token Access
-adds to each request and the user's email, so the app stays closed if the
-Access app is removed or its policy is loosened. It then hands SvelteKit the
-user's email in `X-Access-Email`, a header it always sets itself. The
-management token is never sent to the browser.
+The Worker independently verifies `Cf-Access-Jwt-Assertion` and checks the
+email against `DASHBOARD_ALLOWED_EMAILS`, so the app stays closed even if an
+Access policy is loosened. The management token is never sent to the browser.
 
 ## The app's JSON API
 
-| Kind    | Routes                                                                                                                                              |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reads   | `/me`, `/runs`, `/symbols`, `/options`, `/datasets/:dataset/:symbol`, `/calculations/:id/results`                                                   |
-| Changes | `/registry`, `/ingestions`, `/schedule`, `/portfolios`, `/calculation-types`, `/calculate`, `/calculations`, `/assets`, `/workflows`, `/step-types` |
+Mounted at `/app-api/*` behind Access and same-origin mutation checks (`Origin`
+or `Sec-Fetch-Site: same-origin` required on non-GET requests, else `403`):
 
-All under `/app-api`. The change routes mount the same modules as the
-management API, with Access in place of the token. Browsers send the Access
-cookie with cross-site requests too, so every non-GET request must come from
-the app's own origin (`Origin` or `Sec-Fetch-Site`), or it gets `403`.
+- `GET /app-api/me`
+- `/app-api/assets`
+- `/app-api/portfolios`
+- `/app-api/workflows`
+- `/app-api/step-types`
+- `/app-api/workflow-defaults`
+- `/app-api/workflow-assignments`
+- `/app-api/workflow-runs`
+- `/app-api/publications` (metadata + Parquet streaming at `/:dataset/:kind/:subject/data`)
 
 The explorer decodes Parquet in the browser with
-[hyparquet](https://github.com/hyparam/hyparquet) (zstd through `fzstd`, both
-plain JS because the CSP blocks WASM) and shows it in a TanStack Table. Columns
-come from the file's schema, so a new dataset or calculation type needs no
-change to the app.
+[hyparquet](https://github.com/hyparam/hyparquet) (and `fzstd`, both plain JS
+because the CSP blocks WASM) and displays rows in TanStack Table. Columns come
+from the file's schema, so new published datasets work automatically.
 
-## One-time setup
+## One-time Access setup
 
 Per environment (prod and dev have separate hostnames):
 
-1. **GitHub login.** In Zero Trust, go to Settings > Authentication and add
-   GitHub as a login method. This needs a GitHub OAuth app whose callback URL
-   is `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`.
-2. **Access application.** Under Access controls > Applications, add a
-   self-hosted application:
-   - Domain: `data-service.maximefilippini.me` with no path, so it covers the
-     whole hostname (dev: `data-service-dev.maximefilippini.me`).
-   - Login methods: GitHub only, with instant auth.
-   - Policy: Allow, include Emails = your GitHub account's primary email.
-3. **Bypass for the API.** Add a second self-hosted application for the same
-   hostname with path `api`, and one policy: action Bypass, include Everyone.
-   Access applies the most specific path, so `/api/*` skips the login and the
-   management token protects it.
-4. **Secrets.** Copy the first application's AUD tag from its settings, then:
+1. **GitHub login.** In Zero Trust → Settings → Authentication, add GitHub
+   (callback URL `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`).
+2. **Access application.** Under Access controls → Applications, add a
+   self-hosted application for `data-service.maximefilippini.me` (or
+   `data-service-dev.maximefilippini.me`) with no path, GitHub login, and an
+   Allow policy for your email.
+3. **Bypass for `/api`.** Add a second self-hosted application for the same
+   hostname with path `api`, action **Bypass**, include Everyone.
+4. **Secrets.** Copy the first application's AUD tag, then run:
 
    ```sh
    pnpm exec wrangler secret put ACCESS_TEAM_DOMAIN         # https://<team>.cloudflareaccess.com
    pnpm exec wrangler secret put ACCESS_AUD                 # the application's AUD tag
-   pnpm exec wrangler secret put DASHBOARD_ALLOWED_EMAILS   # your email; comma-separated for more
+   pnpm exec wrangler secret put DASHBOARD_ALLOWED_EMAILS   # comma-separated emails
    ```
 
-   Add `--env dev` for the dev environment, with the dev application's AUD.
-
-If any of these settings is missing, the app and the docs return `503`.
+   Add `--env dev` for dev. Missing settings return `503`.

@@ -1,100 +1,98 @@
 ---
 title: Local development
-description: Running the Worker, the app, the docs and the containers on your machine.
+description: Running the end-to-end fixture workflow, Worker, app, docs and Python service locally.
 ---
 
-## Setup
+## End-to-end local scenario (recommended first step)
 
 ```sh
 pnpm install
-cp .dev.vars.example .dev.vars   # then fill in real values
+pnpm workflow:fixture
+```
+
+This runs the complete asset and portfolio workflow path locally without
+Cloudflare credentials, EODHD tokens, or wrangler:
+
+1. Starts the real Python operation service (`containers/engine/`) with `uv` on
+   localhost.
+2. Creates a local SQLite database with all real D1 migrations.
+3. Calls the real management API routes to create assets, a daily EOD prices
+   workflow, a changing-holdings portfolio, and a portfolio volatility
+   workflow.
+4. Executes both workflows through the real executor and Python HTTP
+   operations, writing inspectable files into `.local/workflow-fixture/`.
+
+Pass `--scheduled` to exercise daily UTC dispatch (`scheduledWorkflowTick`).
+See [Running locally against fixtures](/docs/workflows/runs/#running-locally-against-fixtures)
+for every output file and CLI option.
+
+## Local Worker, app and docs
+
+```sh
+cp .dev.vars.example .dev.vars   # fill in local values
 pnpm db:migrate:local
 pnpm dev
 ```
 
-`pnpm dev` builds the app and this site, then runs the Worker on
+`pnpm dev` builds the app and docs, then starts the Worker on
 `http://localhost:8787`:
 
-| URL                           | What                             |
-| ----------------------------- | -------------------------------- |
-| `http://localhost:8787/`      | The app: home page and dashboard |
-| `http://localhost:8787/api/`  | Management API                   |
-| `http://localhost:8787/docs/` | These docs                       |
+| URL                           | What               |
+| ----------------------------- | ------------------ |
+| `http://localhost:8787/`      | SvelteKit app      |
+| `http://localhost:8787/api/`  | Management API     |
+| `http://localhost:8787/docs/` | Documentation site |
 
-`pnpm dev` skips the Access check on the app and docs by passing
-`--var DASHBOARD_LOCAL_BYPASS:true`; the Worker honors it only for requests to
-localhost. It's a flag rather than a `.dev.vars` line because wrangler only
-loads the secrets declared in `wrangler.jsonc` from `.dev.vars`. `pnpm dev`
-also passes `--local-upstream localhost:8787`: without it, `wrangler dev` gives
-the Worker the custom domain from `wrangler.jsonc` as the request's host, and
-the bypass never applies.
+`pnpm dev` passes `--var DASHBOARD_LOCAL_BYPASS:true --local-upstream localhost:8787`
+so localhost requests skip Cloudflare Access checks.
 
 ### Hot reload
 
 ```sh
-pnpm dev               # the Worker, for the app's JSON API (/app-api)
-pnpm app:dev           # http://localhost:5173/
-pnpm docs:dev          # http://localhost:4321/docs/
+pnpm dev        # Worker + /app-api on :8787
+pnpm app:dev    # SvelteKit dev server on http://localhost:5173/
+pnpm docs:dev   # Astro Starlight dev server on http://localhost:4321/docs/
 ```
 
-`pnpm app:dev` runs SvelteKit's dev server. Its pages load their data from the
-same local D1 database as `pnpm dev`, and it forwards `/app-api` to the Worker
-on 8787, so run both. It always signs you in as `local@localhost`.
+### Limits of `pnpm dev`
 
-## Workflows against fixtures
+`wrangler dev` simulates R2 locally while Cloudflare Containers talk to real R2
+over S3, so `pnpm dev` is best for UI/route iteration (use
+`pnpm dev --enable-containers=false` if Docker is not running). For local
+cross-language execution, use `pnpm workflow:fixture` and `pnpm test`; for real
+Cloudflare Workflow checkpoint/replay verification, use the
+[Cloudflare smoke test](/docs/operations/workflow-smoke/).
 
-```sh
-pnpm workflow:fixture
-```
-
-Runs the asset prices workflow (download, normalize in Python, publish)
-through the API, executor, step implementations and the real Python service
-(started with uv) without credentials, network or wrangler. It writes the
-database, run artifacts, published dataset, run record and publication
-metadata to `.local/workflow-fixture/`. See
-[Workflow runs](/docs/workflows/runs/#running-locally-against-fixtures).
-
-## Limits of `pnpm dev`
-
-`pnpm dev` can't run the full pipeline: the containers read real R2 while the
-local Worker writes to simulated buckets. To try the app without them:
+## Python service on its own
 
 ```sh
-pnpm dev --enable-containers=false
-```
-
-Pages that need the engine (calculation types, saving params, runs) show its
-error. For end-to-end tests, push a branch and use the
-[dev environment](/docs/operations/deploying/#dev-environment).
-
-## Containers on their own
-
-```sh
-cd containers/processor   # or containers/engine
+cd containers/engine
 uv sync
 uv run pytest
-uv run uvicorn data_service_processor.app:app --port 8080   # data_service_engine.app:app for the engine
+uv run engine operations
+uv run engine export-schemas
+uv run uvicorn data_service_engine.app:app --port 8080
 ```
 
-On CPUs without AVX2, polars needs its compatibility runtime:
-`uv run --with 'polars[rtcompat]' pytest`.
+On CPUs without AVX2, use `uv run --with 'polars[rtcompat]' pytest`.
 
-## Checks
+## Full verification checks
 
 ```sh
-pnpm test
+pnpm operations:check
+pnpm format:check
 pnpm typecheck
-pnpm app:check
-pnpm docs:build
-pnpm processor:test     # needs uv
-pnpm processor:lint
-pnpm engine:test        # needs uv
+pnpm test
+pnpm workflow:fixture
+pnpm engine:test
 pnpm engine:lint
+pnpm app:check
+pnpm --filter app build
+pnpm docs:build
 ```
 
 ## Editing these docs
 
-The site is [Astro Starlight](https://starlight.astro.build) in `docs/`. Pages
-are Markdown in `docs/src/content/docs/`; the sidebar is in
-`docs/astro.config.mjs`. Diagrams are fenced ` ```mermaid ` blocks, rendered
-in the browser. Link between pages with absolute paths under `/docs/`.
+Pages are Markdown/MDX under `docs/src/content/docs/`; the sidebar is in
+`docs/astro.config.mjs`. Diagrams use fenced ` ```mermaid ` blocks. Link
+between pages with absolute paths under `/docs/`.

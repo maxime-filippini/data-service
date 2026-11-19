@@ -1,67 +1,68 @@
 ---
 title: Storage layout
-description: What lives in each R2 bucket, and how client apps read it.
+description: What lives in each R2 bucket, temporary artifact expiry, and how client apps read published datasets.
 ---
 
 ```mermaid
 flowchart LR
   subgraph raw["raw-market-data"]
-    r1["dataset=prices_eod/symbol=AAPL.US/run=&lt;run-id&gt;.json"]
-    r2["dataset=prices_eod/symbol=AAPL.US/run=&lt;run-id&gt;.json"]
+    r1["runs/&lt;run-id&gt;/download/raw.json<br/>(expires after 30d)"]
+    r2["runs/&lt;run-id&gt;/normalize/prices.parquet<br/>(expires after 30d)"]
+    r3["runs/&lt;run-id&gt;/volatility/volatility.parquet<br/>(expires after 30d)"]
+    legacy["dataset=.../run=&lt;id&gt;.json<br/>(retained pre-workflow history)"]
   end
   subgraph processed["processed-market-data"]
     p1["dataset=prices_eod/symbol=AAPL.US/data.parquet"]
-    c1["calculation=&lt;id&gt;/data.parquet"]
+    p2["dataset=portfolio_volatility/portfolio=&lt;id&gt;/data.parquet"]
   end
-  ingest[Ingestion consumer] -- writes, one per run --> raw
-  raw -- latest completed run --> proc[Processor]
-  proc -- overwrites --> p1
-  p1 --> eng[Engine]
-  eng -- replaces as-of rows --> c1
-  p1 & c1 --> apps[Client apps<br/>S3 API]
-  p1 & c1 --> dash[Dashboard explorer]
+  wf[DefinitionRunWorkflow] -- download raw --> r1
+  r1 --> eng[CalculationEngine<br/>Python]
+  eng -- write artifacts --> r2 & r3
+  p1 -- read published prices --> eng
+  r2 & r3 -- publish-dataset step --> p1 & p2
+  p1 & p2 --> apps[Client apps<br/>S3 API or /api/datasets]
+  p1 & p2 --> dash[App Explore data<br/>/app-api/publications]
 ```
 
 ```txt
-raw-market-data/dataset=<dataset>/symbol=<symbol>/run=<run-id>.json
 raw-market-data/runs/<workflow-run-id>/<step-id>/<name>.<json|parquet>
-processed-market-data/dataset=<dataset>/symbol=<symbol>/data.parquet
-processed-market-data/calculation=<calculation-id>/data.parquet
+raw-market-data/dataset=<dataset>/symbol=<symbol>/run=<legacy-run-id>.json   # retained pre-workflow history
+processed-market-data/dataset=prices_eod/symbol=<symbol>/data.parquet
+processed-market-data/dataset=portfolio_volatility/portfolio=<portfolio-id>/data.parquet
 ```
 
-## Raw bucket
+## Raw bucket (`raw-market-data`)
 
-Immutable, validated provider responses: one JSON envelope per ingestion run.
-Nothing overwrites them. They are the input to every Parquet rebuild. See
-[Ingestion](/docs/pipeline/ingestion/#raw-envelope) for the envelope format.
+Holds temporary workflow run artifacts under `runs/<runId>/<stepId>/<name>.<ext>`.
+Each step writes its large outputs under a deterministic key derived from its
+`runId` and `stepId`, so retrying a step overwrites the same object safely.
+Step outputs carry small JSON artifact references (`id`, `format`, `schema`);
+temporary artifacts are never consumer-facing published data.
 
-Workflow runs keep their temporary artifacts under `runs/<run-id>/`, one
-object per step output, written again if the step is retried. Step outputs
-reference them; they are not published data, and they expire (see
-[Lifecycle](#lifecycle)). See [Workflow runs](/docs/workflows/runs/#artifacts).
+Pre-workflow raw envelopes (`dataset=<dataset>/symbol=<symbol>/run=<id>.json`)
+remain untouched outside the `runs/` prefix.
 
-## Processed bucket
+## Processed bucket (`processed-market-data`)
 
-What client apps read.
+Holds current published Parquet datasets copied independently by
+`publish-dataset`:
 
-- **Canonical datasets.** One Parquet file per `(dataset, symbol)` at a stable
-  key, rebuilt in full from the latest completed run. Switching provider
-  doesn't move it. Workflow publication writes to the same key, so consumers
-  read published workflow data where they always have; D1's
-  `dataset_publications` records which run published it. See
-  [Python operations and published datasets](/docs/workflows/datasets/).
-- **Portfolio volatility.** The current Parquet result for a portfolio is
-  `dataset=portfolio_volatility/portfolio=<ID>/data.parquet`. The workflow
-  writes the result for its processing date and records its producer in D1.
-- **Calculation results.** One Parquet file per calculation: the type's output
-  columns plus `as_of` and `portfolio_id`, one set of rows per as-of date. They
-  stay after the calculation is deleted.
+- **`prices_eod`** (asset scope):
+  `dataset=prices_eod/symbol=<SYMBOL>/data.parquet` — preserves the stable path
+  used by existing downstream consumers.
+- **`portfolio_volatility`** (portfolio scope):
+  `dataset=portfolio_volatility/portfolio=<PORTFOLIO_ID>/data.parquet`.
 
-## Reading the files
+D1 `dataset_publications` records the processing date, producer
+(`workflowId`, `runId`, `stepId`), schema, ETag, and byte size after the object
+write succeeds. A failed download, normalization, or calculation leaves any
+previous published dataset intact.
 
-Apps read the files with any S3 client pointed at R2
-(`https://<account-id>.r2.cloudflarestorage.com`) using a read-only R2 token.
-For example, with polars:
+## Reading published datasets
+
+Client apps can read Parquet objects either through the authenticated API
+(`GET /api/datasets/:dataset/:kind/:subject/data`) or directly from R2 using an
+S3 client with a read-only R2 token:
 
 ```python
 import polars as pl
@@ -77,23 +78,26 @@ prices = pl.read_parquet(
 )
 ```
 
-The app's explorer reads the same files through `/app-api/datasets/:dataset/:symbol`
-and `/app-api/calculations/:id/results`, which stream them from R2 with
-their ETag, so the browser only downloads a file again after it changes.
+The app's Explore data page reads the same published datasets through
+`/app-api/publications/:dataset/:kind/:subject/data`, revalidating by ETag
+(`304 Not Modified`).
 
 ## Lifecycle
 
-Temporary run artifacts expire through one R2 lifecycle rule on the raw
-bucket: objects under `runs/` are deleted 30 days after they were written.
-Nothing else expires. The retained raw history
-(`dataset=<dataset>/symbol=<symbol>/run=<id>.json`) is outside the prefix,
-and published datasets are in the processed bucket, which has no rule. The
-rule ignores whether a run is still active, so a run would have to wait or
-retry for 30 days to lose its own artifacts.
+Temporary run artifacts expire automatically through **one R2 lifecycle rule**
+on the raw bucket: objects under prefix `runs/` are deleted **30 days**
+(`2,592,000` seconds) after they are written.
 
-The rule is checked in as `r2/raw-bucket-lifecycle.json`;
-`test/r2-lifecycle.test.ts` checks its scope and duration. Apply it to each
-raw bucket. `set` replaces every rule on the bucket, so list them first:
+- No scheduled cleanup workflow, D1 artifact index, or reference counting is
+  used.
+- Retained pre-workflow raw history (`dataset=...`) does not match `runs/` and
+  is never expired.
+- Published datasets live in `processed-market-data`, which has no object
+  expiration rule.
+
+The rule is checked in at `r2/raw-bucket-lifecycle.json` and verified by
+`test/r2-lifecycle.test.ts`. Apply it without removing existing multipart abort
+rules:
 
 ```sh
 pnpm exec wrangler r2 bucket lifecycle list raw-market-data-dev
@@ -101,7 +105,8 @@ pnpm exec wrangler r2 bucket lifecycle set raw-market-data-dev --file r2/raw-buc
 pnpm exec wrangler r2 bucket lifecycle set raw-market-data --file r2/raw-bucket-lifecycle.json
 ```
 
-R2 applies expiry in the background, so objects can outlive 30 days a little.
+R2 processes expiry asynchronously in the background, so objects may remain
+briefly past 30 days.
 
 ## Environments
 

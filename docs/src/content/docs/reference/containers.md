@@ -1,161 +1,97 @@
 ---
-title: Containers
-description: The HTTP contracts of the processor and engine containers.
+title: Python container
+description: The HTTP contract and configuration of the uniform Python operation service.
 ---
 
-Both containers are Python (FastAPI, polars) images that the Worker builds and
-deploys alongside itself, so all three always come from the same commit. Each
-is a Durable Object-backed Cloudflare Container with a single instance
-(`getByName("processor")`, `getByName("engine")`).
+One Python container (`containers/engine/`, FastAPI + Polars + Pydantic) runs
+all Python-backed workflow operations and ships alongside the Worker from the
+same commit. It is a Durable Object–backed Cloudflare Container
+(`CalculationEngine`, single instance `getByName("engine")`).
 
-They are reachable **only through the Worker**, so they have no
-authentication. Neither one touches D1: they get everything in the request and
-report back in the response.
+The container is reachable **only through the Worker**, so it has no auth
+layer. It never touches D1: every input arrives in the JSON request and every
+result or error returns in the HTTP response.
 
 ```mermaid
 flowchart LR
-  W[Worker] -- "POST /jobs" --> P[Processor]
-  W -- "GET /types<br/>POST /types/:name/validate<br/>POST /runs<br/>POST /calculate<br/>POST /operations/:name" --> E[Engine]
-  P -- read --> raw[(raw-market-data)]
-  P -- write --> processed[(processed-market-data)]
-  E -- read / write --> processed
-  E -- "read / write runs/" --> raw
+  W[DefinitionRunWorkflow<br/>Worker] -- "GET /health<br/>GET /operations<br/>POST /operations/:name" --> E[CalculationEngine<br/>containers/engine]
+  E -- "read/write runs/" --> raw[(raw-market-data)]
+  E -- "read published prices" --> processed[(processed-market-data)]
 ```
 
-## Processor
+## HTTP endpoints
 
-Turns one raw provider download into the canonical Parquet object for a
-symbol. Code: `containers/processor/`.
+| Endpoint                  | Purpose                                                                                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`             | Liveness probe (`{"status": "ok"}`).                                                                                                   |
+| `GET /operations`         | Lists every registered operation with its description and request/response JSON Schemas.                                               |
+| `POST /operations/{name}` | Validates `{execution: {runId, stepId}, inputs, params}`, runs the operation, validates its response, and returns small JSON or error. |
 
-| Endpoint      | Does                                         |
-| ------------- | -------------------------------------------- |
-| `GET /health` | Liveness probe                               |
-| `POST /jobs`  | Rebuild one Parquet file from one raw object |
+### Success response (`200`)
 
-The processing consumer sends a manifest:
+Small JSON matching the operation's Pydantic response model (for example an
+artifact reference under `runs/<runId>/<stepId>/` plus any small summary
+fields):
 
 ```json
 {
-  "jobId": "…",
-  "dataset": "prices_eod",
-  "symbol": "AAPL.US",
-  "outputKey": "dataset=prices_eod/symbol=AAPL.US/data.parquet",
-  "input": {
-    "runId": "…",
-    "provider": "eodhd",
-    "requestedRange": { "from": "2016-01-01", "to": "2026-10-05" },
-    "key": "dataset=prices_eod/symbol=AAPL.US/run=….json",
-    "etag": "…",
-    "rowCount": 2700
+  "data": {
+    "id": "runs/<run-id>/volatility/volatility.parquet",
+    "format": "parquet",
+    "schema": "portfolio-volatility/v1"
+  },
+  "summary": {
+    "volatility": 0.16655,
+    "observations": 252,
+    "windowStart": "2025-11-18",
+    "windowEnd": "2026-11-18",
+    "holdingsDate": "2026-10-15"
   }
 }
 ```
 
-| Response                  | Worker does                                         |
-| ------------------------- | --------------------------------------------------- |
-| `200 {"outputEtag": "…"}` | Completes the job                                   |
-| `500 {"detail": "…"}`     | Fails the job with the detail                       |
-| `422`                     | Fails the job: the manifest itself was invalid      |
-| Network error             | Returns the job to `queued` and retries the message |
+### Error response (non-2xx)
 
-Every job is a full rebuild from one full-history snapshot, so running the
-same manifest twice is safe. To add a dataset, add its entry model and
-envelope literal in `models.py` and its Parquet schema in `processor.py`.
-
-## Engine
-
-Holds every calculation type, validates params, runs calculations over the
-canonical files and writes their results. It also serves the workflow
-operations (`GET /operations`, `POST /operations/:name`), such as price
-normalization, which read and write run artifacts under `runs/` in the raw
-bucket (`ARTIFACT_BUCKET`); see
-[Python operations](/docs/workflows/datasets/#python-operations). Code:
-`containers/engine/`.
-
-| Endpoint                     | Does                                                                                         |
-| ---------------------------- | -------------------------------------------------------------------------------------------- |
-| `GET /health`                | Liveness probe                                                                               |
-| `GET /types`                 | Each type's name, description, `takesPortfolio`, params JSON Schema and output columns       |
-| `POST /types/:name/validate` | `{"params": {…}}` → `200 {"params": …}` with defaults filled in, `422` with errors, or `404` |
-| `POST /runs`                 | Run a saved calculation for one as-of date and write its rows to R2                          |
-| `POST /calculate`            | Run an ad hoc calculation and return its rows. Writes nothing                                |
-
-### `POST /runs`
+Failures are never disguised as HTTP `200`:
 
 ```json
 {
-  "runId": "…",
-  "type": "ex_ante_vol",
-  "params": { "window": 252 },
-  "asOf": "2026-10-16",
-  "portfolios": [
-    {
-      "id": "…",
-      "name": "Core",
-      "snapshots": [
-        {
-          "holdingsDate": "2026-09-30",
-          "holdings": [{ "symbol": "AAPL.US", "weight": 0.6 }]
-        }
-      ]
-    }
-  ],
-  "outputKey": "calculation=<id>/data.parquet"
+  "error": {
+    "kind": "terminal",
+    "message": "Only 10 daily returns up to 2026-11-18, need 252",
+    "issues": []
+  }
 }
 ```
 
-A well-formed request always gets `200`, with what happened:
+- `404` (`terminal`): unknown operation.
+- `422` (`terminal`): schema validation error (populates `issues`) or
+  deterministic domain error.
+- `503` / `500` (`transient`): storage or unexpected failure; retried within
+  the step's bounded retry policy.
 
-```json
-{
-  "status": "partial",
-  "error": null,
-  "portfolios": [
-    { "portfolioId": "…", "status": "completed", "rowCount": 1, "error": null },
-    {
-      "portfolioId": "…",
-      "status": "failed",
-      "rowCount": 0,
-      "error": "No prices_eod data for X.US"
-    }
-  ],
-  "rowCount": 1,
-  "outputEtag": "…"
-}
+## Generated TypeScript contracts
+
+Pydantic models in `containers/engine/src/data_service_engine/operations/` are
+exported with `uv run engine export-schemas` into `src/operations/schemas.json`
+and compiled into `src/operations/contracts.generated.ts`:
+
+```sh
+pnpm operations:generate
+pnpm operations:check
 ```
-
-- `completed`: every portfolio worked. `partial`: some failed and the others
-  were written. `failed`: nothing was written; `error` says why (unknown type,
-  invalid params, every portfolio failed, R2 errors).
-- The run replaces every row for its as-of date in `outputKey` and keeps the
-  other dates. A portfolio that failed loses its earlier rows for that date.
-- The write is conditional on the object not changing since it was read.
-
-### `POST /calculate`
-
-```json
-{
-  "type": "ex_ante_vol",
-  "params": {},
-  "asOf": "2026-10-16",
-  "portfolio": { "holdings": [{ "symbol": "AAPL.US", "weight": 1 }] }
-}
-```
-
-Returns `{"rows": [...]}` (NaN and infinity become `null`), or an Arrow IPC
-stream with `Accept: application/vnd.apache.arrow.stream`. `portfolio` takes
-`snapshots` like a run, or plain `holdings`, which become one undated snapshot
-that counts as held at all times.
 
 ## Configuration
 
-| Variable               | Processor | Engine |
-| ---------------------- | :-------: | :----: |
-| `R2_ENDPOINT_URL`      |     ✓     |   ✓    |
-| `R2_ACCESS_KEY_ID`     |     ✓     |   ✓    |
-| `R2_SECRET_ACCESS_KEY` |     ✓     |   ✓    |
-| `RAW_BUCKET`           |     ✓     |        |
-| `PROCESSED_BUCKET`     |     ✓     |   ✓    |
+| Variable               | In Cloudflare container                                    | Locally (`pnpm workflow:fixture` / tests)  |
+| ---------------------- | ---------------------------------------------------------- | ------------------------------------------ |
+| `ARTIFACT_ROOT`        | _(unset)_                                                  | Local directory holding `runs/…`           |
+| `PROCESSED_ROOT`       | _(unset)_                                                  | Local directory holding published datasets |
+| `ARTIFACT_BUCKET`      | `RAW_BUCKET_NAME` (`raw-market-data` / `-dev`)             | _(unset)_                                  |
+| `PROCESSED_BUCKET`     | `PROCESSED_BUCKET_NAME` (`processed-market-data` / `-dev`) | _(unset)_                                  |
+| `R2_ENDPOINT_URL`      | `https://<account-id>.r2.cloudflarestorage.com`            | _(unset)_                                  |
+| `R2_ACCESS_KEY_ID`     | R2 S3 access key                                           | _(unset)_                                  |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 secret key                                           | _(unset)_                                  |
 
-The Worker sets the bucket names per environment. They have no defaults, so a
-misconfigured deployment fails instead of touching production data.
+Bucket names have no defaults, so a misconfigured container fails instead of
+touching production buckets.

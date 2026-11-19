@@ -5,13 +5,10 @@
   import type { LayoutProps } from "./$types";
 
   const SECTIONS = [
-    { path: "/runs", label: "Ingestion runs" },
-    { path: "/symbols", label: "Symbols" },
     { path: "/assets", label: "Assets" },
     { path: "/portfolios", label: "Portfolios" },
     { path: "/workflows", label: "Workflows" },
-    { path: "/workflow-runs", label: "Workflow runs" },
-    { path: "/calculations", label: "Calculations" },
+    { path: "/workflow-runs", label: "Runs" },
     { path: "/explore", label: "Explore data" },
   ];
 

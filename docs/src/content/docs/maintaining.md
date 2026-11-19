@@ -1,394 +1,233 @@
 ---
 title: Maintaining the code
-description: A reading path, a practical Effect walkthrough, and where to make common changes.
+description: "Ownership guide: reading path, Effect conventions, failure recovery, extending steps and Python operations, and the local development loop."
 ---
 
 Start here when returning to the project. Read [Concepts](/docs/concepts/) for
-the domain words and [Architecture](/docs/architecture/) for the Cloudflare
-parts. This guide connects those parts to the source code.
+the domain vocabulary and [Architecture](/docs/architecture/) for the Cloudflare
+resources. This guide maps every part of the service to the source code and
+shows how to run, debug, and extend it locally.
 
-The published docs under `docs/src/content/docs/` are the current architecture
-and operations reference. `CONTEXT.md` is the short domain glossary. Files in
-`.agent/` are historical design notes; check the implementation and current docs
-before treating an old proposal as a requirement.
+The published docs under `docs/src/content/docs/` are the current reference and
+`CONTEXT.md` is the short domain glossary. Files under `.agent/` are historical
+design notes.
 
 ## The shape of the repository
 
-There are two main background flows:
+There is one execution model across the whole service:
 
 ```text
-Request downloads → ingestion queue → provider → raw R2 object
-  → processing job + queue → Python processor → canonical Parquet
-
-Start calculation → saved run → Workflow → Python engine
-  → result Parquet → recorded outcome
+Configure asset / portfolio + workflow definition + assignments (D1)
+  → Manual submit or hourly scheduledWorkflowTick (atomic claim + Workflow launch)
+  → DefinitionRunWorkflow executes captured steps sequentially:
+      Effect steps (download, holdings, durable dependency wait, publish)
+      + Python HTTP operations (normalize-prices-eod, calculate-portfolio-volatility)
+  → Temporary artifacts in raw R2 (runs/, 30-day lifecycle expiry)
+  → Explicit publication to processed R2 + D1 dataset_publications metadata
 ```
 
-The Worker owns state transitions in D1. Python reads and writes data in R2,
-and reports its outcome to the Worker. The app reads page data on the server
-and sends mutations through the Worker's JSON routes.
+The Worker owns all D1 state transitions and durable workflow orchestration.
+The single Python service (`containers/engine/`) runs stateless operations over
+R2 objects (or local files) and returns small JSON outputs or artifact
+references. The SvelteKit app reads page data on the server through `src/pages/`
+and sends mutations through `/app-api/*`, which mounts the same route modules as
+`/api/*`.
 
-| Location                    | Read it for                                                         |
-| --------------------------- | ------------------------------------------------------------------- |
-| `src/index.ts`              | Cloudflare fetch, cron and queue entry points                       |
-| `src/dependencies.ts`       | Concrete dependency wiring for HTTP routes and page reads           |
-| `src/routes/`               | Authentication, request validation, HTTP responses                  |
-| `src/http/run-effect.ts`    | Shared execution of Effects and expected-error HTTP mapping         |
-| `src/calculations/`         | Calculation configuration, run execution, scheduling, engine client |
-| `src/portfolios/`           | Portfolio contracts, persistence interface and D1 implementation    |
-| `src/market-data/`          | Registry, ingestion, processing, download schedule and status reads |
-| `src/*-workflow.ts`         | Cloudflare Workflow entry points and dependency wiring              |
-| `src/workflows/steps.ts`    | Adapter between orchestration and Cloudflare's step runner          |
-| `src/workflows/executor.ts` | Captured workflow execution and durable dependency waits            |
-| `src/pages/`                | Read-only data supplied to SvelteKit pages                          |
-| `app/src/routes/`           | Pages and their server loads                                        |
-| `app/src/lib/api.ts`        | Browser requests to `/app-api`                                      |
-| `containers/processor/`     | Raw response validation and Parquet rebuilds                        |
-| `containers/engine/`        | Calculation types, execution and result storage                     |
-| `migrations/`               | Database schema and concurrency constraints                         |
-| `test/`                     | Worker behavior tests, usually using real SQL against SQLite        |
+| Location                         | Read it for                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                   | Worker `fetch` and `scheduled` handlers, Workflow & Container exports                                    |
+| `src/scheduled.ts`               | Hourly cron wrapper around `scheduledWorkflowTick`                                                       |
+| `src/dependencies.ts`            | Concrete Cloudflare adapter wiring shared by routes and page reads                                       |
+| `src/routes/`                    | Authentication, request validation, `/api/*` and `/app-api/*` routes                                     |
+| `src/http/run-effect.ts`         | Shared Effect execution and expected-error HTTP status mapping                                           |
+| `src/assets/`                    | Asset contracts, store interface and D1 adapter (with holdings guards)                                   |
+| `src/portfolios/`                | Portfolio and dated snapshot contracts, store interface and D1 adapter                                   |
+| `src/workflows/`                 | Definition validation, inspection, assignments, defaults, D1 store                                       |
+| `src/workflows/registry/`        | Registered step types, contracts, retry policies and implementations                                     |
+| `src/workflows/runs/`            | Atomic claims, launch reconciliation, daily dispatch and run D1 store                                    |
+| `src/workflows/executor.ts`      | Sequential step runner, reference resolution, durable dependency waits                                   |
+| `src/workflows/steps.ts`         | Narrow adapter over Cloudflare `WorkflowStep`                                                            |
+| `src/definition-run-workflow.ts` | Cloudflare Workflow entrypoint wiring production adapters                                                |
+| `src/datasets/`                  | Explicit publication step logic, D1 metadata store and R2 adapter                                        |
+| `src/operations/`                | Generated TypeScript contracts (`schemas.json`, `contracts.generated.ts`) and Python HTTP client         |
+| `src/market-data/`               | Shared schemas (`MarketDateSchema`, `MarketSymbolSchema`, `EodEntrySchema`) and EODHD adapter            |
+| `src/local/`                     | Local SQLite D1, file/memory artifact & dataset stores, `uv` Python runner, in-process Workflow stand-in |
+| `src/pages/`                     | Read-only page-data facade for SvelteKit server loads                                                    |
+| `containers/engine/`             | Uniform Python FastAPI service (`/health`, `/operations`, `/operations/{name}`)                          |
+| `app/src/`                       | SvelteKit pages, server loads, and browser API helpers                                                   |
+| `migrations/`                    | D1 schema migrations (`0001`–`0014`)                                                                     |
+| `scripts/workflow-fixture.ts`    | End-to-end local fixture scenario (`pnpm workflow:fixture`)                                              |
+| `test/`                          | API, fixture, real-SQLite D1, contract and lifecycle tests                                               |
 
 ### File roles inside a feature
 
-Calculations, portfolios and the download schedule use these names:
+| File            | Responsibility                                                                   |
+| --------------- | -------------------------------------------------------------------------------- |
+| `contracts.ts`  | Effect Schemas for inputs, outputs, domain types and typed tagged errors         |
+| `store.ts`      | Injectable `Context.Service` persistence interface                               |
+| `d1.ts`         | SQL and row-to-domain mapping for D1 (and SQLite in tests)                       |
+| `views.ts`      | Runtime-free plain types safe for `app/` to import without Workers runtime types |
+| `operations.ts` | Named Effect operations coordinating validation, claims, dispatch or publication |
 
-| File                  | Responsibility                                                                      |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| `contracts.ts`        | Input schemas, values, typed errors and persistence input/result types              |
-| `store.ts`            | The injectable persistence interface: what operations can ask storage to do         |
-| `d1.ts`               | SQL and mapping between database rows and application values                        |
-| `views.ts`            | Plain types that the app can import without loading Worker or Effect runtime code   |
-| Named operation files | Business steps, such as `configure.ts`, `runs.ts`, `schedule.ts` or `operations.ts` |
-| `workflow.ts`         | Durable orchestration: named steps, their ordering and retry configuration          |
-
-Small existing features such as `symbol-registry` and `status` still keep their
-interface and contracts together in `index.ts`. Split a module when its roles
-become hard to find; there is no requirement to create every file in this table.
-
-A store interface is a seam for supplying an implementation. A D1 adapter
-implements it. An operation coordinates the work. Prefer explicit imports from
-the owning file over a barrel that hides which role you are using.
-
-Shared UTC date arithmetic lives in `src/datetime.ts`. Import it directly for
-date cutoffs, day/hour rounding and duration constants; it is safe to share with
-the browser. Feature modules keep scheduling decisions and timeout thresholds,
-while locale-dependent display formatting stays in `app/src/lib/format.ts`.
+Shared UTC date helpers live in `src/datetime.ts` (safe to share with the
+browser). Display formatting stays in `app/src/lib/format.ts`.
 
 ## A useful reading order
 
-Start with one operation rather than the root Worker:
+Start with one end-to-end slice rather than the root Worker:
 
-1. `src/calculations/configure.ts`, then the create/update cases in
-   `test/calculations.test.ts`.
-2. `src/calculations/contracts.ts` for accepted input and
-   `src/calculations/store.ts` for persistence operations.
-3. `src/calculations/d1.ts` for what is actually stored.
-4. `src/routes/calculations/index.ts`, `src/http/run-effect.ts` and
-   `src/dependencies.ts` for how HTTP reaches that operation.
-5. `src/calculations/runs.ts`, `src/calculations/workflow.ts`, then
-   `src/calculation-run-workflow.ts` for background execution.
-6. Python `framework.py`, `types/ex_ante_vol.py`, `runtime.py` and `storage.py`
-   under `containers/engine/src/data_service_engine/`.
-7. Finally `src/index.ts`: by then its cron and queue wiring has context.
+1. Run `pnpm workflow:fixture` and inspect `.local/workflow-fixture/run.json`,
+   `portfolio-run.json`, and `api.log`.
+2. Read `src/workflows/registry/index.ts`, `download-prices.ts`, and
+   `normalize-prices.ts` to see how Effect-only and Python-backed steps declare
+   contracts and retry policies.
+3. Read `src/workflows/validate.ts` and `src/workflows/operations.ts` to see how
+   complete specifications are validated and stored atomically.
+4. Read `src/workflows/runs/operations.ts` and `src/workflows/runs/dispatch.ts`
+   to follow atomic claiming, reconciliation, and daily UTC dispatch.
+5. Read `src/workflows/executor.ts` and `src/definition-run-workflow.ts` to see
+   how Effect programs execute inside Cloudflare Workflows checkpoints and waits.
+6. Read `containers/engine/src/data_service_engine/operations/registry.py`,
+   `normalize_prices.py`, and `portfolio_volatility.py` for the Python service.
+7. Finally read `src/index.ts`, `src/routes/index.ts`, and `src/dependencies.ts`.
 
-## Effect, using this application
+## Effect in this codebase
 
-The root package pins Effect **4.0.0-rc.118**. Use
-[the v4 documentation](https://effect.website/docs/v4/getting-started/creating-effects/)
-when looking up constructs; examples written for v3 can use different names.
-The installed version and its types are the final reference for this project.
+The root package pins Effect **4.0.0-rc.118** (see
+[the v4 documentation](https://effect.website/docs/v4/getting-started/creating-effects/)).
 
-### An Effect describes work
+- **An Effect describes work:** `Effect.Effect<A, E, R>` names its success type
+  `A`, expected failure type `E`, and required services `R`. Business operations
+  return Effects; pure helpers (`latestOccurrence`, `previousDay`, reference
+  parsing) stay ordinary functions.
+- **Read generators top to bottom:** operations use
+  `Effect.fn("Name")(function* (...) { ... })`. `const store = yield* Workflows`
+  obtains an injected service; `yield* store.create(...)` executes a step on it.
+- **Services and Layers:** `Context.Service` keys live in `store.ts` or
+  `client.ts`; real Cloudflare adapters end in `Live` (`D1WorkflowsLive`,
+  `R2RunArtifactsLive`, `HttpPythonOperationsLive`). `src/dependencies.ts` wires
+  them from `CloudflareBindings`; `src/local/runs.ts` wires local equivalents
+  using the exact same interfaces.
+- **HTTP edge translation:** `runHttp(program, layer)` in `src/http/run-effect.ts`
+  provides dependencies and maps `AssetError`, `PortfolioError`, `WorkflowError`,
+  and `DatasetError` to HTTP status codes. Never call `runHttp` from domain
+  operations.
+- **Expected failures vs defects:** wrap fallible external I/O with
+  `Effect.tryPromise({ try, catch })` into a typed tagged error rather than
+  `Effect.promise`. Validate external payloads with Effect Schemas at runtime.
 
-Read `Effect.Effect<A, E, R>` as:
+## Failure recovery and durability rules
 
-- **A:** the successful value;
-- **E:** the expected failures callers must handle;
-- **R:** the dependencies the work needs.
+Every recovery policy lives in one place and is exercised by both local tests
+and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 
-An Effect is a description until something runs it. An ordinary Promise has
-usually already started by the time you hold it.
+| Mechanism                       | Behavior                                                                                                                                                                                                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bounded transient retries**   | Each step type declares its retry policy (default: 3 retries with exponential backoff — 10 s, 20 s, 40 s — and 10 min attempt timeout) for provider, R2, D1, and 5xx/network Python errors.                                                                                  |
+| **Terminal errors**             | Invalid params/inputs, unknown step types, schema mismatches, outputs over 32 KiB, and Python `422` domain errors throw `NonRetryableError` and stop the run immediately.                                                                                                    |
+| **Captured definition**         | A run captures its workflow's name and step list when claimed. Editing a workflow affects subsequent runs while active runs replay their original sequence safely.                                                                                                           |
+| **Atomic claims & overlap**     | Partial unique indexes (`workflow_runs_one_active`, `workflow_runs_one_per_occurrence`) allow one active run per assignment and one run per scheduled occurrence. Overlaps record `skipped`.                                                                                 |
+| **Launch reconciliation**       | Workflow instance ID equals `runId`. If launch confirmation is lost, the next submission or hourly tick checks status before claiming. Unknown lookup status never releases a claim; stopped instances fail the run and release the slot.                                    |
+| **Durable dependency waits**    | `wait-for-asset-publications` checkpoints its absolute deadline on the first check, sleeps durably between checks (up to 1 minute at a time), never resets its deadline on replay, never starts upstream runs, and fails with missing asset diagnostics on timeout.          |
+| **Retry-safe Python & publish** | Python writes artifacts to deterministic `runs/<runId>/<stepId>/<name>.<ext>` paths. `publish-dataset` copies to the processed bucket first and upserts D1 metadata second; retrying after a lost Python response or failed metadata write overwrites the same path cleanly. |
+| **Temporary artifact expiry**   | One R2 lifecycle rule deletes objects under `runs/` in `raw-market-data` 30 days after write. No scheduled cleanup job or D1 artifact index exists. Published datasets and retained pre-workflow `dataset=...` raw objects are unaffected.                                   |
 
-The business functions in this project return Effects. The HTTP handler, queue
-consumer, cron handler or Workflow step supplies dependencies and executes them.
-Pure helpers such as `previousDay`, `isDue` and `parseCron` are ordinary functions.
-They do not need Effect just because their caller uses it.
+## Adding a new step type
 
-### Read generators from top to bottom
+### Adding a Python-backed operation
 
-`createCalculation` in `src/calculations/configure.ts` is a named operation
-created with `Effect.fn("Calculations.create")(function* (...) { ... })`.
+1. Create a module under `containers/engine/src/data_service_engine/operations/`
+   (use `portfolio_volatility.py` or `normalize_prices.py` as a template):
+   - Define Pydantic `Contract` subclasses for `inputs`, `params`, request
+     (`OperationRequest` subclass), and response.
+   - Write large outputs under `run_artifact_id(request.execution, name, ext)` so
+     retries overwrite the same artifact safely.
+   - Raise `TerminalError` for invalid inputs or domain errors, and
+     `TransientError` for retriable storage failures.
+   - Export `OPERATION = Operation(...)` and register it in
+     `operations/registry.py`.
+2. Export JSON Schemas and regenerate TypeScript Effect Schemas from the repo
+   root:
 
-Its steps are:
+   ```sh
+   pnpm operations:generate
+   ```
 
-1. Ask the engine what the requested type is.
-2. Check whether its portfolio selection fits that type.
-3. Ask the engine to validate params and fill in defaults.
-4. Save the calculation through the persistence interface.
+3. Register a TypeScript step type in `src/workflows/registry/`:
+   - Define contracts in `src/workflows/registry/contract.ts` if introducing a
+     new port identity.
+   - Call `defineStepType` with `scopes`, generated `params` schema, `inputs`,
+     `outputs`, and an `implementation` calling `PythonOperations.invoke(...)`.
+   - Add the step type to `builtInStepTypes` in `src/workflows/registry/index.ts`.
+4. Add focused Python unit tests in `containers/engine/tests/` and an API /
+   Python-HTTP acceptance test in `test/`.
 
-Two lines from that operation illustrate the main distinction:
+### Adding an Effect-only step
 
-```ts
-const engine = yield * Engine;
-const params = yield * engine.validate(type.name, input.params ?? {});
-```
-
-The first line obtains a dependency. It does not call Python. The second line
-runs an operation on that dependency and obtains its successful result. If it
-fails, the rest of this generator does not run unless a handler recovers it.
-
-`yield*` here plays a similar reading role to `await`, while retaining the
-expected-error and dependency types. It does not make steps concurrent, create
-a database transaction, or start a Cloudflare Workflow.
-
-`Effect.fn` also gives this operation a name for diagnostics. Prefer a named
-operation with sequential steps over deeply nested pipelines for business flows.
-
-### A dependency key is an interface, not a row or a connection
-
-`Calculations` in `store.ts` extends `Context.Service`. It is the typed key for
-the persistence dependency and describes its methods. `yield* Calculations`
-obtains the implementation supplied to this execution.
-
-`D1CalculationsLive(db)` in `d1.ts` supplies that key with the D1 implementation.
-The suffix `Live` means the real adapter rather than a test stand-in.
-
-The HTTP wiring in `src/dependencies.ts` selects that adapter using the current
-request's `MARKET_DATA_DB` binding. Tests can supply a different implementation
-or use the same D1 adapter with the SQLite test database.
-
-### Layers supply dependencies
-
-A Layer is a recipe for supplying dependencies. It is not a background process.
-
-- `Layer.succeed(Key, implementation)` supplies an existing implementation.
-- `Layer.effect(Key, program)` builds one using an Effect; construction can
-  require other dependencies or fail, as in the EODHD adapter.
-- `Layer.merge(a, b)` supplies both sets of independent dependencies.
-- `Effect.provide(layer)` attaches those dependencies to a program.
-- `Effect.runPromise` executes a fully supplied program at an ordinary async edge.
-
-`runHttp(program, layer)` combines providing, executing and mapping expected
-failures into JSON HTTP errors. A route can focus on validating input, choosing
-the operation and returning the successful response.
-
-Do not call `runHttp` from business code. That would couple it to HTTP and
-break reuse from a Workflow or queue. Page reads have their own execution helper
-in `src/pages/index.ts` because SvelteKit needs `PageDataError`, not a Hono error.
-
-`Calculations.use((store) => store.get(id))` is a short form for obtaining the
-key and using it. It is convenient for a single read. Use a named local
-`const store = yield* Calculations` when coordinating several steps.
-
-### Expected failures and defects are different
-
-`CalculationError`, `EngineError` and `PortfolioError` describe expected
-failures. Their `_tag` identifies the family, and `kind` identifies the reason.
-`src/http/run-effect.ts` maps these into status codes and safe error metadata.
-Schema input failures are handled separately by `src/effect-validator.ts`.
-
-`Effect.result` turns expected success/failure into a value you can inspect.
-It does **not** convert unexpected defects into ordinary typed failures.
-
-When adapting external I/O that can reject, use:
-
-```ts
-Effect.tryPromise({
-  try: () => externalOperation(),
-  catch: () =>
-    new EngineError({
-      kind: "unavailable",
-      message: "The calculation engine could not be reached",
-    }),
-});
-```
-
-This is a schematic example: choose the error belonging to that adapter.
-`Effect.promise` is appropriate only when rejection would be an unexpected defect.
-Some existing queue sends still use it for fallible I/O; those are known review
-follow-ups, not the recommended pattern for new work.
-
-Likewise, a TypeScript assertion such as `body as RunResult` does not validate
-an external value. Use a Schema decoder when establishing a runtime contract.
-The engine response decoder is a known follow-up from the codebase review.
-
-## Trace a request and a background run
-
-### Create a calculation
-
-1. `/api/calculations` checks the management token. `/app-api/calculations`
-   checks Access and same-origin mutation rules. Both mount the same routes.
-2. `effectValidator` checks `CreateCalculationSchema` from `contracts.ts`.
-3. The route calls `createCalculation` with an ID and timestamp.
-4. `runHttp` supplies the calculation-store and engine layers.
-5. The operation validates the type, portfolios and params, then asks the store
-   to create the record.
-6. `d1.ts` checks portfolio existence and saves the calculation and its ordered
-   portfolio selection in a transactional batch.
-7. The route returns 201; expected errors follow the shared HTTP mapping.
-
-Changing the validation rule should not require editing HTTP plumbing.
-Changing the response shape may require updating `views.ts`, the app's request
-helper and its presentation.
-
-### Run a saved calculation
-
-`startRun` in `runs.ts` checks for stopped runs, saves a run with its params,
-then creates a Cloudflare Workflow. The one-running-run database index makes a
-second request record a skipped run.
-
-The thin Cloudflare entry point builds the real layers and passes them to
-`executeRun` in `workflow.ts`. That orchestration has named steps for running
-the calculation and recording its outcome. `calculateRun` loads portfolios,
-calls the engine and combines the portfolio outcomes.
-
-The engine validates params, runs the selected Python type for each portfolio,
-and conditionally writes result history to R2. The Worker records the response
-in D1. Python never updates the run in D1 itself.
-
-`src/workflows/steps.ts` supplies a shared, platform-typed step interface. Step
-results must be serializable. Successful results are durable, but a step body
-can run more than once when an attempt fails. Keep stable step names and make
-side effects safe to retry. Effect execution alone provides no durable replay.
-
-For definition runs, `src/workflows/executor.ts` owns the dependency deadline,
-checkpointed checks, and durable sleep between checks. The registered wait
-step owns the readiness condition and missing-input diagnostics.
-
-## Recovery rules to know before changing orchestration
-
-These describe current behavior, including limitations. They are not guarantees
-that every infrastructure failure will automatically recover.
-
-| Work                       | Ownership and recovery                                                                                                                                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ingestion                  | One fetching run per symbol. Queue redelivery may create a fresh run. Fetching runs older than 30 minutes are failed when a new attempt starts.                                                         |
-| Processing                 | D1 atomically claims a queued job. Unreachable-container failures release it for queue retry. HTTP error responses currently fail the job permanently.                                                  |
-| Processing reconciliation  | At 02:00 UTC, cron fails processing jobs older than one hour, creates eligible new jobs and resends queued jobs. Failed jobs are not automatically retried for the same ingestion run.                  |
-| Download schedule          | One scheduled run per UTC day. Its Workflow queues batches. Creation failure is reconciled against an existing instance; otherwise the scheduled record is removed for a later tick.                    |
-| Calculation schedule       | One claimed slot per calculation. Launch failure currently consumes the slot. Disabled calculations do not start scheduled runs.                                                                        |
-| Calculation execution      | The engine step has two retries and a 30-minute timeout. Python currently returns many infrastructure exceptions as normal failed results, bypassing those retries.                                     |
-| Stopped calculation checks | Runs older than five minutes are checked before a new run and on hourly cron. Lookup failures currently look like missing instances; fix this before relying on it to release ownership during outages. |
-
-Dev has no cron. Actions that rely on a sweep need an explicit trigger there.
-The limits and delivery settings are in `wrangler.jsonc`; constants live beside
-the operation that owns the policy.
-
-Runs save params but reload portfolio selections, holdings and current canonical
-market data later. An as-of filter limits the dates visible to the calculation;
-it does not restore the dataset as it existed historically. Full input freezing
-and provenance remain separate improvements.
+1. Create a file under `src/workflows/registry/` (use `portfolio-holdings.ts` or
+   `download-prices.ts` as a template).
+2. Declare its `type`, `description`, `scopes`, `params` Effect Schema, named
+   `inputs` and `outputs` with explicit contract identities, optional retry
+   policy, and `implementation`.
+3. Use existing `Context.Service` interfaces (`Assets`, `Portfolios`,
+   `DatasetPublications`, `RunArtifacts`, `MarketDataSources`) and map errors to
+   `terminalStepError` or `transientStepError`.
+4. Register it in `builtInStepTypes` in `src/workflows/registry/index.ts` and
+   cover validation and execution through the `/api/workflows` and `/api/runs`
+   test seam.
 
 ## Where to change common things
 
-| Change                            | Start here; then check                                                                                |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Calculation input fields          | `calculations/contracts.ts`; `configure.ts`, `d1.ts`, `views.ts` and the app form as needed           |
-| A calculation rule                | `calculations/configure.ts`; create/update cases in `test/calculations.test.ts`                       |
-| Calculation execution             | `calculations/runs.ts`; durable ordering/configuration in `workflow.ts`                               |
-| A new calculation type            | `containers/engine/src/data_service_engine/types/`; [Adding a type](/docs/calculations/types/)        |
-| Portfolio editability             | `portfolios/d1.ts`; `test/portfolios.test.ts`                                                         |
-| Automatic single-asset portfolios | `market-data/symbol-registry/d1.ts` and `migrations/0008_single_asset_portfolios.sql`; registry tests |
-| Download hour and due rules       | `market-data/schedule/operations.ts`; `test/schedule.test.ts`                                         |
-| Download batching                 | `market-data/schedule/workflow.ts`; schedule tests                                                    |
-| Queue retry decisions             | `market-data/ingestion-queue.ts`, `market-data/processing.ts`, and `src/index.ts`                     |
-| SQL schema                        | A new file in `migrations/`; relevant D1 adapter and real-SQL tests                                   |
-| HTTP error status/metadata        | `http/run-effect.ts`; relevant route tests and API reference                                          |
-| Page reads                        | `src/pages/index.ts` and `views.ts`; corresponding `+page.server.ts`                                  |
-| Browser mutations                 | `app/src/lib/api.ts`, the form/detail component and reused Worker route                               |
+| Change                         | Start here; then check                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Asset CRUD or deletion guards  | `src/assets/d1.ts`, `src/routes/assets/index.ts`, `test/assets.test.ts`                        |
+| Portfolio holdings rules       | `src/portfolios/contracts.ts`, `src/portfolios/d1.ts`, `test/portfolios.test.ts`               |
+| Workflow specification rules   | `src/workflows/validate.ts`, `src/workflows/contracts.ts`, `test/workflows.test.ts`            |
+| Step contracts & retry policy  | `src/workflows/registry/`, `test/workflow-runs.test.ts`                                        |
+| Scheduled dispatch / claims    | `src/workflows/runs/dispatch.ts`, `src/workflows/runs/d1.ts`, `test/workflow-dispatch.test.ts` |
+| Python operation logic/schemas | `containers/engine/src/data_service_engine/operations/`, then `pnpm operations:generate`       |
+| Dataset publication & lookup   | `src/datasets/`, `src/routes/datasets/index.ts`, `test/dataset-publication.test.ts`            |
+| SQL schema                     | New file in `migrations/`; real-SQL tests via `test/support/d1.ts`                             |
+| HTTP error mapping             | `src/http/run-effect.ts`; relevant route tests                                                 |
+| App pages & browser API        | `src/pages/views.ts`, `src/pages/index.ts`, `app/src/routes/`, `app/src/lib/api.ts`            |
 
-Portfolio protection and single-asset creation currently live in the D1 adapters
-so checks and writes can stay close to atomic persistence. Preserve the database
-constraints and transactional batches when making those rules more discoverable.
-Do not replace an atomic batch with separately failing application writes.
+## Local development and verification loop
 
-## A development loop that does not need Cloudflare credentials
-
-Install dependencies, then use the calculation behavior tests as a local
-walkthrough:
+No Cloudflare credentials are needed for the full local verification loop:
 
 ```sh
-pnpm install
-pnpm exec tsx --test --test-name-pattern='creating a calculation' test/calculations.test.ts
-pnpm exec tsx --test --test-name-pattern='a run sends every portfolio' test/calculations.test.ts
+pnpm workflow:fixture       # end-to-end asset + portfolio workflow against fixtures (needs uv)
+pnpm operations:check       # verify Pydantic schemas match generated TS contracts
+pnpm format:check           # Prettier (TS, Svelte, JSON, Markdown)
+pnpm typecheck              # TypeScript across src/, scripts/, test/
+pnpm test                   # API, SQLite D1, fixture & contract tests
+pnpm engine:test            # Python pytest (needs uv)
+pnpm engine:lint            # Python ruff check + format (needs uv)
+pnpm app:check              # svelte-check (0 errors, 0 warnings)
+pnpm --filter app build     # Cloudflare SvelteKit build
+pnpm docs:build             # Starlight docs build
 ```
 
-`test/support/d1.ts` applies the real migrations to in-memory SQLite.
-`test/support/engine.ts` supplies an HTTP stand-in for Python. The Workflow fake
-in the calculation tests executes named step bodies directly. These tests show
-what gets saved and sent without secrets, deployed queues or R2.
-
-Run `pnpm format` after editing supported source, configuration or documentation
-files. The repository configuration includes Svelte support and is shared with
-editor integrations. Python formatting remains with Ruff.
-
-For a change, run the relevant test file, then the shared checks:
+On CPUs without AVX2, run Python tests with Polars' compatibility runtime:
 
 ```sh
-pnpm format:check
-pnpm test
-pnpm typecheck
-pnpm app:check
-pnpm --filter app build
-pnpm docs:build
-```
-
-Use Node 22.23.4 or later in the 22.x line for the current docs dependencies.
-See [Local development](/docs/operations/local/) for the two-server app setup and
-its R2/container limitation. Root typechecking imports the generated app handler;
-run the app build first on a fresh checkout to generate it if necessary.
-
-For Python changes:
-
-```sh
-pnpm processor:test
-pnpm processor:lint
-pnpm engine:test
-pnpm engine:lint
-```
-
-On CPUs without the required instructions for the default Polars runtime:
-
-```sh
-uv run --directory containers/processor --with 'polars[rtcompat]' pytest
 uv run --directory containers/engine --with 'polars[rtcompat]' pytest
 ```
 
-Use tests of externally observable behavior: accepted input, saved state,
-outbound engine requests and error/recovery outcomes. Keep the real-SQL tests.
-The current fakes do not verify actual Cloudflare checkpoint replay, timeout or
-serialization behavior; orchestration changes may need runtime integration tests.
+## Conventions
 
-## Conventions for the next change
-
-Order module declarations as **imports → constants → types/contracts →
-functions/classes**. Schema values belong with constants; a function assigned
-to `const` belongs with implementations. Keep runtime contract classes before
-the functions using them, and keep each declaration's documentation attached.
-If a TypeScript constant calls a local helper during initialization, use a hoisted function
-declaration so it can still be defined below the contracts.
-
-In Svelte components, put static constants before props/state and retain the
-dependency order of reactive setup. Eager registrations that require completed
-definitions (such as Python calculation `TYPE`) stay after those definitions.
-
-- Give an operation a domain name and keep its steps sequential and readable.
-- Use plain functions for pure policy, Effect for fallible coordinated work,
-  and async functions where Cloudflare controls the durable step lifecycle.
-- Name dependencies before using them; avoid nested `yield*` expressions.
-- Supply real adapters at execution edges. Pass small external handles such as
-  queues explicitly when that makes the operation's needs clear; do not add a
-  dependency key for every argument.
-- Keep HTTP error translation in `runHttp`; keep schema validation in the validator.
-- Keep runtime-free view types separate for browser imports.
-- Workflow domain and persistence records belong in their owning `contracts.ts`,
-  using the existing schemas and domain types. Keep `views.ts` as independent,
-  browser-safe API DTOs; duplication at this boundary is intentional. Import display
+- Order declarations as **imports → constants → types/contracts →
+  functions/classes**, keeping each declaration's documentation attached.
+- Workflow domain and persistence records belong in their owning
+  `contracts.ts`. Keep `views.ts` files as independent, browser-safe API DTOs,
+  free of Worker/Effect runtime imports so SvelteKit can typecheck against them
+  cleanly; duplication at this boundary is intentional. Import display
   projections directly from views, never reexport them from domain contracts.
-- Worker queue/cron handlers and dispatcher reports use Effect logs: the event
-  name is the JSON `message`, and structured fields are annotations. Entrypoints
-  install `WorkerLoggerLive`; domain operations never call `console` or
+- The cron handler and dispatcher reports use Effect logs: the event name is
+  the JSON `message`, and structured fields are annotations. Entrypoints install
+  `WorkerLoggerLive`; domain operations never call `console` or
   `JSON.stringify` for logs.
-- Prefer a small interface that hides meaningful work. Avoid pass-through
-  layers, compatibility barrels and one-file-per-helper rules.
-- Update the relevant behavior test and this map when responsibilities move.
+- Keep atomic database guards inside D1 batches and partial unique indexes
+  rather than split application-level read-then-write checks.
+- Test externally observable behavior at the public API / fixture boundary with
+  real SQLite migrations and the real Python HTTP service.

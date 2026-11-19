@@ -1,7 +1,7 @@
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 
-/** The query parameters of the current page, e.g. `?symbol=AAPL.US` on /runs. */
+/** The query parameters of the current page, e.g. `?symbol=AAPL.US` on /workflow-runs. */
 export const route = {
   get params() {
     return page.url.searchParams;
@@ -13,17 +13,10 @@ export const route = {
  * query filters are passed separately so callers share one URL-building convention.
  */
 export type View =
-  | "runs"
-  | "symbols"
-  | "assets"
-  | "portfolios"
-  | "workflows"
-  | "workflow-runs"
-  | "calculations"
-  | "explore";
+  "assets" | "portfolios" | "workflows" | "workflow-runs" | "explore";
 
 /**
- * A link to a page. `id` opens an asset, portfolio, workflow, run or calculation
+ * A link to a page. `id` opens an asset, portfolio, workflow or run
  * (`/portfolios/<id>`); other params go in the query string.
  */
 export const href = (

@@ -7,15 +7,13 @@ import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 
-import { D1CalculationsLive } from "$/calculations/d1";
 import {
   type PublicationView,
   publishedDatasetKey,
 } from "$/datasets/contracts";
-import type { Dependencies } from "$/dependencies";
 import { FileRunArtifactsLive, memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import { FileDatasetObjectStoreLive } from "$/local/published";
@@ -26,11 +24,6 @@ import {
 } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { applyMigrations, makeSqliteD1 } from "$/local/sqlite-d1";
-import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
-import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
-import type { ScheduledDownloadParams } from "$/market-data/schedule/operations";
-import { D1PipelineStatusLive } from "$/market-data/status/d1";
-import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { localSteps } from "$/local/steps";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { pageData } from "$/pages";
@@ -58,8 +51,6 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
-
-import { makeFakeEngine } from "./support/engine";
 
 const execFileAsync = promisify(execFile);
 
@@ -320,8 +311,6 @@ const makeFullService = (
     readonly published?: ReturnType<typeof FileDatasetObjectStoreLive>;
   } = {},
 ) => {
-  const legacyStarts: ScheduledDownloadParams[] = [];
-  const legacyCalcStarts: string[] = [];
   const local = localWorkflowService({
     db,
     artifacts: options.artifacts ?? memoryRunArtifacts().layer,
@@ -338,32 +327,7 @@ const makeFullService = (
     },
   });
 
-  const dependencies: Dependencies = {
-    ...local.dependencies,
-    statusFor: () => D1PipelineStatusLive(db),
-    registryFor: () => D1SymbolRegistryLive(db),
-    scheduleFor: () => D1ScheduleStoreLive(db),
-    downloadWorkflowFor: () => ({
-      create: async (create) => {
-        legacyStarts.push(create!.params as ScheduledDownloadParams);
-        return { id: create!.id! } as WorkflowInstance;
-      },
-      get: async (id) => ({ id }) as WorkflowInstance,
-    }),
-    engineFor: () => makeFakeEngine().layer,
-    calculationsFor: () => D1CalculationsLive(db),
-    runWorkflowFor: () => ({
-      create: async (create) => {
-        legacyCalcStarts.push(create!.id!);
-        return { id: create!.id! } as WorkflowInstance;
-      },
-      get: async (id) =>
-        ({
-          id,
-          status: async () => ({ status: "running" }),
-        }) as unknown as WorkflowInstance,
-    }),
-  };
+  const { dependencies } = local;
 
   const routes = createRoutes(
     dependencies,
@@ -375,9 +339,8 @@ const makeFullService = (
     ACCESS_TEAM_DOMAIN: TEAM,
     ACCESS_AUD: AUD,
     DASHBOARD_ALLOWED_EMAILS: USER_EMAIL,
-    WORKFLOW_DISPATCH: options.dispatch ?? "off",
+    WORKFLOW_DISPATCH: options.dispatch ?? "on",
     MARKET_DATA_DB: db,
-    PROCESSING_QUEUE: { send: async () => {} },
   } as unknown as CloudflareBindings;
 
   const api = (path: string, method = "GET", body?: unknown) =>
@@ -455,9 +418,6 @@ const makeFullService = (
     dispatches,
     platform: local.platform,
     pages: pageData(env, dependencies),
-    legacyStarts,
-    legacyCalcStarts,
-    controlPlaneFor: () => D1MarketDataControlPlaneLive(db),
   };
 };
 
@@ -929,7 +889,7 @@ test("emitted SQL scripts reproduce applyMigration, cutover, and rollback idempo
   assert.equal(resumed, 0);
 });
 
-test("strict mutual exclusion in scheduled handler, explicit cutover, and rollback", async () => {
+test("scheduled handler dispatches migrated workflows exclusively and migration cutover/rollback stay idempotent", async () => {
   const { db } = makeRehearsalDatabase();
 
   // Cutover before migration is rejected with a precondition error.
@@ -947,10 +907,6 @@ test("strict mutual exclusion in scheduled handler, explicit cutover, and rollba
   // autoStart: false keeps scheduled runs queued so we inspect dispatch
   // claims without needing the Python service in this test.
   const service = makeFullService(db, { autoStart: false });
-  const scheduledDeps = {
-    ...service.dependencies,
-    controlPlaneFor: service.controlPlaneFor,
-  };
   const envOff = {
     ...service.env,
     WORKFLOW_DISPATCH: "off",
@@ -960,34 +916,25 @@ test("strict mutual exclusion in scheduled handler, explicit cutover, and rollba
     WORKFLOW_DISPATCH: "on",
   } as unknown as CloudflareBindings;
 
-  // 1. WORKFLOW_DISPATCH="off": legacy owns downloads, workflows are disabled.
-  const legacyOutcome = await runScheduledHandlers(
+  // 1. WORKFLOW_DISPATCH="off": hourly handler dispatches nothing.
+  const offOutcome = await runScheduledHandlers(
     new Date("2024-01-10T04:00:00Z"),
     envOff,
-    scheduledDeps,
+    service.dependencies,
   );
-  assert.equal(legacyOutcome.downloadOwner, "legacy");
-  assert.equal(legacyOutcome.legacyDownload.status, "started");
-  assert.equal(legacyOutcome.workflowTick.status, "disabled");
-  assert.equal(service.legacyStarts.length, 1);
+  assert.deepEqual(offOutcome, { status: "disabled" });
   assert.equal(
     (await service.json<{ runs: unknown[] }>(service.api("/runs"))).runs.length,
     0,
   );
 
-  // 2. WORKFLOW_DISPATCH="on" EVEN WHILE download_schedule.paused = 0:
-  // strict mutual exclusion ensures legacy triggerScheduledRun NEVER runs.
+  // 2. WORKFLOW_DISPATCH="on": hourly handler dispatches enabled migrated assets only.
   const workflowOutcome = await runScheduledHandlers(
     new Date("2024-01-11T04:00:00Z"),
     envOn,
-    scheduledDeps,
+    service.dependencies,
   );
-  assert.equal(workflowOutcome.downloadOwner, "workflows");
-  assert.deepEqual(workflowOutcome.legacyDownload, {
-    status: "skipped_for_workflows",
-  });
-  assert.equal(service.legacyStarts.length, 1); // unchanged!
-  assert.equal(workflowOutcome.workflowTick.status, "started");
+  assert.equal(workflowOutcome.status, "started");
   const [dispatched] = service.dispatches;
   assert.equal(dispatched?.status, "dispatched");
   if (dispatched?.status === "dispatched") {
@@ -998,7 +945,7 @@ test("strict mutual exclusion in scheduled handler, explicit cutover, and rollba
     assert.deepEqual(symbols, ["AAPL.US", "IBM.US", "MSFT.US"]);
   }
 
-  // 3. Explicit cutover pauses legacy download_schedule and is idempotent.
+  // 3. Explicit cutover pauses legacy download_schedule row and is idempotent.
   const cutover1 = await cutoverDownloads(db, {
     now: "2026-11-19T18:15:00.000Z",
   }).pipe(Effect.runPromise);
@@ -1014,24 +961,13 @@ test("strict mutual exclusion in scheduled handler, explicit cutover, and rollba
   assert.equal(cutover2.legacySchedulePausedBefore, true);
   assert.equal(cutover2.legacySchedulePausedAfter, true);
 
-  // 4. Explicit rollback restores download_schedule.paused = 0 and lets
-  // legacy resume when WORKFLOW_DISPATCH="off".
+  // 4. Explicit rollback flips download_schedule.paused back to 0.
   const rollback = await rollbackDownloads(db, {
     now: "2026-11-19T18:20:00.000Z",
   }).pipe(Effect.runPromise);
   assert.equal(rollback.legacySchedulePausedBefore, true);
   assert.equal(rollback.legacySchedulePausedAfter, false);
   assert.equal(rollback.legacyScheduleHourUtc, 4);
-
-  const resumedLegacy = await runScheduledHandlers(
-    new Date("2024-01-12T04:00:00Z"),
-    envOff,
-    scheduledDeps,
-  );
-  assert.equal(resumedLegacy.downloadOwner, "legacy");
-  assert.equal(resumedLegacy.legacyDownload.status, "started");
-  assert.equal(resumedLegacy.workflowTick.status, "disabled");
-  assert.equal(service.legacyStarts.length, 2);
 });
 
 test("CLI script scripts/migrate-workflows.ts supports dry-run, idempotent apply, cutover, rollback, and SQL emission", async () => {
@@ -1139,13 +1075,9 @@ describe(
       const outcome = await runScheduledHandlers(
         new Date("2024-01-10T04:00:00Z"),
         service.env,
-        { ...service.dependencies, controlPlaneFor: service.controlPlaneFor },
+        service.dependencies,
       );
-      assert.equal(outcome.downloadOwner, "workflows");
-      assert.deepEqual(outcome.legacyDownload, {
-        status: "skipped_for_workflows",
-      });
-      assert.equal(outcome.workflowTick.status, "started");
+      assert.equal(outcome.status, "started");
       assert.equal(service.dispatches[0]?.status, "dispatched");
       await service.platform.idle();
 

@@ -12,9 +12,9 @@ export interface DatedEntry {
 }
 
 /**
- * Expected provider configuration/request/response or raw-storage failure.
- * Queue orchestration uses `kind` to decide which download failures can retry;
- * messages should describe the failure without exposing provider credentials.
+ * Expected provider configuration, request, response or storage failure.
+ * Workflow steps use `kind` to decide whether a failure can retry; messages
+ * describe the failure without exposing provider credentials.
  */
 export class MarketDataError extends Schema.TaggedError<MarketDataError>()(
   "MarketDataError",

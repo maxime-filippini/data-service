@@ -1,7 +1,5 @@
 """Normalize one raw end-of-day price download into the `prices_eod` Parquet
-schema. The transformation and raw-envelope models are the legacy
-processor's (`data_service_processor`), moved here; the processor keeps its
-copy until it is removed at cutover.
+schema.
 """
 
 import io

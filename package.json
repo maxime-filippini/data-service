@@ -17,8 +17,6 @@
     "app:check": "pnpm --filter app check",
     "docs:dev": "pnpm --filter docs dev",
     "docs:build": "pnpm --filter docs build",
-    "processor:test": "uv run --directory containers/processor pytest",
-    "processor:lint": "uv run --directory containers/processor ruff check src tests && uv run --directory containers/processor ruff format --check src tests",
     "engine:test": "uv run --directory containers/engine pytest",
     "engine:lint": "uv run --directory containers/engine ruff check src tests && uv run --directory containers/engine ruff format --check src tests",
     "format": "prettier --write .",

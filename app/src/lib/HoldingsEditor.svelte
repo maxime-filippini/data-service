@@ -6,7 +6,7 @@
     symbols,
   }: {
     rows: HoldingRow[];
-    /** Tracked `prices_eod` symbols, suggested while typing. */
+    /** Registered asset symbols, suggested while typing. */
     symbols: readonly string[];
   } = $props();
 

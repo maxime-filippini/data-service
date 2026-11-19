@@ -13,10 +13,10 @@
   import { untrack } from "svelte";
 
   import {
-    calculationResultsUrl,
-    datasetUrl,
-    fetchCalculationResults,
-    fetchDatasetFile,
+    fetchPublicationData,
+    publicationDataUrl,
+    type PublicationView,
+    type SubjectView,
   } from "#lib/api.ts";
   import {
     formatBytes,
@@ -30,7 +30,8 @@
     type Dataset,
     type Row,
   } from "#lib/parquet.ts";
-  import { href, replace, route } from "#lib/router.svelte.ts";
+  import { replace, route } from "#lib/router.svelte.ts";
+  import { subjectHref, subjectLabel } from "#lib/subjects.ts";
 
   import type { PageProps } from "./$types";
 
@@ -47,12 +48,66 @@
   });
 
   const dataset = $derived(route.params.get("dataset") ?? "");
-  const symbol = $derived(route.params.get("symbol") ?? "");
-  /** A calculation's results, `calculation=<id>/data.parquet`, instead of a dataset. */
-  const calculation = $derived(route.params.get("calculation") ?? "");
+  const rawKind = $derived(route.params.get("kind") ?? "");
+  const legacySymbol = $derived(route.params.get("symbol") ?? "");
+  const subjectId = $derived(route.params.get("subject") ?? legacySymbol);
+  const subjectKind = $derived<"asset" | "portfolio" | "">(
+    rawKind === "asset" || rawKind === "portfolio"
+      ? rawKind
+      : legacySymbol
+        ? "asset"
+        : "",
+  );
 
-  const symbols = $derived(data.symbols);
-  const calculations = $derived(data.calculations);
+  const selectedSubject = $derived<SubjectView | null>(
+    subjectKind === "asset" && subjectId
+      ? { kind: "asset", symbol: subjectId }
+      : subjectKind === "portfolio" && subjectId
+        ? { kind: "portfolio", id: subjectId }
+        : null,
+  );
+
+  const publications = $derived(data.publications);
+  const portfolioNames = $derived(
+    new Map(data.portfolios.map((portfolio) => [portfolio.id, portfolio.name])),
+  );
+
+  const optionValue = (name: string, kind: "asset" | "portfolio", id: string) =>
+    `${name}/${kind}/${id}`;
+
+  const publicationValue = (publication: PublicationView) =>
+    optionValue(
+      publication.dataset,
+      publication.subject.kind,
+      subjectLabel(publication.subject),
+    );
+
+  const displaySubject = (subject: SubjectView) => {
+    if (subject.kind === "asset") return subject.symbol;
+    const name = portfolioNames.get(subject.id);
+    return name ? `${name} (${subject.id.slice(0, 8)})` : subject.id;
+  };
+
+  const assetPublications = $derived(
+    publications.filter((p) => p.subject.kind === "asset"),
+  );
+  const portfolioPublications = $derived(
+    publications.filter((p) => p.subject.kind === "portfolio"),
+  );
+
+  const chosen = $derived(
+    dataset && selectedSubject
+      ? optionValue(
+          dataset,
+          selectedSubject.kind,
+          subjectLabel(selectedSubject),
+        )
+      : "",
+  );
+  const chosenPublication = $derived(
+    publications.find((p) => publicationValue(p) === chosen),
+  );
+
   let file = $state<Dataset | null>(null);
   let fileSize = $state(0);
   let loading = $state(false);
@@ -60,32 +115,16 @@
   let from = $state("");
   let to = $state("");
 
-  // Only symbols with a successful download can have a Parquet file.
-  const choices = $derived(symbols.filter((s) => s.lastCompletedRun !== null));
-
-  const chosenCalculation = $derived(
-    calculations.find((c) => c.id === calculation),
-  );
-  const chosen = $derived(
-    calculation
-      ? `calculation:${calculation}`
-      : dataset && symbol
-        ? `${dataset}/${symbol}`
-        : "",
-  );
-
   let latestRequest = 0;
 
   const load = async () => {
     const request = ++latestRequest;
     file = null;
     error = null;
-    if (!calculation && (!dataset || !symbol)) return;
+    if (!dataset || !selectedSubject) return;
     loading = true;
     try {
-      const bytes = calculation
-        ? await fetchCalculationResults(calculation)
-        : await fetchDatasetFile(dataset, symbol);
+      const bytes = await fetchPublicationData(dataset, selectedSubject);
       const decoded = await readParquet(bytes);
       if (request !== latestRequest) return;
       fileSize = bytes.byteLength;
@@ -103,8 +142,8 @@
 
   $effect(() => {
     void dataset;
-    void symbol;
-    void calculation;
+    void subjectKind;
+    void subjectId;
     untrack(() => load());
   });
 
@@ -114,8 +153,8 @@
   );
 
   /**
-   * The column the date range applies to: `as_of` in calculation results,
-   * otherwise the first date column, e.g. `date` in prices_eod.
+   * The column the date range applies to: `as_of` in portfolio volatility
+   * results, otherwise the first date column, e.g. `date` in prices_eod.
    */
   function dateColumnOf(all: Column[]) {
     const dates = all.filter((column) => column.kind === "date");
@@ -167,44 +206,50 @@
   const choose = (value: string) => {
     from = "";
     to = "";
-    if (value.startsWith("calculation:")) {
-      replace("explore", { calculation: value.slice("calculation:".length) });
-      return;
-    }
-    const [nextDataset = "", nextSymbol = ""] = value.split("/");
-    replace("explore", { dataset: nextDataset, symbol: nextSymbol });
+    const [nextDataset = "", nextKind = "", nextSubject = ""] =
+      value.split("/");
+    replace("explore", {
+      dataset: nextDataset,
+      kind: nextKind,
+      subject: nextSubject,
+    });
   };
 
   const sortMark = (direction: false | "asc" | "desc") =>
     direction === "asc" ? "▲" : direction === "desc" ? "▼" : "";
 </script>
 
+<svelte:head>
+  <title>Explore data · Data service</title>
+</svelte:head>
+
 <div class="toolbar">
   <select
-    aria-label="Data"
+    aria-label="Published dataset"
     value={chosen}
     onchange={(event) => choose(event.currentTarget.value)}
   >
-    <option value="" disabled>Choose a symbol or calculation</option>
-    {#if !calculation && dataset && symbol && !choices.some((s) => s.dataset === dataset && s.symbol === symbol)}
-      <option value={`${dataset}/${symbol}`}>{symbol} · {dataset}</option>
+    <option value="" disabled>Choose a published dataset</option>
+    {#if chosen && selectedSubject && !chosenPublication}
+      <option value={chosen}
+        >{displaySubject(selectedSubject)} · {dataset}</option
+      >
     {/if}
-    <optgroup label="Datasets">
-      {#each choices as s (`${s.dataset}/${s.symbol}`)}
-        <option value={`${s.dataset}/${s.symbol}`}
-          >{s.symbol} · {s.dataset}</option
-        >
-      {/each}
-    </optgroup>
-    {#if calculations.length > 0 || calculation}
-      <optgroup label="Calculation results">
-        {#if calculation && !chosenCalculation}
-          <option value={`calculation:${calculation}`}
-            >Calculation {calculation}</option
+    {#if assetPublications.length > 0}
+      <optgroup label="Asset datasets">
+        {#each assetPublications as publication (publicationValue(publication))}
+          <option value={publicationValue(publication)}
+            >{displaySubject(publication.subject)} · {publication.dataset}</option
           >
-        {/if}
-        {#each calculations as c (c.id)}
-          <option value={`calculation:${c.id}`}>{c.name} · {c.type}</option>
+        {/each}
+      </optgroup>
+    {/if}
+    {#if portfolioPublications.length > 0}
+      <optgroup label="Portfolio datasets">
+        {#each portfolioPublications as publication (publicationValue(publication))}
+          <option value={publicationValue(publication)}
+            >{displaySubject(publication.subject)} · {publication.dataset}</option
+          >
         {/each}
       </optgroup>
     {/if}
@@ -231,18 +276,14 @@
     {/if}
   {/if}
   <span class="spacer"></span>
-  {#if file && calculation}
-    <a href={href("calculations", { id: calculation })}>Calculation</a>
-    <a
-      href={calculationResultsUrl(calculation)}
-      download={`${chosenCalculation?.name ?? calculation}.parquet`}
+  {#if file && selectedSubject}
+    <a href={subjectHref(selectedSubject)}
+      >{selectedSubject.kind === "asset" ? "Asset" : "Portfolio"}</a
     >
-      Download Parquet
-    </a>
-  {:else if file}
     <a
-      href={datasetUrl(dataset, symbol)}
-      download={`${symbol}.${dataset}.parquet`}>Download Parquet</a
+      href={publicationDataUrl(dataset, selectedSubject)}
+      download={`${subjectLabel(selectedSubject)}.${dataset}.parquet`}
+      >Download Parquet</a
     >
   {/if}
   <button onclick={() => load()} disabled={loading || !chosen}>Refresh</button>
@@ -258,6 +299,8 @@
       fileSize,
     )}
     {#if span}· {formatRange(span.first, span.last)}{/if}
+    {#if chosenPublication}· processing date
+      <span class="mono">{chosenPublication.processingDate}</span>{/if}
     {#if rows.length !== file.rows.length}· <strong
         >{formatCount(rows.length)} in range</strong
       >{/if}
@@ -305,7 +348,11 @@
   {:else if loading}
     <p class="notice">Loading…</p>
   {:else if !chosen}
-    <p class="notice">Choose a symbol or a calculation to see its data.</p>
+    <p class="notice">
+      {publications.length === 0
+        ? "No datasets have been published yet."
+        : "Choose a published dataset to see its rows."}
+    </p>
   {/if}
 </div>
 
