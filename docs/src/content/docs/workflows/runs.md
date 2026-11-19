@@ -148,6 +148,10 @@ artifact is the provider response in the same envelope as legacy raw objects:
 an output references. Only references recorded as a run's outputs are
 read, so no storage paths are accepted from callers.
 
+Run artifacts are temporary: they expire 30 days after they are written
+(see [Storage layout](/docs/reference/storage/#lifecycle)). Data meant to
+last is [published](/docs/workflows/datasets/) to a separate location.
+
 ## In the app
 
 **Workflow runs** (`/workflow-runs`) lists runs with status and asset
@@ -161,24 +165,34 @@ pages list their recent runs.
 pnpm workflow:fixture
 ```
 
-This runs the asset download workflow through the same API routes, executor
-and step implementations as the Worker, without credentials or network:
+This runs the asset prices workflow (download, normalize, publish) through
+the same API routes, executor, step implementations and Python operations as
+the Worker, without credentials or network. It needs
+[uv](https://docs.astral.sh/uv/):
 
-1. it opens a local SQLite D1 database with the real migrations;
-2. it creates an asset, a definition and an assignment through the
+1. it starts the real Python service with uv on a free localhost port;
+2. it opens a local SQLite D1 database with the real migrations;
+3. it creates an asset, a definition and an assignment through the
    management API;
-3. it starts a run with `POST /api/runs`;
-4. an in-process Workflow binding executes the run, and the real EODHD
-   adapter is answered from `fixtures/eodhd/<SYMBOL>.json`.
+4. it starts a run with `POST /api/runs`;
+5. an in-process Workflow binding executes the run. The real EODHD adapter
+   is answered from `fixtures/eodhd/<SYMBOL>.json`, the normalize step calls
+   the Python service over HTTP, and the publish step copies its output to
+   the local processed bucket.
 
-Output goes to `.local/workflow-fixture/`, emptied first:
+Both languages read and write run artifacts in the same directory,
+`r2/raw-market-data/`. Output goes to `.local/workflow-fixture/`, emptied
+first:
 
-| Path                                | What                              |
-| ----------------------------------- | --------------------------------- |
-| `d1.sqlite`                         | The local database                |
-| `r2/runs/<runId>/download/raw.json` | The raw artifact                  |
-| `run.json`                          | The run and its step outcomes     |
-| `api.log`                           | Each API request and its response |
+| Path                                                                       | What                              |
+| -------------------------------------------------------------------------- | --------------------------------- |
+| `d1.sqlite`                                                                | The local database                |
+| `r2/raw-market-data/runs/<runId>/download/raw.json`                        | The raw artifact                  |
+| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                 | Python's normalized output        |
+| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet` | The published dataset             |
+| `run.json`                                                                 | The run and its step outcomes     |
+| `publication.json`                                                         | The publication's metadata        |
+| `api.log`                                                                  | Each API request and its response |
 
 Options: `--out DIR`, `--symbol MSFT.US` (fixtures exist for `AAPL.US` and
 `MSFT.US`) and `--date YYYY-MM-DD` (default `2024-01-10`). Retries happen

@@ -15,10 +15,11 @@ report back in the response.
 ```mermaid
 flowchart LR
   W[Worker] -- "POST /jobs" --> P[Processor]
-  W -- "GET /types<br/>POST /types/:name/validate<br/>POST /runs<br/>POST /calculate" --> E[Engine]
+  W -- "GET /types<br/>POST /types/:name/validate<br/>POST /runs<br/>POST /calculate<br/>POST /operations/:name" --> E[Engine]
   P -- read --> raw[(raw-market-data)]
   P -- write --> processed[(processed-market-data)]
   E -- read / write --> processed
+  E -- "read / write runs/" --> raw
 ```
 
 ## Processor
@@ -64,7 +65,12 @@ envelope literal in `models.py` and its Parquet schema in `processor.py`.
 ## Engine
 
 Holds every calculation type, validates params, runs calculations over the
-canonical files and writes their results. Code: `containers/engine/`.
+canonical files and writes their results. It also serves the workflow
+operations (`GET /operations`, `POST /operations/:name`), such as price
+normalization, which read and write run artifacts under `runs/` in the raw
+bucket (`ARTIFACT_BUCKET`); see
+[Python operations](/docs/workflows/datasets/#python-operations). Code:
+`containers/engine/`.
 
 | Endpoint                     | Does                                                                                         |
 | ---------------------------- | -------------------------------------------------------------------------------------------- |

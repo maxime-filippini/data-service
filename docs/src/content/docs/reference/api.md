@@ -65,6 +65,9 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 | `GET`    | `/api/runs/:runId`                              | One run with its step outcomes                        |
 | `POST`   | `/api/runs/:runId/rerun`                        | Run the same assignment and date again                |
 | `GET`    | `/api/runs/:runId/steps/:step/artifacts/:name`  | The artifact a step output references                 |
+| `GET`    | `/api/datasets`                                 | Dataset publications (subject and dataset filters)    |
+| `GET`    | `/api/datasets/:dataset/:kind/:subject`         | One publication's metadata                            |
+| `GET`    | `/api/datasets/:dataset/:kind/:subject/data`    | The dataset's current data (Parquet)                  |
 
 ## Symbols
 
@@ -220,6 +223,22 @@ an unknown definition or assignment `404`. Deleting a definition, assignment
 or asset while it has an active run returns `409`. The app serves the same
 routes at `/app-api/workflow-runs` (its `/app-api/runs` is the legacy
 ingestion history). See [Workflow runs](/docs/workflows/runs/).
+
+## Datasets
+
+```sh
+curl "$URL/api/datasets?subjectKind=asset&subjectId=AAPL.US" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/datasets/prices_eod/asset/AAPL.US" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -o AAPL.parquet "$URL/api/datasets/prices_eod/asset/AAPL.US/data" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+A dataset never published for the subject returns `404`. Publications and
+data stay after the asset or workflow is deleted. The app serves the same
+routes at `/app-api/publications`. See
+[Python operations and published datasets](/docs/workflows/datasets/).
 
 ## Calculations
 

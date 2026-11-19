@@ -1,5 +1,9 @@
 # Market data processor
 
+> Legacy. The workflow path normalizes prices in the engine's
+> `normalize-prices-eod` operation, which carries this transformation. This
+> container keeps serving the legacy queue until cutover removes it.
+
 Python container for the data-service Worker ([README](../../README.md)).
 It turns one raw provider download into the canonical Parquet object for a
 symbol. The Worker owns all job state in D1; this service only reads R2,

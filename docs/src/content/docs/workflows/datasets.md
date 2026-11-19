@@ -1,0 +1,193 @@
+---
+title: Python operations and published datasets
+description: The uniform Python operation contract, generated TypeScript contracts, normalization, publication and dataset retrieval.
+---
+
+The asset workflow downloads prices, normalizes them in Python and publishes
+them as the asset's current `prices_eod` dataset:
+
+```json
+{
+  "name": "Daily asset prices",
+  "scope": "asset",
+  "enabled": true,
+  "schedule": { "hourUtc": 2 },
+  "steps": [
+    {
+      "id": "download",
+      "type": "download-prices",
+      "inputs": {
+        "asset": { "ref": "context.subject" },
+        "throughDate": { "ref": "context.processingDate" }
+      }
+    },
+    {
+      "id": "normalize",
+      "type": "normalize-prices",
+      "inputs": { "raw": { "ref": "steps.download.outputs.raw" } }
+    },
+    {
+      "id": "publish",
+      "type": "publish-dataset",
+      "params": { "dataset": "prices_eod" },
+      "inputs": { "data": { "ref": "steps.normalize.outputs.prices" } }
+    }
+  ]
+}
+```
+
+## Python operations
+
+One Python service (the engine package, `containers/engine`) exposes
+workflow operations through one contract. TypeScript step types call them;
+Python never sequences steps, waits for data or retries.
+
+`POST /operations/{name}` takes:
+
+```json
+{
+  "execution": { "runId": "<run uuid>", "stepId": "normalize" },
+  "inputs": {
+    "raw": {
+      "id": "runs/<run>/download/raw.json",
+      "format": "json",
+      "schema": "raw-prices-eod/v1"
+    }
+  },
+  "params": {}
+}
+```
+
+and answers with small JSON, typically an artifact reference:
+
+```json
+{
+  "prices": {
+    "id": "runs/<run>/normalize/prices.parquet",
+    "format": "parquet",
+    "schema": "prices-eod/v1"
+  }
+}
+```
+
+A failure is never a `200`. Its body is
+`{"error": {"kind", "message", "issues"}}`:
+
+| Status | `kind`      | Meaning                                                  |
+| ------ | ----------- | -------------------------------------------------------- |
+| `404`  | `terminal`  | Unknown operation                                        |
+| `422`  | `terminal`  | Invalid request (with `issues`) or a domain error        |
+| `503`  | `transient` | Storage trouble; a retry may succeed                     |
+| `500`  | `transient` | An unexpected error (it may be an outage as much as bug) |
+
+The step retries `transient` failures within its policy and stops the run on
+`terminal` ones. A response that can't be read, or no response at all, is
+transient; a `200` whose body breaks its contract is terminal.
+
+Outputs go to locations fixed by the run and step
+(`runs/<runId>/<stepId>/<name>.<ext>`), so calling an operation again after a
+lost response rewrites the same object and returns the same reference. There
+is no exactly-once promise across HTTP; operations are written to be repeated.
+
+`GET /operations` lists each operation with its request and response JSON
+Schemas. In the Worker the service is the `CALCULATION_ENGINE` container; it
+reads and writes run artifacts in the raw bucket (`ARTIFACT_BUCKET`). Locally
+it runs with uv and reads and writes files under `ARTIFACT_ROOT`.
+
+### Contracts generated from Pydantic
+
+The Pydantic models in `data_service_engine/operations/` are the source of
+truth. Two committed files follow from them:
+
+- `src/operations/schemas.json`: their JSON Schemas
+  (`uv run engine export-schemas`);
+- `src/operations/contracts.generated.ts`: Effect Schemas generated from
+  that file, giving both TypeScript types and runtime validation.
+
+```sh
+pnpm operations:generate   # after changing an operation's models
+pnpm operations:check      # fails if either file is stale
+```
+
+The Python tests fail when `schemas.json` differs from the models, and
+`test/operation-contracts.test.ts` fails when the generated module differs
+from `schemas.json`. Step registrations use the generated schemas: the
+`raw-prices-eod` and `prices-eod` contracts and `normalize-prices`' params.
+The client validates each request before sending it and each response
+before returning it.
+
+## Steps
+
+| Step type          | Inputs                   | Outputs                               |
+| ------------------ | ------------------------ | ------------------------------------- |
+| `normalize-prices` | `raw` (`raw-prices-eod`) | `prices` (`prices-eod`)               |
+| `publish-dataset`  | `data` (`prices-eod`)    | `publication` (`dataset-publication`) |
+
+`normalize-prices` calls `normalize-prices-eod`. It validates the raw
+envelope (it must belong to the run and its rows must lie in the requested
+range), builds the `prices_eod` table sorted by date, keeping the later row on
+a duplicate date, and writes it as Parquet. The transformation is the legacy
+processor's, moved into the engine; the processor keeps its copy until
+cutover.
+
+`publish-dataset` (param `dataset`, currently `prices_eod`) publishes for the
+run's own subject and processing date; they are not inputs, so a definition
+can't publish another subject's dataset. It:
+
+1. reads the run artifact (missing, for example expired: terminal);
+2. copies it to the dataset's stable location in the processed bucket:
+   `dataset=prices_eod/symbol=<SYMBOL>/data.parquet`, the object the app's
+   explorer and calculations already read;
+3. only then records the publication in D1: dataset, subject, processing
+   date, producing workflow, run and step, and the object's ETag and size.
+
+Neither write is conditional, so a retry repeats both. If the metadata write
+fails after the copy, the step's retry copies the same bytes again and
+records the publication. Storage and D1 are not one transaction. A run whose
+download or normalization fails never reaches the publish step, so the
+previous publication stays as it was. No rule stops two workflows from
+publishing the same dataset; avoid configuring that.
+
+## Retrieving datasets
+
+| Method | Path                                                  | Returns                                                      |
+| ------ | ----------------------------------------------------- | ------------------------------------------------------------ |
+| `GET`  | `/api/datasets`                                       | Publications (`subjectKind`, `subjectId`, `dataset` filters) |
+| `GET`  | `/api/datasets/:dataset/:subjectKind/:subjectId`      | One publication's metadata                                   |
+| `GET`  | `/api/datasets/:dataset/:subjectKind/:subjectId/data` | The current data (Parquet, with an ETag)                     |
+
+```json
+{
+  "dataset": "prices_eod",
+  "subject": { "kind": "asset", "symbol": "AAPL.US" },
+  "processingDate": "2024-01-10",
+  "producer": {
+    "workflowId": "…",
+    "workflowName": "Daily asset prices",
+    "runId": "…",
+    "stepId": "publish"
+  },
+  "format": "parquet",
+  "schema": "prices-eod/v1",
+  "size": 2703,
+  "etag": "…",
+  "publishedAt": "…"
+}
+```
+
+No temporary run location is exposed. Publications and data have no foreign
+keys to assets, definitions or runs, so they stay after the asset or the
+workflow is deleted, and after the run's artifacts expire. `/data` serves
+whatever is at the stable location, including files the legacy processor
+built before any publication was recorded.
+
+The app serves the same routes at `/app-api/publications` (its
+`/app-api/datasets` streams files for the explorer). An asset's page lists
+its published datasets with links to the producing run, the explorer and the
+Parquet file. A run's page links a publish step's output to them.
+
+## Temporary artifacts expire
+
+Run artifacts live under `runs/` in the raw bucket and expire 30 days after
+they are written, through an R2 lifecycle rule. See
+[Storage layout](/docs/reference/storage/#lifecycle).

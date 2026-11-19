@@ -153,6 +153,25 @@ that each symbol is tracked before calling the engine. `422` covers malformed
 requests: a zero weight, a repeated symbol or holdings date, or a saved run
 portfolio without an `id` or with an undated snapshot.
 
+## Workflow operations
+
+Workflow steps call operations through one contract, `POST /operations/{name}`
+with `{execution: {runId, stepId}, inputs, params}`, answered with small JSON
+(typically an artifact reference) or `{error: {kind, message, issues}}` with a
+non-2xx status (`kind` is `transient` or `terminal`). `GET /operations`
+describes them. See the
+[docs](../../docs/src/content/docs/workflows/datasets.md#python-operations).
+
+To add one, write a module in `src/data_service_engine/operations/` with
+Pydantic models for its inputs, params, request (`OperationRequest` plus
+`inputs` and `params`) and response, a function
+`run(request, artifacts) -> response`, and an `OPERATION = Operation(...)`;
+register it in `registry.operations()`. Raise `TerminalError` or
+`TransientError` for expected failures. Write outputs with
+`run_artifact_id(request.execution, ...)` so a repeated call replaces the same
+object. Then run `pnpm operations:generate` from the repo root to regenerate
+the TypeScript contracts, and register a step type that calls it.
+
 ## Configuration
 
 Set these variables in the environment or a local `.env` file:
@@ -167,6 +186,16 @@ Set these variables in the environment or a local `.env` file:
 The bucket has no default, so a misconfigured deployment fails instead of
 touching production data. The credentials need read and write access to it.
 
+Workflow operations read and write run artifacts in one of two places:
+
+| Variable          | Purpose                                                           |
+| ----------------- | ----------------------------------------------------------------- |
+| `ARTIFACT_ROOT`   | Local directory holding `runs/…` as files (wins when set)         |
+| `ARTIFACT_BUCKET` | Otherwise, the R2 bucket holding `runs/…`, e.g. `raw-market-data` |
+
+With `ARTIFACT_BUCKET`, the R2 variables above are required too; the
+container gets it from the Worker (`RAW_BUCKET_NAME`).
+
 ## Run locally
 
 ```sh
@@ -174,6 +203,7 @@ uv sync
 uv run pytest                     # on CPUs without AVX: uv run --with 'polars[rtcompat]' pytest
 uv run engine types               # list types and their params schemas
 uv run engine run request.json    # one run request, prints the result
+uv run engine export-schemas      # operation contracts as JSON Schema
 uv run uvicorn data_service_engine.app:app --port 8080
 ```
 
