@@ -15,6 +15,9 @@ dist/
 node_modules/
 .wrangler
 
+# local fixture runs (pnpm workflow:fixture)
+.local/
+
 # env
 .env
 .env.production
