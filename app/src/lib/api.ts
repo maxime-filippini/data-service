@@ -34,6 +34,14 @@ export type {
 export type { Asset } from "../../../src/assets/views";
 
 export type {
+  StepOutcome,
+  StepOutcomeStatus,
+  WorkflowRunDetail,
+  WorkflowRunStatus,
+  WorkflowRunSummary,
+} from "../../../src/workflows/runs/views";
+
+export type {
   InputSource,
   InspectedStep,
   SubjectView,

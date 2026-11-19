@@ -10,6 +10,7 @@
     { path: "/assets", label: "Assets" },
     { path: "/portfolios", label: "Portfolios" },
     { path: "/workflows", label: "Workflows" },
+    { path: "/workflow-runs", label: "Workflow runs" },
     { path: "/calculations", label: "Calculations" },
     { path: "/explore", label: "Explore data" },
   ];

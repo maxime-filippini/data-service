@@ -2,6 +2,7 @@
   import { formatDateTime } from "#lib/format.ts";
   import { href } from "#lib/router.svelte.ts";
   import { formatHourUtc, subjectHref, subjectLabel } from "#lib/subjects.ts";
+  import WorkflowRunsTable from "#lib/WorkflowRunsTable.svelte";
   import WorkflowSteps from "#lib/WorkflowSteps.svelte";
 
   import type { PageProps } from "./$types";
@@ -64,7 +65,16 @@
   {/if}
 </div>
 
+<h2>Recent runs</h2>
+<WorkflowRunsTable runs={data.runs} showWorkflow={false} />
+<p class="more">
+  <a href={href("workflow-runs")}>All workflow runs →</a>
+</p>
+
 <style>
+  .more {
+    margin: 0.5rem 0 0;
+  }
   h1 {
     margin: 0.5rem 0 1rem;
   }
