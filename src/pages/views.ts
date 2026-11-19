@@ -4,6 +4,7 @@
 
 import type { Asset } from "../assets/views";
 import type { Calculation, CalculationRun } from "../calculations/views";
+import type { PublicationView } from "../datasets/views";
 import type { ScheduleRun, ScheduleView } from "../market-data/schedule/views";
 import type {
   IngestionRunView,
@@ -114,13 +115,14 @@ export interface PageData {
   readonly home: () => Promise<HomeData>;
   readonly assets: () => Promise<readonly Asset[]>;
   /**
-   * An asset, the definitions assigned to it and its latest workflow runs,
-   * newest first. 404 for an unknown symbol.
+   * An asset, the definitions assigned to it, its latest workflow runs
+   * (newest first) and its published datasets. 404 for an unknown symbol.
    */
   readonly asset: (symbol: string) => Promise<{
     readonly asset: Asset;
     readonly assignments: readonly WorkflowAssignment[];
     readonly runs: readonly WorkflowRunSummary[];
+    readonly publications: readonly PublicationView[];
   }>;
   readonly workflows: () => Promise<readonly WorkflowSummary[]>;
   /**

@@ -33,6 +33,8 @@ export type {
 
 export type { Asset } from "../../../src/assets/views";
 
+export type { PublicationView } from "../../../src/datasets/views";
+
 export type {
   StepOutcome,
   StepOutcomeStatus,
@@ -233,6 +235,18 @@ export const fetchDatasetFile = async (dataset: string, symbol: string) =>
   (
     await request(datasetUrl(dataset, symbol), "application/vnd.apache.parquet")
   ).arrayBuffer();
+
+/** A published dataset's current data (Parquet), by dataset and subject. */
+export const publicationDataUrl = (
+  dataset: string,
+  subject:
+    { kind: "asset"; symbol: string } | { kind: "portfolio"; id: string },
+) =>
+  apiUrl(
+    `/publications/${encodeURIComponent(dataset)}/${subject.kind}/${encodeURIComponent(
+      subject.kind === "asset" ? subject.symbol : subject.id,
+    )}/data`,
+  );
 
 export const calculationResultsUrl = (id: string) =>
   apiUrl(`/calculations/${encodeURIComponent(id)}/results`);

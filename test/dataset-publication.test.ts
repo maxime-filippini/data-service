@@ -37,6 +37,7 @@ import {
 } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { HttpPythonOperationsLive } from "$/operations/client";
+import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
 import type {
   WorkflowRunDetail,
@@ -257,6 +258,7 @@ describe(
       return {
         api,
         json,
+        pages: pageData({} as CloudflareBindings, service.dependencies),
         configure,
         runFor,
         publication,
@@ -268,7 +270,8 @@ describe(
     };
 
     test("an asset workflow downloads, normalizes in Python and publishes end-of-day prices", async () => {
-      const { api, json, configure, runFor, publication, processed } = setup();
+      const { api, json, pages, configure, runFor, publication, processed } =
+        setup();
       const workflowId = await configure();
 
       const run = await runFor(workflowId, "2024-01-05");
@@ -373,6 +376,9 @@ describe(
       assert.equal(unchanged.status, 304);
 
       await json(api("/datasets/prices_eod/asset/MSFT.US"), 404);
+
+      // The app's asset page lists the publication the run's output names.
+      assert.deepEqual((await pages.asset("AAPL.US")).publications, [metadata]);
     });
 
     test("published data outlives its temporary artifacts and the configuration that produced it", async () => {

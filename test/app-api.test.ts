@@ -854,3 +854,25 @@ test("the app starts and lists workflow runs behind Access", async () => {
     200,
   );
 });
+
+test("the app reads dataset publications behind Access, beside the explorer's dataset files", async () => {
+  const { request } = setup();
+  const token = await signToken();
+  assert.equal((await request("/app-api/publications")).status, 401);
+
+  const listed = await request(
+    "/app-api/publications?subjectKind=asset&subjectId=AAPL.US",
+    token,
+  );
+  assert.equal(listed.status, 200);
+  assert.deepEqual(await listed.json(), { publications: [] });
+  assert.equal(
+    (await request("/app-api/publications/prices_eod/asset/AAPL.US", token))
+      .status,
+    404,
+  );
+  assert.equal(
+    (await request("/app-api/publications/nope/asset/AAPL.US", token)).status,
+    400,
+  );
+});

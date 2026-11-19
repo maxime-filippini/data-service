@@ -2,7 +2,11 @@ import { Context, type Effect } from "effect";
 
 import type { Subject } from "$/workflows/contracts";
 
-import type { DatasetError, PublishedDataset, PublicationView } from "./contracts";
+import type {
+  DatasetError,
+  PublishedDataset,
+  PublicationView,
+} from "./contracts";
 
 /** What a publication records once its object write succeeded. */
 export interface PublicationRecord {

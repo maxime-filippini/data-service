@@ -1,4 +1,7 @@
-import type { Subject } from "$/workflows/contracts";
+import type { SubjectView } from "../workflows/views";
+
+// Like the other views files, this imports only types from other views files
+// (relatively), so the SvelteKit app can typecheck it.
 
 /**
  * The current publication of one dataset for one subject. Names its
@@ -9,7 +12,7 @@ import type { Subject } from "$/workflows/contracts";
  */
 export interface PublicationView {
   readonly dataset: string;
-  readonly subject: Subject;
+  readonly subject: SubjectView;
   readonly processingDate: string;
   readonly producer: {
     readonly workflowId: string;
