@@ -8,7 +8,9 @@ import type { Dependencies } from "$/dependencies";
 import { pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
+import { memoryRunArtifacts } from "$/local/artifacts";
 import { D1WorkflowsLive } from "$/workflows/d1";
+import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import {
   builtInStepTypes,
   defineStepType,
@@ -63,6 +65,8 @@ const setup = (extraStepTypes: readonly StepType[] = []) => {
         D1WorkflowsLive(db),
         StepRegistryLayer([...builtInStepTypes, ...extraStepTypes]),
       ),
+    workflowRunsFor: () =>
+      Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
   } as unknown as Dependencies;
   const routes = createRoutes(dependencies, {
     fetch: () => new Response("app"),

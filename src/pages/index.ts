@@ -22,6 +22,8 @@ import {
   inspectWorkflowById,
   subjectAssignments,
 } from "$/workflows/operations";
+import { RunIdSchema, RunStatusSchema } from "$/workflows/runs/contracts";
+import { WorkflowRuns } from "$/workflows/runs/store";
 import { Workflows } from "$/workflows/store";
 
 import type * as Facade from "./app";
@@ -33,6 +35,11 @@ export const RUN_PAGE_SIZE = 50;
 const RUN_STATUSES: readonly RunStatus[] = ["fetching", "completed", "failed"];
 
 const HOME_LIST_SIZE = 5;
+
+/** How many runs the runs page and the detail pages list. */
+export const WORKFLOW_RUN_PAGE_SIZE = 50;
+
+const RECENT_RUNS = 10;
 
 export type * from "./views";
 
@@ -50,6 +57,7 @@ const isUuid = (
   schema:
     | typeof CalculationIdSchema
     | typeof PortfolioIdSchema
+    | typeof RunIdSchema
     | typeof WorkflowIdSchema,
   id: string,
 ) => Schema.is(schema)(id);
@@ -120,6 +128,7 @@ export const pageData = (
   const calculations = runWith(dependencies.calculationsFor(env));
   const assets = runWith(dependencies.assetsFor(env));
   const workflows = runWith(dependencies.workflowsFor(env));
+  const workflowRuns = runWith(dependencies.workflowRunsFor(env));
 
   const listSymbols = () =>
     status(PipelineStatus.use((s) => s.listSymbols({})));
@@ -168,11 +177,19 @@ export const pageData = (
     asset: async (symbol) => {
       if (!Schema.is(AssetSymbolSchema)(symbol))
         throw new PageDataError(404, "Asset not found");
-      const [asset, assignments] = await Promise.all([
+      const [asset, assignments, runs] = await Promise.all([
         assets(Assets.use((a) => a.get(symbol))),
         workflows(subjectAssignments({ kind: "asset", symbol })),
+        workflowRuns(
+          WorkflowRuns.use((r) =>
+            r.list({
+              subject: { kind: "asset", id: symbol },
+              limit: RECENT_RUNS,
+            }),
+          ),
+        ),
       ]);
-      return { asset, assignments };
+      return { asset, assignments, runs };
     },
 
     workflows: () => workflows(Workflows.use((w) => w.list())),
@@ -180,7 +197,37 @@ export const pageData = (
     workflow: async (id) => {
       if (!isUuid(WorkflowIdSchema, id))
         throw new PageDataError(404, "Workflow not found");
-      return workflows(inspectWorkflowById(id));
+      const [inspected, runs] = await Promise.all([
+        workflows(inspectWorkflowById(id)),
+        workflowRuns(
+          WorkflowRuns.use((r) =>
+            r.list({ workflowId: id, limit: RECENT_RUNS }),
+          ),
+        ),
+      ]);
+      return { ...inspected, runs };
+    },
+
+    workflowRuns: (filter) => {
+      const status = Schema.is(RunStatusSchema)(filter.status)
+        ? filter.status
+        : undefined;
+      const symbol = filter.symbol?.trim().toUpperCase();
+      return workflowRuns(
+        WorkflowRuns.use((r) =>
+          r.list({
+            ...(status === undefined ? {} : { status }),
+            ...(symbol ? { subject: { kind: "asset", id: symbol } } : {}),
+            limit: WORKFLOW_RUN_PAGE_SIZE,
+          }),
+        ),
+      );
+    },
+
+    workflowRun: async (id) => {
+      if (!isUuid(RunIdSchema, id))
+        throw new PageDataError(404, "Run not found");
+      return workflowRuns(WorkflowRuns.use((r) => r.get(id)));
     },
 
     calculation: async (id, runLimit = 50) => {

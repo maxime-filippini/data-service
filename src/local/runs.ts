@@ -28,8 +28,23 @@ export interface LocalServiceOptions {
   readonly platform?: LocalPlatformOptions;
 }
 
-const unavailable = (name: string) => () => {
-  throw new Error(`${name} is not available in the local workflow service`);
+const missing = (name: string) =>
+  new Error(`${name} is not available in the local workflow service`);
+
+/**
+ * A legacy service's layer. Building it fails, so pages that construct every
+ * layer still work and only using the service fails.
+ */
+const unavailable =
+  (name: string) =>
+  <A>(): Layer.Layer<A> =>
+    Layer.effectDiscard(
+      Effect.die(missing(name)),
+    ) as Layer.Layer<never> as Layer.Layer<A>;
+
+/** A legacy Workflow binding: selecting it fails. */
+const unavailableBinding = (name: string) => (): never => {
+  throw missing(name);
 };
 
 /**
@@ -62,10 +77,10 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     statusFor: unavailable("Pipeline status"),
     registryFor: unavailable("The symbol registry"),
     scheduleFor: unavailable("The legacy schedule"),
-    downloadWorkflowFor: unavailable("The legacy download workflow"),
+    downloadWorkflowFor: unavailableBinding("The legacy download workflow"),
     engineFor: unavailable("The calculation engine"),
     calculationsFor: unavailable("Calculations"),
-    runWorkflowFor: unavailable("Calculation runs"),
+    runWorkflowFor: unavailableBinding("Calculation runs"),
     portfoliosFor: () => D1PortfoliosLive(options.db),
     assetsFor: () => D1AssetsLive(options.db),
     workflowsFor: () => Layer.merge(D1WorkflowsLive(options.db), registry),

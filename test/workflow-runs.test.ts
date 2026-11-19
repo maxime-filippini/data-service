@@ -9,6 +9,7 @@ import { memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import type { LocalPlatformOptions } from "$/local/platform";
 import { localWorkflowService } from "$/local/runs";
+import { pageData, PageDataError } from "$/pages";
 import { createRoutes } from "$/routes";
 import {
   date,
@@ -133,10 +134,13 @@ const setup = (
     },
   };
 
-  const routes = createRoutes(
-    { ...service.dependencies, runPlatformFor: () => runPlatform },
-    { fetch: () => new Response("app") },
-  );
+  const dependencies = {
+    ...service.dependencies,
+    runPlatformFor: () => runPlatform,
+  };
+  const routes = createRoutes(dependencies, {
+    fetch: () => new Response("app"),
+  });
   const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
   const api = (path: string, method = "GET", body?: unknown, token = TOKEN) =>
     routes.request(
@@ -229,6 +233,7 @@ const setup = (
     provider,
     requests,
     artifacts,
+    pages: pageData({} as CloudflareBindings, dependencies),
   };
 };
 
@@ -736,5 +741,45 @@ test("active runs block deleting their configuration; allowed deletion keeps run
   assert.deepEqual(
     bySubject.runs.map((summary) => summary.id),
     [run.id],
+  );
+});
+
+test("the app's pages read runs and their step outcomes", async () => {
+  const { configure, start, started, platform, pages } = setup();
+  const workflowId = await configure();
+  const run = await started(
+    start(workflowId, { processingDate: "2024-01-10" }),
+  );
+  await platform.idle();
+
+  const listed = await pages.workflowRuns({ symbol: "aapl.us" });
+  assert.deepEqual(
+    listed.map((summary) => [summary.id, summary.status]),
+    [[run.id, "completed"]],
+  );
+  assert.deepEqual(await pages.workflowRuns({ status: "failed" }), []);
+  // An unknown status is ignored rather than rejected.
+  assert.equal((await pages.workflowRuns({ status: "nope" })).length, 1);
+
+  const detail = await pages.workflowRun(run.id);
+  assert.deepEqual(
+    detail.steps.map((step) => [step.id, step.status]),
+    [["download", "completed"]],
+  );
+  assert.deepEqual(
+    (await pages.workflow(workflowId)).runs.map((summary) => summary.id),
+    [run.id],
+  );
+  assert.deepEqual(
+    (await pages.asset("AAPL.US")).runs.map((summary) => summary.id),
+    [run.id],
+  );
+  await assert.rejects(
+    pages.workflowRun("not-a-run"),
+    (error) => error instanceof PageDataError && error.status === 404,
+  );
+  await assert.rejects(
+    pages.workflowRun(crypto.randomUUID()),
+    (error) => error instanceof PageDataError && error.status === 404,
   );
 });

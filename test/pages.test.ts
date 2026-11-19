@@ -11,7 +11,9 @@ import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { PageDataError, pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
+import { memoryRunArtifacts } from "$/local/artifacts";
 import { D1WorkflowsLive } from "$/workflows/d1";
+import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import { StepRegistryLive } from "$/workflows/registry";
 
 import { makeTestDatabase } from "./support/d1";
@@ -42,6 +44,8 @@ const setup = () => {
     runWorkflowFor: () => workflow,
     assetsFor: () => D1AssetsLive(db),
     workflowsFor: () => Layer.merge(D1WorkflowsLive(db), StepRegistryLive),
+    workflowRunsFor: () =>
+      Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
   } as unknown as Dependencies;
   return { sqlite, pages: pageData({} as CloudflareBindings, dependencies) };
 };
