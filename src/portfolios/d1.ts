@@ -11,6 +11,15 @@ import {
 import { Portfolios } from "$/portfolios/store";
 import { assignDefaultsOnCreate } from "$/workflows/d1";
 
+const ACTIVE_RUN_FOR_PORTFOLIO = `FROM workflow_runs
+  WHERE subject_kind = 'portfolio' AND subject_id = ?1
+    AND status IN ('queued', 'running', 'waiting')`;
+
+const HAS_LEGACY_POSITION_SYMBOL = `EXISTS (
+  SELECT 1 FROM tracked_symbols
+  WHERE dataset = 'prices_eod' AND symbol = j.value ->> '$.symbol'
+)`;
+
 /**
  * Private persisted portfolio metadata. Holdings are loaded separately and
  * combined into the `Portfolio` detail view; `asset_symbol` marks managed records.
@@ -77,15 +86,6 @@ const inUse = (calculations: readonly { id: string; name: string }[]) =>
 const symbolsOf = (snapshot: NewSnapshot) =>
   snapshot.holdings.map((holding) => holding.symbol);
 
-const ACTIVE_RUN_FOR_PORTFOLIO = `FROM workflow_runs
-  WHERE subject_kind = 'portfolio' AND subject_id = ?1
-    AND status IN ('queued', 'running', 'waiting')`;
-
-const HAS_LEGACY_POSITION_SYMBOL = `EXISTS (
-  SELECT 1 FROM tracked_symbols
-  WHERE dataset = 'prices_eod' AND symbol = j.value ->> '$.symbol'
-)`;
-
 const query = <A>(operation: () => Promise<A>) =>
   Effect.tryPromise({ try: operation, catch: databaseError });
 
@@ -111,7 +111,7 @@ const toSnapshots = (rows: readonly HoldingRow[]): Snapshot[] => {
 };
 
 export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
-  /** The portfolio and its holdings dated on or before `asOf` (all when null). */
+  /** Load snapshots through `asOf`. With `from`, start at the snapshot effective on that date. */
   const load = (id: string, asOf: string | null, from: string | null = null) =>
     query(() =>
       db.batch([

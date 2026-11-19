@@ -98,3 +98,11 @@ To inspect a fixture portfolio, run `pnpm workflow:fixture` and open
 
 The full route list is in the
 [API reference](/docs/reference/api/#portfolios).
+
+## Rolling back during the registry transition
+
+Before restoring a Worker version from before the asset holdings migration,
+run `SELECT DISTINCT portfolio_id FROM portfolio_asset_holdings`. If the query
+returns any portfolios, keep the current holdings reader in the rollback build.
+The earlier reader omits positions in this table and may calculate from an
+incomplete snapshot. Keep the additive migration in place.
