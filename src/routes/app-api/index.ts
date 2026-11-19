@@ -294,10 +294,7 @@ export const createAppApiRoutes = (
   app.route("/workflow-runs", createRunRoutes(dependencies, accessChecked));
   // `/datasets` here streams Parquet for the explorer, so publications live
   // at `/publications` (the management API serves them at `/api/datasets`).
-  app.route(
-    "/publications",
-    createDatasetRoutes(dependencies, accessChecked),
-  );
+  app.route("/publications", createDatasetRoutes(dependencies, accessChecked));
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));
 

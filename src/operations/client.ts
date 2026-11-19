@@ -144,9 +144,7 @@ export const HttpPythonOperationsLive = (
             );
           // A body cut off in transit says nothing about the work itself.
           if (body._tag === "None")
-            return yield* transient(
-              `The ${name} response could not be read`,
-            );
+            return yield* transient(`The ${name} response could not be read`);
           const output = validate(operation.response, body.value);
           if (Result.isFailure(output))
             return yield* terminal(

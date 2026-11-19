@@ -2,10 +2,7 @@ import type { WorkflowStepConfig } from "cloudflare:workers";
 import { type Effect, Schema } from "effect";
 
 import type { Assets } from "$/assets/store";
-import type {
-  DatasetPublications,
-  PublishedDatasets,
-} from "$/datasets/store";
+import type { DatasetPublications, PublishedDatasets } from "$/datasets/store";
 import type { MarketDataSources } from "$/market-data/sources";
 import type { PythonOperations } from "$/operations/client";
 import type { RunArtifacts } from "$/workflows/artifacts";
