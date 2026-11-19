@@ -2,7 +2,7 @@
   import { publicationDataUrl } from "#lib/api.ts";
   import { formatBytes, formatDateTime } from "#lib/format.ts";
   import { href } from "#lib/router.svelte.ts";
-  import { formatHourUtc } from "#lib/subjects.ts";
+  import WorkflowAssignmentsTable from "#lib/WorkflowAssignmentsTable.svelte";
   import WorkflowRunsTable from "#lib/WorkflowRunsTable.svelte";
 
   import type { PageProps } from "./$types";
@@ -32,41 +32,7 @@
 </dl>
 
 <h2>Workflows</h2>
-<div class="card">
-  <table class="stack">
-    <thead>
-      <tr>
-        <th>Workflow</th>
-        <th>Schedule</th>
-        <th>Assignment</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each data.assignments as assignment (assignment.workflowId)}
-        <tr class:disabled={!assignment.enabled}>
-          <td
-            ><a href={href("workflows", { id: assignment.workflowId })}
-              >{assignment.workflowName}</a
-            ></td
-          >
-          <td data-label="Schedule" class="mono"
-            >Daily at {formatHourUtc(
-              assignment.schedule.hourUtc,
-            )}{#if !assignment.workflowEnabled}<span class="muted">
-                (workflow paused)</span
-              >{/if}</td
-          >
-          <td data-label="Assignment"
-            >{assignment.enabled ? "Enabled" : "Disabled"}</td
-          >
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-  {#if data.assignments.length === 0}
-    <p class="notice">No workflows are assigned to this asset.</p>
-  {/if}
-</div>
+<WorkflowAssignmentsTable assignments={data.assignments} />
 
 <h2 id="datasets">Published datasets</h2>
 <div class="card">
@@ -153,8 +119,5 @@
   }
   dd {
     margin: 0;
-  }
-  tr.disabled td {
-    color: var(--muted);
   }
 </style>

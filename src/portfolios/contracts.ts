@@ -1,6 +1,6 @@
 /**
  * Portfolio request schemas and calculation input projections. Validation
- * here establishes value shape; the store enforces tracked-symbol, snapshot
+ * here establishes value shape; the store enforces symbol references, snapshot
  * date and managed-portfolio rules. Response-only types live in `views.ts`.
  */
 
@@ -30,9 +30,9 @@ export const PortfolioNameSchema = Schema.Trim.check(
 );
 
 /**
- * One portfolio exposure: a tracked-symbol identifier and a finite, non-zero
- * weight. Negative weights and totals other than one are allowed; whether the
- * symbol is tracked is checked by the portfolio operation/store.
+ * One portfolio exposure: an asset symbol and a finite, non-zero weight.
+ * Negative weights and totals other than one are allowed. The portfolio
+ * store validates symbol references.
  */
 export const HoldingSchema = Schema.Struct({
   symbol: MarketSymbolSchema,

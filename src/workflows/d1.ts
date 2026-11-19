@@ -156,8 +156,7 @@ const SUBJECTS_OF_KIND = `subjects (id) AS (
  * when the subject is created. Put it in the same batch as, and before, the
  * statement inserting the subject: it only assigns while the subject does not
  * exist yet, so a rejected duplicate creation assigns nothing, and the batch
- * makes subject and assignments appear together. Asset creation uses it;
- * portfolio creation is meant to as well.
+ * makes subject and assignments appear together.
  */
 export const assignDefaultsOnCreate = (
   db: D1Database,

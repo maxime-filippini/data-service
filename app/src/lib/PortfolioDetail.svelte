@@ -24,17 +24,20 @@
 
   let {
     portfolio: initial,
+    manage,
     symbols,
     ondeleted,
   }: {
     /** As loaded with the page; reloaded here after each change. */
     portfolio: Portfolio;
+    manage: boolean;
     symbols: readonly string[];
     /** Called with the portfolio's name once it's deleted. */
     ondeleted: (name: string) => void;
   } = $props();
 
   let portfolio = $derived<Portfolio | null>(initial);
+  const editable = $derived(manage && portfolio?.assetSymbol === null);
   const id = $derived(initial.id);
   let loading = $state(false);
   let busy = $state(false);
@@ -166,7 +169,13 @@
   const weight = new Intl.NumberFormat(undefined, { maximumFractionDigits: 8 });
 </script>
 
-<p class="back"><a href={href("portfolios")}>← Portfolios</a></p>
+<p class="back">
+  {#if manage}
+    <a href={href("portfolios", { id })}>← Portfolio</a>
+  {:else}
+    <a href={href("portfolios")}>← Portfolios</a>
+  {/if}
+</p>
 
 {#if portfolio}
   <div class="title-row">
@@ -190,12 +199,14 @@
     {:else}
       <h1>{portfolio.name}</h1>
       <span class="spacer"></span>
-      {#if portfolio.assetSymbol === null}
+      {#if editable}
         <button
           onclick={() => ((renaming = true), (newName = portfolio?.name ?? ""))}
           >Rename</button
         >
         <button onclick={remove} disabled={busy}>Delete</button>
+      {:else if portfolio.assetSymbol === null}
+        <a href={href("portfolios", { id, edit: "1" })}>Manage holdings</a>
       {/if}
     {/if}
   </div>
@@ -225,7 +236,7 @@
   <div class="toolbar">
     <h2>Holdings snapshots</h2>
     <span class="spacer"></span>
-    {#if !adding && portfolio.assetSymbol === null}
+    {#if !adding && editable}
       {#if portfolio.snapshots.length > 0}
         <button onclick={() => openAdd("latest")}
           >Add snapshot from latest</button
@@ -285,7 +296,7 @@
           <span class="muted added" title={formatDateTime(snapshot.createdAt)}
             >added {formatAgo(snapshot.createdAt)}</span
           >
-          {#if portfolio?.assetSymbol === null}
+          {#if editable}
             <button
               class="link danger"
               onclick={() => removeSnapshot(snapshot.holdingsDate)}

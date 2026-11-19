@@ -7,6 +7,7 @@ import type { LocalPlatformOptions } from "$/local/platform";
 import { localWorkflowService } from "$/local/runs";
 import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
+import type { StepType } from "$/workflows/registry";
 import type { RunPlatform } from "$/workflows/runs/contracts";
 
 import { makeTestDatabase } from "./d1";
@@ -46,6 +47,7 @@ export const assetPricesSpec = (hourUtc = 2, name = "Daily asset prices") => ({
 export const workflowService = (
   options: {
     readonly platform?: LocalPlatformOptions;
+    readonly extraStepTypes?: readonly StepType[];
     /** Worker vars, such as `WORKFLOW_DISPATCH`. */
     readonly env?: Readonly<Record<string, string>>;
   } = {},
@@ -56,6 +58,9 @@ export const workflowService = (
     db,
     artifacts: artifacts.layer,
     sourceFor: fixtureSourceFor(fixtures),
+    ...(options.extraStepTypes === undefined
+      ? {}
+      : { extraStepTypes: options.extraStepTypes }),
     platform: { steps: { delayScale: 0 }, ...options.platform },
   });
   const platform = service.platform;

@@ -22,6 +22,7 @@
  *                          the published dataset, at its stable location
  *   run.json               the run and its step outcomes (API view)
  *   publication.json       the publication's metadata (API view)
+ *   portfolio.json         a portfolio with two dated holdings snapshots
  *   api.log                every API request and response status
  *
  * Both languages share `r2/raw-market-data/` as the run artifact store.
@@ -35,6 +36,7 @@ import { Console, Effect, FileSystem, Path } from "effect";
 import { Command, Flag } from "effect/cli";
 
 import { publishedDatasetKey } from "$/datasets/contracts";
+import { previousDay } from "$/datetime";
 import { FileRunArtifactsLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import { FileDatasetObjectStoreLive } from "$/local/published";
@@ -43,6 +45,7 @@ import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
 import { localSteps } from "$/local/steps";
 import { HttpPythonOperationsLive } from "$/operations/client";
+import type { Portfolio } from "$/portfolios/views";
 import { createRoutes } from "$/routes";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 import type { WorkflowRunDetail } from "$/workflows/runs/views";
@@ -226,8 +229,27 @@ const command = Command.make(
         run.status === "completed"
           ? yield* api<unknown>("GET", `/datasets/prices_eod/asset/${symbol}`)
           : undefined;
-      if (publication !== undefined)
+      if (publication !== undefined) {
         yield* writeJson("publication.json", publication);
+        const firstDate = previousDay(
+          new Date(`${run.processingDate}T00:00:00Z`),
+        );
+        const { id } = yield* api<Portfolio>("POST", "/portfolios", {
+          name: `${symbol} fixture portfolio`,
+          snapshot: {
+            holdingsDate: firstDate,
+            holdings: [{ symbol, weight: 0.75 }],
+          },
+        });
+        yield* api("POST", `/portfolios/${id}/snapshots`, {
+          holdingsDate: run.processingDate,
+          holdings: [{ symbol, weight: 1.25 }],
+        });
+        yield* writeJson(
+          "portfolio.json",
+          yield* api<Portfolio>("GET", `/portfolios/${id}`),
+        );
+      }
 
       const show = (file: string) => path.relative(".", file) || ".";
       yield* Console.log(`Run ${run.id}: ${run.status}`);
@@ -248,6 +270,9 @@ const command = Command.make(
         );
         yield* Console.log(
           `Metadata:   ${show(path.join(out, "publication.json"))}`,
+        );
+        yield* Console.log(
+          `Portfolio:  ${show(path.join(out, "portfolio.json"))}`,
         );
       }
       yield* Console.log(`Run record: ${show(path.join(out, "run.json"))}`);

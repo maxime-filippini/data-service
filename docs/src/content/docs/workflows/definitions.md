@@ -145,9 +145,9 @@ subject.
 
 ## Defaults
 
-Defaults are explicit per subject kind: a definition made an `asset` default
-is assigned, enabled, to every asset created afterwards, in the same database
-batch as the asset. A definition can only be a default for its own scope.
+Defaults are explicit per subject kind. Creating an asset or portfolio assigns
+its kind's defaults in the same database batch. A definition can only be a
+default for its own scope.
 
 ```sh
 curl -X PUT "$URL/api/workflow-defaults/asset/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
@@ -164,13 +164,13 @@ curl -X POST "$URL/api/workflow-defaults/asset/apply" -H "Authorization: Bearer 
   assignment, so a deliberately disabled one stays disabled, and applying
   again adds nothing. A removed assignment counts as missing.
 - Creating a subject that already exists (`409`) assigns nothing.
-- Portfolio creation will use the same hook (`assignDefaultsOnCreate` in
-  `src/workflows/d1.ts`) once portfolios become workflow subjects.
 
 ## In the app
 
 - **Assets** (`/assets`, `/assets/:symbol`) list assets and the definitions
   assigned to each.
+- **Portfolios** (`/portfolios`, `/portfolios/:id`) list portfolios and show
+  dated holdings and assigned workflows.
 - **Workflows** (`/workflows`, `/workflows/:id`) list definitions and the
   defaults for each subject kind, and show one with its schedule, whether it
   is a default, its assignments and ordered steps: each step's parameters,

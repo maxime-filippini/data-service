@@ -12,7 +12,7 @@ import type {
 
 /**
  * Injectable portfolio persistence and engine-projection interface. Operations
- * obtain it with `yield* Portfolios`; `D1PortfoliosLive` enforces tracked symbols,
+ * obtain it with `yield* Portfolios`; `D1PortfoliosLive` enforces symbol references,
  * unique snapshot dates and managed single-asset protections. Use `get` for
  * presentation and `forEngine` for cutoff-filtered calculation input. Snapshot
  * changes replace complete dated sets by deletion/addition, not individual trades.
@@ -26,6 +26,17 @@ export class Portfolios extends Context.Service<
       PortfolioError
     >;
     readonly get: (id: string) => Effect.Effect<Portfolio, PortfolioError>;
+    /** The snapshot effective at the close of `date`. */
+    readonly holdingsAt: (
+      id: string,
+      date: string,
+    ) => Effect.Effect<Snapshot, PortfolioError>;
+    /** The snapshot effective at `from`, if any, and changes through `through`. */
+    readonly holdingsBetween: (
+      id: string,
+      from: string,
+      through: string,
+    ) => Effect.Effect<readonly Snapshot[], PortfolioError>;
     readonly create: (
       input: CreatePortfolio,
       id: string,
@@ -36,7 +47,7 @@ export class Portfolios extends Context.Service<
       name: string,
       now: string,
     ) => Effect.Effect<Portfolio, PortfolioError>;
-    /** Delete a portfolio and its snapshots. A conflict if a calculation uses it. */
+    /** Delete configuration. A calculation reference or active workflow run blocks deletion. */
     readonly remove: (id: string) => Effect.Effect<void, PortfolioError>;
     readonly addSnapshot: (
       id: string,

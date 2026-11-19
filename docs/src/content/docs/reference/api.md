@@ -32,7 +32,9 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 | `POST`   | `/api/portfolios`                               | Create a portfolio, optionally with a snapshot        |
 | `GET`    | `/api/portfolios/:id`                           | One portfolio with its snapshots                      |
 | `PATCH`  | `/api/portfolios/:id`                           | Rename                                                |
-| `DELETE` | `/api/portfolios/:id`                           | Delete (`409` if a calculation uses it)               |
+| `DELETE` | `/api/portfolios/:id`                           | Delete if there are no calculations or active runs    |
+| `GET`    | `/api/portfolios/:id/snapshots?from=&through=`  | Starting snapshot and changes                         |
+| `GET`    | `/api/portfolios/:id/snapshots/effective?date=` | Snapshot effective at a date                          |
 | `POST`   | `/api/portfolios/:id/snapshots`                 | Add a snapshot                                        |
 | `DELETE` | `/api/portfolios/:id/snapshots/:holdingsDate`   | Delete a snapshot                                     |
 | `GET`    | `/api/calculation-types`                        | The engine's types, params schemas and output columns |
@@ -49,7 +51,7 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 | `POST`   | `/api/assets`                                   | Create an asset (`409` if the symbol exists)          |
 | `GET`    | `/api/assets/:symbol`                           | One asset                                             |
 | `PATCH`  | `/api/assets/:symbol`                           | Change provider, backfill start or enabled            |
-| `DELETE` | `/api/assets/:symbol`                           | Delete it and its assignments (`409` if a run is on)  |
+| `DELETE` | `/api/assets/:symbol`                           | Delete if there are no holdings or active runs        |
 | `GET`    | `/api/step-types`                               | The step catalog: step types, contracts, run context  |
 | `GET`    | `/api/workflows`                                | List workflow definitions                             |
 | `POST`   | `/api/workflows`                                | Create a definition from a complete specification     |
@@ -137,6 +139,12 @@ curl -X POST "$URL/api/portfolios" \
 
 curl "$URL/api/portfolios" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 curl "$URL/api/portfolios/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/portfolios/$ID/snapshots/effective?date=2026-10-10" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/portfolios/$ID/snapshots?from=2026-10-01&through=2026-10-15" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/workflow-assignments?subjectKind=portfolio&subjectId=$ID" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 
 curl -X PATCH "$URL/api/portfolios/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"Core equity"}'
@@ -149,10 +157,13 @@ curl -X POST "$URL/api/portfolios/$ID/snapshots" \
 curl -X DELETE "$URL/api/portfolios/$ID/snapshots/2026-10-15" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
-Untracked symbols return `400` with their list in `symbols`; a second snapshot
-for the same date, or a change to a single-asset portfolio, returns `409`.
-Deleting a portfolio a calculation uses returns `409` with those calculations
-in `calculations`. See
+Unknown symbols return `400` with their list in `symbols`. A second snapshot for
+the same date or a change to a single-asset portfolio returns `409`. An
+effective-date request with no applicable snapshot returns `422`. Interval
+requests include the snapshot in effect at `from`, if any, and later snapshots
+through `through`, inclusive.
+Deletion returns `409` if the portfolio has an active workflow run or is used
+by a calculation. The response includes those calculations in `calculations`. See
 [Portfolios](/docs/calculations/portfolios/).
 
 ## Assets

@@ -95,6 +95,8 @@ test("every route requires the management token", async () => {
     [`/${id}`, "GET"],
     [`/${id}`, "PATCH"],
     [`/${id}`, "DELETE"],
+    [`/${id}/snapshots?from=2026-09-01&through=2026-09-30`, "GET"],
+    [`/${id}/snapshots/effective?date=2026-09-30`, "GET"],
     [`/${id}/snapshots`, "POST"],
     [`/${id}/snapshots/2026-09-30`, "DELETE"],
   ] as const) {

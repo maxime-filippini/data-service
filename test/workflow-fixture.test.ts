@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 
 import type { PublicationView } from "$/datasets/contracts";
 import { uvAvailable } from "$/local/python";
+import type { Portfolio } from "$/portfolios/views";
 import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 const run = promisify(execFile);
@@ -82,6 +83,26 @@ test(
       assert.equal(publication.processingDate, "2024-01-05");
       assert.equal(publication.producer.runId, detail.id);
       assert.equal(publication.size, readFileSync(published).byteLength);
+
+      const portfolio = JSON.parse(
+        readFileSync(join(out, "portfolio.json"), "utf8"),
+      ) as Portfolio;
+      assert.deepEqual(
+        portfolio.snapshots.map(({ holdingsDate, holdings }) => ({
+          holdingsDate,
+          holdings,
+        })),
+        [
+          {
+            holdingsDate: "2024-01-04",
+            holdings: [{ symbol: "MSFT.US", weight: 0.75 }],
+          },
+          {
+            holdingsDate: "2024-01-05",
+            holdings: [{ symbol: "MSFT.US", weight: 1.25 }],
+          },
+        ],
+      );
 
       assert.ok(existsSync(join(out, "d1.sqlite")));
       assert.match(
