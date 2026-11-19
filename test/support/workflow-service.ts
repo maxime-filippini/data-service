@@ -46,7 +46,8 @@ export const assetPricesSpec = (hourUtc = 2, name = "Daily asset prices") => ({
 export const workflowService = (
   options: {
     readonly platform?: LocalPlatformOptions;
-    readonly env?: Partial<CloudflareBindings>;
+    /** Worker vars, such as `WORKFLOW_DISPATCH`. */
+    readonly env?: Readonly<Record<string, string>>;
   } = {},
 ) => {
   const { sqlite, db } = makeTestDatabase();
@@ -88,7 +89,7 @@ export const workflowService = (
   const env = {
     MANAGEMENT_API_TOKEN: TOKEN,
     ...options.env,
-  } as CloudflareBindings;
+  } as unknown as CloudflareBindings;
   const api = (path: string, method = "GET", body?: unknown, token = TOKEN) =>
     routes.request(
       `https://data-service.example.com/api${path}`,

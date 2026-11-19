@@ -9,9 +9,9 @@ import { WorkflowRuns } from "./store";
 
 /**
  * Application operations for runs, shared by the management API, the app's
- * API and (later) the scheduler: claim an assignment, launch its Workflow
- * instance under the run's ID, and reconcile launches whose outcome is
- * uncertain.
+ * API and the scheduled dispatcher (`dispatch.ts`): claim an assignment,
+ * launch its Workflow instance under the run's ID, and reconcile launches
+ * whose outcome is uncertain.
  */
 
 /** Instance statuses after which a run can no longer record its outcome. */
@@ -89,37 +89,48 @@ export interface StartRun {
   readonly processingDate: string;
   readonly trigger: RunTrigger;
   readonly rerunOf?: string;
+  /** The schedule occurrence a scheduled run claims (ISO whole UTC hour). */
+  readonly scheduledFor?: string;
 }
 
 /**
- * Start an assignment for a processing date and return its run straight
- * away. Reconciles the assignment's active run first, then atomically
- * claims the one active-run slot, capturing the current definition. When
- * another run still holds the slot, the new run is recorded as `skipped`
- * and nothing launches. Requires an enabled definition, assignment and
- * (for an asset) asset.
+ * Claim an assignment and launch the claimed run: the one path manual and
+ * scheduled runs share. Reconciles the assignment's active run first, then
+ * atomically claims the one active-run slot (and, for a scheduled run, its
+ * occurrence), capturing the current definition. When another run still
+ * holds the slot, the new run is recorded as `skipped` and nothing
+ * launches. `claimed` is false when the assignment had already claimed the
+ * occurrence; the earlier run is returned and nothing is launched again.
+ * Requires an enabled definition, assignment and (for an asset) asset.
  */
-export const startRun = Effect.fn("WorkflowRuns.start")(function* (
-  input: StartRun,
-  now: Date,
-  platform: RunPlatform,
-) {
-  const runs = yield* WorkflowRuns;
-  for (const active of yield* runs.active(input.workflowId, input.subject))
-    yield* reconcileRun(platform, active, now);
+export const claimAndLaunch = Effect.fn("WorkflowRuns.claimAndLaunch")(
+  function* (input: StartRun, now: Date, platform: RunPlatform) {
+    const runs = yield* WorkflowRuns;
+    for (const active of yield* runs.active(input.workflowId, input.subject))
+      yield* reconcileRun(platform, active, now);
 
-  const run = yield* runs.claim({
-    runId: crypto.randomUUID(),
-    workflowId: input.workflowId,
-    subject: input.subject,
-    processingDate: input.processingDate,
-    trigger: input.trigger,
-    rerunOf: input.rerunOf ?? null,
-    now: now.toISOString(),
-  });
-  if (run.status === "queued") yield* launchRun(platform, run.id);
-  return run;
-});
+    const outcome = yield* runs.claim({
+      runId: crypto.randomUUID(),
+      workflowId: input.workflowId,
+      subject: input.subject,
+      processingDate: input.processingDate,
+      trigger: input.trigger,
+      rerunOf: input.rerunOf ?? null,
+      scheduledFor: input.scheduledFor ?? null,
+      now: now.toISOString(),
+    });
+    if (outcome.claimed && outcome.run.status === "queued")
+      yield* launchRun(platform, outcome.run.id);
+    return outcome;
+  },
+);
+
+/**
+ * Start an assignment for a processing date and return its run straight
+ * away (see `claimAndLaunch`).
+ */
+export const startRun = (input: StartRun, now: Date, platform: RunPlatform) =>
+  Effect.map(claimAndLaunch(input, now, platform), (outcome) => outcome.run);
 
 /**
  * Run a run's assignment and processing date again as a new run from the

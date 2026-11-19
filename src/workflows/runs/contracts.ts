@@ -12,7 +12,7 @@ import {
   WorkflowIdSchema,
 } from "$/workflows/contracts";
 
-import type { ActiveRunStatus, WorkflowRunStatus } from "./views";
+import type { ActiveRunStatus, RunTrigger, WorkflowRunStatus } from "./views";
 
 /** The statuses that hold an assignment's one active-run slot. */
 export const ACTIVE_RUN_STATUSES: readonly ActiveRunStatus[] = [
@@ -29,6 +29,8 @@ export const RunStatusSchema = Schema.Literals([
   "failed",
   "skipped",
 ]);
+
+export const RunTriggerSchema = Schema.Literals(["manual", "schedule"]);
 
 /** UUID identifying a run; also its Workflow instance ID. */
 export const RunIdSchema = Schema.String.check(Schema.isUUID());
@@ -52,6 +54,7 @@ export const RunsQuerySchema = Schema.Struct({
   subjectKind: Schema.optionalKey(SubjectKindSchema),
   subjectId: Schema.optionalKey(Schema.NonEmptyString),
   status: Schema.optionalKey(RunStatusSchema),
+  trigger: Schema.optionalKey(RunTriggerSchema),
   limit: Schema.optionalKey(
     Schema.String.check(
       Schema.isPattern(/^[1-9]\d*$/u, {
@@ -69,6 +72,7 @@ export interface RunFilter {
   readonly workflowId?: string;
   readonly subject?: { readonly kind: string; readonly id?: string };
   readonly status?: WorkflowRunStatus;
+  readonly trigger?: RunTrigger;
   readonly limit: number;
 }
 

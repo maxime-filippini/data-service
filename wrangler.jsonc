@@ -37,10 +37,15 @@
   "build": { "command": "pnpm --filter app build && pnpm --filter docs build" },
   // Bucket names for the containers (bindings don't expose them),
   // and the ingestion queue name so the consumer can tell its queues apart.
+  // WORKFLOW_DISPATCH: "on" lets the hourly cron dispatch workflow
+  // assignments at their definitions' daily hour. It stays "off" while the
+  // legacy scheduled download owns automatic downloads: running both would
+  // download twice. Turning it on is part of the download cutover.
   "vars": {
     "RAW_BUCKET_NAME": "raw-market-data",
     "PROCESSED_BUCKET_NAME": "processed-market-data",
     "INGESTION_QUEUE_NAME": "market-data-ingestion",
+    "WORKFLOW_DISPATCH": "off",
   },
   "containers": [
     {
@@ -159,6 +164,7 @@
         "RAW_BUCKET_NAME": "raw-market-data-dev",
         "PROCESSED_BUCKET_NAME": "processed-market-data-dev",
         "INGESTION_QUEUE_NAME": "market-data-ingestion-dev",
+        "WORKFLOW_DISPATCH": "off",
       },
       "containers": [
         {

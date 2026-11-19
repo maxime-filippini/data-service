@@ -17,6 +17,7 @@ import { liveSourceFor } from "$/market-data/sources";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createRoutes } from "$/routes";
 import { dependencies } from "$/dependencies";
+import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 // SvelteKit's handler, built by `pnpm --filter app build` (wrangler's build
 // command runs it before dev and deploy). It has no type declarations.
 // @ts-expect-error -- generated JavaScript, missing until the app is built
@@ -162,6 +163,36 @@ export default {
         JSON.stringify({
           event: "calculation_schedule_failed",
           message: calculations.failure.message,
+        }),
+      );
+    }
+
+    // Dispatch workflow assignments at their definitions' daily hour. Off
+    // (WORKFLOW_DISPATCH "off") until the download cutover: the legacy
+    // scheduled download above still owns automatic downloads.
+    try {
+      const tick = await scheduledWorkflowTick(dependencies, env, now);
+      if (tick.status === "dispatched") {
+        for (const run of tick.runs)
+          console.log(JSON.stringify({ event: "workflow_dispatched", ...run }));
+        for (const failure of tick.failures)
+          console.error(
+            JSON.stringify({ event: "workflow_dispatch_failed", ...failure }),
+          );
+        if (tick.reconciled.failed > 0)
+          console.log(
+            JSON.stringify({
+              event: "workflow_runs_failed_as_stopped",
+              count: tick.reconciled.failed,
+            }),
+          );
+      }
+    } catch (error) {
+      // Nothing claimed is lost: the next tick dispatches what is still due.
+      console.error(
+        JSON.stringify({
+          event: "workflow_dispatch_failed",
+          message: error instanceof Error ? error.message : String(error),
         }),
       );
     }
