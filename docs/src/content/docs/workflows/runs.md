@@ -264,42 +264,47 @@ pages list their recent runs.
 pnpm workflow:fixture
 ```
 
-This runs the asset prices workflow (download, normalize, publish) through
+The command runs the asset prices and portfolio volatility workflows through
 the same API routes, executor, step implementations and Python operations as
-the Worker, without credentials or network. It needs
-[uv](https://docs.astral.sh/uv/):
+the Worker. It uses [uv](https://docs.astral.sh/uv/) and fixture data.
 
-1. it starts the real Python service with uv on a free localhost port;
-2. it opens a local SQLite D1 database with the real migrations;
-3. through the management API it creates a definition, makes it the
+1. It starts the Python service with uv on a free localhost port.
+2. It opens a local SQLite database with the real D1 migrations.
+3. Through the management API it creates a definition, makes it the
    [asset default](/docs/workflows/definitions/#defaults) and creates the
-   asset, which assigns it;
-4. it starts a run with `POST /api/runs` or, with `--scheduled`, runs one
+   assets, which assigns it.
+4. It starts the asset runs with `POST /api/runs` or, with `--scheduled`, runs one
    [dispatch tick](#scheduled-dispatch) at 03:00 UTC on the date, which
-   dispatches the definition's 02:00 occurrence;
-5. an in-process Workflow binding executes the run. The real EODHD adapter
+   dispatches the definition's 02:00 occurrence.
+5. An in-process Workflow binding executes the asset runs. The EODHD adapter
    is answered from `fixtures/eodhd/<SYMBOL>.json`, the normalize step calls
    the Python service over HTTP, and the publish step copies its output to
-   the local processed bucket;
-6. the command creates a portfolio with two dated holdings snapshots and
+   the local processed bucket.
+6. The command creates a portfolio with two dated holdings snapshots and
    starts its workflow, which reads the effective holdings and resolves the
-   published asset data for that date.
+   published asset data for that date. The volatility step uses both outputs
+   and the processing date to calculate the result in Python. The final step
+   publishes the portfolio's `portfolio_volatility` dataset.
 
-Both languages read and write run artifacts in the same directory,
-`r2/raw-market-data/`. Output goes to `.local/workflow-fixture/`, emptied
-first:
+Both languages share `r2/raw-market-data/` for run artifacts and
+`r2/processed-market-data/` for published datasets. The command empties
+`.local/workflow-fixture/` before writing the following files.
 
-| Path                                                                       | What                                              |
-| -------------------------------------------------------------------------- | ------------------------------------------------- |
-| `d1.sqlite`                                                                | The local database                                |
-| `r2/raw-market-data/runs/<runId>/download/raw.json`                        | The raw artifact                                  |
-| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                 | Python's normalized output                        |
-| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet` | The published dataset                             |
-| `run.json`                                                                 | The run and its step outcomes                     |
-| `publication.json`                                                         | The publication's metadata                        |
-| `portfolio.json`                                                           | Dated portfolio snapshots                         |
-| `portfolio-run.json`                                                       | The effective holdings and publication references |
-| `api.log`                                                                  | Each API request and its response                 |
+| Path                                                                                | What                                                        |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `d1.sqlite`                                                                         | The local database                                          |
+| `r2/raw-market-data/runs/<runId>/download/raw.json`                                 | The raw artifact                                            |
+| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                          | Python's normalized output                                  |
+| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet`          | The published dataset                                       |
+| `run.json`                                                                          | The run and its step outcomes                               |
+| `publication.json`                                                                  | The publication's metadata                                  |
+| `asset-runs.json`                                                                   | Run outcomes for all fixture assets                         |
+| `portfolio.json`                                                                    | Dated portfolio snapshots                                   |
+| `portfolio-run.json`                                                                | Effective holdings, price references and volatility outputs |
+| `portfolio-publication.json`                                                        | Published volatility metadata                               |
+| `r2/raw-market-data/runs/<runId>/volatility/volatility.parquet`                     | Python's volatility output                                  |
+| `r2/processed-market-data/dataset=portfolio_volatility/portfolio=<ID>/data.parquet` | Published volatility for the portfolio                      |
+| `api.log`                                                                           | Each API request and its response                           |
 
 Options: `--out DIR`, `--symbol MSFT.US` (fixtures exist for `AAPL.US` and
 `MSFT.US`), `--date YYYY-MM-DD` (default `2024-01-10`) and `--scheduled`. Retries happen

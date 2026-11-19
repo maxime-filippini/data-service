@@ -92,7 +92,9 @@ is no exactly-once promise across HTTP; operations are written to be repeated.
 `GET /operations` lists each operation with its request and response JSON
 Schemas. In the Worker the service is the `CALCULATION_ENGINE` container; it
 reads and writes run artifacts in the raw bucket (`ARTIFACT_BUCKET`). Locally
-it runs with uv and reads and writes files under `ARTIFACT_ROOT`.
+it runs with uv and reads and writes files under `ARTIFACT_ROOT`. The
+volatility operation reads published asset prices from `PROCESSED_BUCKET` in
+the container or `PROCESSED_ROOT` locally.
 
 ### Contracts generated from Pydantic
 
@@ -124,16 +126,17 @@ schemas accept and reject the same values as Pydantic. A shape the generator
 cannot check, such as a string format other than `date` or `date-time`, makes
 generation fail rather than produce a schema that accepts anything.
 
-Step registrations use the generated schemas: the `raw-prices-eod` and
-`prices-eod` contracts and `normalize-prices`' params. The client validates
-each request before sending it and each response before returning it.
+Step registrations use the generated parameter and artifact schemas. The
+volatility summary schema is generated too. The client validates each request
+before sending it and each response before returning it.
 
 ## Steps
 
-| Step type          | Inputs                   | Outputs                               |
-| ------------------ | ------------------------ | ------------------------------------- |
-| `normalize-prices` | `raw` (`raw-prices-eod`) | `prices` (`prices-eod`)               |
-| `publish-dataset`  | `data` (`prices-eod`)    | `publication` (`dataset-publication`) |
+| Step type                        | Inputs                                                                              | Outputs                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `normalize-prices`               | `raw` (`raw-prices-eod`)                                                            | `prices` (`prices-eod`)                                              |
+| `calculate-portfolio-volatility` | Effective `holdings` and `holdingsDate`, price `publications`, and `processingDate` | `data` (Parquet reference), `summary` (volatility and return window) |
+| `publish-dataset`                | `data` (`publishable-dataset`)                                                      | `publication` (`dataset-publication`)                                |
 
 `normalize-prices` calls `normalize-prices-eod`. It validates the raw
 envelope (it must belong to the run and its rows must lie in the requested
@@ -142,21 +145,31 @@ a duplicate date, and writes it as Parquet. The transformation is the legacy
 processor's, moved into the engine; the processor keeps its copy until
 cutover.
 
-`publish-dataset` (param `dataset`, currently `prices_eod`) publishes for the
-run's own subject and processing date; they are not inputs, so a definition
-can't publish another subject's dataset. It:
+`calculate-portfolio-volatility` applies the processing date's effective
+weights to historical daily returns. It uses the existing ex-ante volatility
+formula, with the same `window`, `annualisation`, `decay` and
+`normalise_weights` parameters. The operation requires one matching dated
+price reference for each holding. It resolves those identities to the current
+published objects and uses observations up to the processing date. Insufficient
+history, missing prices and invalid weights are terminal errors. A successful
+call returns a small JSON summary and a Parquet artifact reference.
+
+`publish-dataset` publishes for the run's own subject and processing date.
+Choose `prices_eod` for an asset or `portfolio_volatility` for a portfolio.
+The step accepts the corresponding normalized prices or volatility artifact.
 
 1. reads the run artifact (missing, for example expired: terminal);
 2. copies it to the dataset's stable location in the processed bucket:
    `dataset=prices_eod/symbol=<SYMBOL>/data.parquet`, the object the app's
-   explorer and calculations already read;
+   explorer and calculations already read, or
+   `dataset=portfolio_volatility/portfolio=<ID>/data.parquet` for a portfolio;
 3. only then records the publication in D1: dataset, subject, processing
    date, producing workflow, run and step, and the object's ETag and size.
 
 Neither write is conditional, so a retry repeats both. If the metadata write
 fails after the copy, the step's retry copies the same bytes again and
 records the publication. Storage and D1 are not one transaction. A run whose
-download or normalization fails never reaches the publish step, so the
+download, normalization or calculation fails never reaches the publish step, so the
 previous publication stays as it was. No rule stops two workflows from
 publishing the same dataset; avoid configuring that.
 
@@ -197,6 +210,24 @@ The app serves the same routes at `/app-api/publications` (its
 `/app-api/datasets` streams files for the explorer). An asset's page lists
 its published datasets with links to the producing run, the explorer and the
 Parquet file. A run's page links a publish step's output to them.
+
+## Adding a step type
+
+For a Python-backed step, follow `portfolio_volatility.py` in
+`data_service_engine/operations/`. Define Pydantic models for the inputs,
+params and outputs. Use `execution` to derive stable run artifact IDs and
+raise `TerminalError` for invalid inputs or `TransientError` for retriable
+I/O. Register the `Operation` in the Python registry and run
+`pnpm operations:generate`. In `src/workflows/registry/`, define a step
+with `defineStepType`, give its ports the matching contracts, call
+`PythonOperations.invoke` with resolved inputs, and add the step to
+`builtInStepTypes`. Test the new call through Python HTTP and the workflow API.
+
+For an Effect-only step, follow `portfolio-holdings.ts`. Define its params,
+supported scopes and named ports with `defineStepType`. Use the existing Effect
+service in its `implementation` and map its failures to terminal or transient
+step errors. Add it to `builtInStepTypes`. Check that a definition can bind its
+outputs and run it through the API with a fixture.
 
 ## Temporary artifacts expire
 

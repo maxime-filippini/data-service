@@ -40,6 +40,139 @@ export const Execution = Schema.Struct({
     "Which run and step asks for the work. Outputs are written to locations\nderived from it, so a repeated call replaces the same objects.",
   identifier: "Execution",
 });
+export type VolatilityHolding = {
+  readonly symbol: string;
+  readonly weight: number;
+};
+export const VolatilityHolding = Schema.Struct({
+  symbol: Schema.String.check(
+    Schema.isPattern(
+      new RegExp("^[A-Z0-9][A-Z0-9-]*(\\.[A-Z0-9][A-Z0-9-]*)?$", "u"),
+    ).annotate({
+      expected:
+        "a string matching the RegExp ^[A-Z0-9][A-Z0-9-]*(\\.[A-Z0-9][A-Z0-9-]*)?$",
+    }),
+  ),
+  weight: Schema.Number.check(
+    Schema.isFinite().annotate({ expected: "a finite number" }),
+  ),
+}).annotate({ identifier: "VolatilityHolding" });
+export type PriceAsset = { readonly kind: "asset"; readonly symbol: string };
+export const PriceAsset = Schema.Struct({
+  kind: Schema.Literal("asset"),
+  symbol: Schema.String.check(
+    Schema.isPattern(
+      new RegExp("^[A-Z0-9][A-Z0-9-]*(\\.[A-Z0-9][A-Z0-9-]*)?$", "u"),
+    ).annotate({
+      expected:
+        "a string matching the RegExp ^[A-Z0-9][A-Z0-9-]*(\\.[A-Z0-9][A-Z0-9-]*)?$",
+    }),
+  ),
+}).annotate({ identifier: "PriceAsset" });
+export type PortfolioVolatilityParams = {
+  readonly annualisation?: number;
+  readonly decay?: number | null;
+  readonly normalise_weights?: boolean;
+  readonly window?: number;
+};
+export const PortfolioVolatilityParams = Schema.Struct({
+  annualisation: Schema.optionalKey(
+    Schema.Number.annotate({
+      description: "Periods per year; the variance is scaled by it.",
+      default: 252,
+    })
+      .check(Schema.isFinite().annotate({ expected: "a finite number" }))
+      .check(
+        Schema.isGreaterThan(0).annotate({
+          expected: "a value greater than 0",
+        }),
+      ),
+  ),
+  decay: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.check(
+        Schema.isFinite().annotate({ expected: "a finite number" }),
+      )
+        .check(
+          Schema.isGreaterThan(0).annotate({
+            expected: "a value greater than 0",
+          }),
+        )
+        .check(
+          Schema.isLessThan(1).annotate({ expected: "a value less than 1" }),
+        ),
+      Schema.Null,
+    ]).annotate({
+      description:
+        "EWMA decay factor (e.g. 0.94), with a zero mean as in RiskMetrics. Leave empty for an equally weighted sample standard deviation.",
+      default: null,
+    }),
+  ),
+  normalise_weights: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: "Divide the weights by their sum before calculating.",
+      default: false,
+    }),
+  ),
+  window: Schema.optionalKey(
+    Schema.Number.annotate({
+      description: "Number of daily returns to use.",
+      default: 252,
+    })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(2).annotate({
+          expected: "a value greater than or equal to 2",
+        }),
+      ),
+  ),
+}).annotate({
+  description:
+    "The same numerical parameters and defaults as the existing calculation.",
+  identifier: "PortfolioVolatilityParams",
+});
+export type PortfolioVolatilityReference = {
+  readonly format: "parquet";
+  readonly id: string;
+  readonly schema: "portfolio-volatility/v1";
+};
+export const PortfolioVolatilityReference = Schema.Struct({
+  format: Schema.Literal("parquet"),
+  id: Schema.String.check(
+    Schema.isPattern(
+      new RegExp(
+        "^runs\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\/[A-Za-z][A-Za-z0-9_-]{0,63}\\/[A-Za-z][A-Za-z0-9_-]{0,63}\\.(json|parquet)$",
+        "u",
+      ),
+    ).annotate({
+      expected:
+        "a string matching the RegExp ^runs\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\/[A-Za-z][A-Za-z0-9_-]{0,63}\\/[A-Za-z][A-Za-z0-9_-]{0,63}\\.(json|parquet)$",
+    }),
+  ),
+  schema: Schema.Literal("portfolio-volatility/v1"),
+}).annotate({ identifier: "PortfolioVolatilityReference" });
+export type PortfolioVolatilitySummary = {
+  readonly holdingsDate: string;
+  readonly observations: number;
+  readonly volatility: number;
+  readonly windowEnd: string;
+  readonly windowStart: string;
+};
+export const PortfolioVolatilitySummary = Schema.Struct({
+  holdingsDate: Schema.String.annotate({ format: "date" }),
+  observations: Schema.Number.check(
+    Schema.isInt().annotate({ expected: "an integer" }),
+  ).check(
+    Schema.isGreaterThanOrEqualTo(2).annotate({
+      expected: "a value greater than or equal to 2",
+    }),
+  ),
+  volatility: Schema.Number.check(
+    Schema.isFinite().annotate({ expected: "a finite number" }),
+  ),
+  windowEnd: Schema.String.annotate({ format: "date" }),
+  windowStart: Schema.String.annotate({ format: "date" }),
+}).annotate({ identifier: "PortfolioVolatilitySummary" });
 export type RawPricesEodReference = {
   readonly format: "json";
   readonly id: string;
@@ -110,14 +243,102 @@ export const OperationFailure = Schema.Struct({
     "Why an operation failed. The caller retries `transient` failures and\nstops the run on `terminal` ones.",
   identifier: "OperationFailure",
 });
+export type PublishedAssetPrice = {
+  readonly dataset: "prices_eod";
+  readonly processingDate: string;
+  readonly runId: string;
+  readonly subject: PriceAsset;
+  readonly workflowId: string;
+};
+export const PublishedAssetPrice = Schema.Struct({
+  dataset: Schema.Literal("prices_eod"),
+  processingDate: Schema.String.annotate({ format: "date" }),
+  runId: Schema.String.check(
+    Schema.isPattern(
+      new RegExp(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "u",
+      ),
+    ).annotate({
+      expected:
+        "a string matching the RegExp ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    }),
+  ),
+  subject: PriceAsset,
+  workflowId: Schema.String.check(
+    Schema.isPattern(
+      new RegExp(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "u",
+      ),
+    ).annotate({
+      expected:
+        "a string matching the RegExp ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    }),
+  ),
+}).annotate({
+  description:
+    "Identity of a matching publication, resolved against current storage.",
+  identifier: "PublishedAssetPrice",
+});
 export type NormalizePricesInputs = { readonly raw: RawPricesEodReference };
 export const NormalizePricesInputs = Schema.Struct({
   raw: RawPricesEodReference,
 }).annotate({ identifier: "NormalizePricesInputs" });
+export type PortfolioVolatilityInputs = {
+  readonly holdings: ReadonlyArray<VolatilityHolding>;
+  readonly holdingsDate: string;
+  readonly portfolioId: string;
+  readonly processingDate: string;
+  readonly publications: ReadonlyArray<PublishedAssetPrice>;
+};
+export const PortfolioVolatilityInputs = Schema.Struct({
+  holdings: Schema.Array(VolatilityHolding).check(
+    Schema.isMinLength(1).annotate({
+      expected: "a value with a length of at least 1",
+    }),
+  ),
+  holdingsDate: Schema.String.annotate({ format: "date" }),
+  portfolioId: Schema.String.check(
+    Schema.isPattern(
+      new RegExp(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "u",
+      ),
+    ).annotate({
+      expected:
+        "a string matching the RegExp ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    }),
+  ),
+  processingDate: Schema.String.annotate({ format: "date" }),
+  publications: Schema.Array(PublishedAssetPrice).check(
+    Schema.isMinLength(1).annotate({
+      expected: "a value with a length of at least 1",
+    }),
+  ),
+}).annotate({ identifier: "PortfolioVolatilityInputs" });
 export type OperationErrorResponse = { readonly error: OperationFailure };
 export const OperationErrorResponse = Schema.Struct({
   error: OperationFailure,
 }).annotate({ description: "The body of every non-2xx operation response." });
+export type CalculatePortfolioVolatilityRequest = {
+  readonly execution: Execution;
+  readonly inputs: PortfolioVolatilityInputs;
+  readonly params: PortfolioVolatilityParams;
+};
+export const CalculatePortfolioVolatilityRequest = Schema.Struct({
+  execution: Execution,
+  inputs: PortfolioVolatilityInputs,
+  params: PortfolioVolatilityParams,
+});
+export type CalculatePortfolioVolatilityResponse = {
+  readonly data: PortfolioVolatilityReference;
+  readonly summary: PortfolioVolatilitySummary;
+};
+export const CalculatePortfolioVolatilityResponse = Schema.Struct({
+  data: PortfolioVolatilityReference,
+  summary: PortfolioVolatilitySummary,
+});
 export type NormalizePricesEodRequest = {
   readonly execution: Execution;
   readonly inputs: NormalizePricesInputs;
@@ -137,6 +358,13 @@ export const NormalizePricesEodResponse = Schema.Struct({
 
 /** Every operation the Python service exposes, by name. */
 export const operations = {
+  "calculate-portfolio-volatility": {
+    name: "calculate-portfolio-volatility",
+    description:
+      "Annualised ex-ante volatility from an effective holdings snapshot and published asset prices",
+    request: CalculatePortfolioVolatilityRequest,
+    response: CalculatePortfolioVolatilityResponse,
+  },
   "normalize-prices-eod": {
     name: "normalize-prices-eod",
     description:

@@ -3,8 +3,10 @@ import { Hono, type MiddlewareHandler } from "hono";
 
 import {
   DatasetError,
+  PUBLISHED_DATASETS,
   PublicationParamsSchema,
   PublicationsQuerySchema,
+  type PublishedDataset,
 } from "$/datasets/contracts";
 import { currentDatasetData } from "$/datasets/operations";
 import {
@@ -27,12 +29,14 @@ export interface DatasetDependencies {
 
 /** The subject a path names, or a 404 for one that cannot exist. */
 const subjectOf = (
+  dataset: PublishedDataset,
   kind: "asset" | "portfolio",
   id: string,
 ): Effect.Effect<Subject, DatasetError> => {
   const subject =
     kind === "asset" ? { kind, symbol: id } : { kind, id: id.toLowerCase() };
-  return Schema.is(SubjectSchema)(subject)
+  return PUBLISHED_DATASETS[dataset].subjectKind === kind &&
+    Schema.is(SubjectSchema)(subject)
     ? Effect.succeed(subject)
     : Effect.fail(
         new DatasetError({
@@ -98,7 +102,7 @@ export const createDatasetRoutes = (
       return c.json(
         await run(
           c.env,
-          subjectOf(subjectKind, subjectId).pipe(
+          subjectOf(dataset, subjectKind, subjectId).pipe(
             Effect.flatMap((subject) =>
               DatasetPublicationStore.use((store) =>
                 store.get(dataset, subject),
@@ -118,7 +122,7 @@ export const createDatasetRoutes = (
       const { dataset, subjectKind, subjectId } = c.req.valid("param");
       const object = await run(
         c.env,
-        subjectOf(subjectKind, subjectId).pipe(
+        subjectOf(dataset, subjectKind, subjectId).pipe(
           Effect.flatMap((subject) => currentDatasetData(dataset, subject)),
         ),
       );

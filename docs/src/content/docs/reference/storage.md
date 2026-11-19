@@ -50,6 +50,9 @@ What client apps read.
   read published workflow data where they always have; D1's
   `dataset_publications` records which run published it. See
   [Python operations and published datasets](/docs/workflows/datasets/).
+- **Portfolio volatility.** The current Parquet result for a portfolio is
+  `dataset=portfolio_volatility/portfolio=<ID>/data.parquet`. The workflow
+  writes the result for its processing date and records its producer in D1.
 - **Calculation results.** One Parquet file per calculation: the type's output
   columns plus `as_of` and `portfolio_id`, one set of rows per as-of date. They
   stay after the calculation is deleted.

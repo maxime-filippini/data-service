@@ -189,7 +189,11 @@ test("the step catalog exposes the registered step contracts", async () => {
   const { api, json } = setup();
   const catalog = await json<{
     stepTypes: Record<string, unknown>[];
-    contracts: { id: string; schema: Record<string, unknown> }[];
+    contracts: {
+      id: string;
+      schema: Record<string, unknown>;
+      accepts?: readonly string[];
+    }[];
     context: unknown[];
   }>(api("/step-types"));
 
@@ -236,7 +240,7 @@ test("the step catalog exposes the registered step contracts", async () => {
     outputs: ["prices:prices-eod"],
   });
   assert.deepEqual(ports("publish-dataset"), {
-    inputs: ["data:prices-eod"],
+    inputs: ["data:publishable-dataset"],
     outputs: ["publication:dataset-publication"],
   });
   assert.deepEqual(ports("portfolio-holdings"), {
@@ -251,6 +255,18 @@ test("the step catalog exposes the registered step contracts", async () => {
     inputs: ["assets:asset-subjects", "processingDate:date"],
     outputs: ["publications:published-asset-prices"],
   });
+  assert.deepEqual(ports("calculate-portfolio-volatility"), {
+    inputs: [
+      "holdings:holdings",
+      "holdingsDate:date",
+      "publications:published-asset-prices",
+      "processingDate:date",
+    ],
+    outputs: [
+      "data:portfolio-volatility-data",
+      "summary:portfolio-volatility-summary",
+    ],
+  });
 
   assert.deepEqual(
     catalog.contracts.map((contract) => contract.id),
@@ -261,10 +277,17 @@ test("the step catalog exposes the registered step contracts", async () => {
       "date",
       "holdings",
       "portfolio-subject",
+      "portfolio-volatility-data",
+      "portfolio-volatility-summary",
       "prices-eod",
+      "publishable-dataset",
       "published-asset-prices",
       "raw-prices-eod",
     ],
+  );
+  assert.deepEqual(
+    catalog.contracts.find(({ id }) => id === "publishable-dataset")?.accepts,
+    ["prices-eod", "portfolio-volatility-data"],
   );
   // Contracts generated from the Python service's Pydantic models keep
   // their constraints in the catalog.

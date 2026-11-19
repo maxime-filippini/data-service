@@ -3,6 +3,8 @@ import { Schema } from "effect";
 import { PublishedDatasetSchema } from "$/datasets/contracts";
 import { MarketDateSchema } from "$/market-data/schemas";
 import {
+  PortfolioVolatilityReference,
+  PortfolioVolatilitySummary,
   PricesEodReference,
   RawPricesEodReference,
 } from "$/operations/contracts.generated";
@@ -18,13 +20,15 @@ import { RunIdSchema } from "$/workflows/runs/contracts";
 /**
  * A named data contract: the explicit identity two step ports must share to
  * be connected, plus the schema their values satisfy. Save-time compatibility
- * compares identities; execution validates values with the schema. There is
- * no structural subtyping between contracts.
+ * compares identities and explicitly accepted alternatives. Execution validates
+ * the resolved value with the input schema.
  */
 export interface Contract<T = unknown> {
   readonly id: string;
   readonly description: string;
   readonly schema: Schema.Codec<T, unknown>;
+  /** Other registered output contracts explicitly accepted as input. */
+  readonly accepts?: readonly string[];
 }
 
 /** Declare a contract, keeping its value type for step implementations. */
@@ -82,6 +86,26 @@ export const pricesEod = defineContract({
   description:
     "An artifact reference to normalized end-of-day prices (Parquet, prices_eod columns)",
   schema: PricesEodReference,
+});
+
+export const portfolioVolatilityData = defineContract({
+  id: "portfolio-volatility-data",
+  description: "An artifact reference to portfolio volatility data in Parquet",
+  schema: PortfolioVolatilityReference,
+});
+
+export const portfolioVolatilitySummary = defineContract({
+  id: "portfolio-volatility-summary",
+  description:
+    "Annualised volatility, the return window and the effective holdings date",
+  schema: PortfolioVolatilitySummary,
+});
+
+export const publishableDataset = defineContract({
+  id: "publishable-dataset",
+  description: "A normalized prices or portfolio volatility Parquet artifact",
+  schema: Schema.Union([PricesEodReference, PortfolioVolatilityReference]),
+  accepts: [pricesEod.id, portfolioVolatilityData.id],
 });
 
 /** What a publish step published: look it up by dataset and subject. */

@@ -43,7 +43,7 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
-import type { Subject } from "$/workflows/contracts";
+import type { StepSpec, Subject } from "$/workflows/contracts";
 import type { LocalPlatformOptions } from "$/local/platform";
 
 import { makeTestDatabase } from "./support/d1";
@@ -128,12 +128,14 @@ describe(
         readonly published?: Layer.Layer<DatasetObjectStore>;
         readonly platform?: LocalPlatformOptions;
         readonly now?: () => number;
+        readonly processed?: string;
+        readonly pythonUrl?: string;
       } = {},
     ) => {
       // Each test gets its own processed-bucket directory and database; run
       // artifacts share the Python service's directory (run IDs are unique).
       counter += 1;
-      const processed = join(root, `processed-${counter}`);
+      const processed = options.processed ?? join(root, `processed-${counter}`);
       const { db } = makeTestDatabase();
 
       /** Faults injected at the D1 and HTTP boundaries. */
@@ -180,7 +182,10 @@ describe(
         db: faultyDb,
         artifacts: FileRunArtifactsLive(join(root, "raw")),
         sourceFor: fixtureSourceFor(fixtures, (url) => provider.respond(url)),
-        python: HttpPythonOperationsLive(fetcher, python.url),
+        python: HttpPythonOperationsLive(
+          fetcher,
+          options.pythonUrl ?? python.url,
+        ),
         published: options.published ?? FileDatasetObjectStoreLive(processed),
         platform: {
           ...options.platform,
@@ -223,25 +228,27 @@ describe(
         return JSON.parse(text) as T;
       };
 
-      const configure = async () => {
-        await json(
-          api("/assets", "POST", {
-            symbol: "AAPL.US",
-            provider: "eodhd",
-            backfillStartDate: "2016-01-01",
-          }),
-          201,
-        );
+      const configure = async (symbols = ["AAPL.US"]) => {
         const { id } = await json<{ id: string }>(
           api("/workflows", "POST", assetPrices),
           201,
         );
-        await json(
-          api(`/workflows/${id}/assignments`, "POST", {
-            subject: { kind: "asset", symbol: "AAPL.US" },
-          }),
-          201,
-        );
+        for (const symbol of symbols) {
+          await json(
+            api("/assets", "POST", {
+              symbol,
+              provider: "eodhd",
+              backfillStartDate: "2016-01-01",
+            }),
+            201,
+          );
+          await json(
+            api(`/workflows/${id}/assignments`, "POST", {
+              subject: { kind: "asset", symbol },
+            }),
+            201,
+          );
+        }
         return id;
       };
 
@@ -298,6 +305,7 @@ describe(
       service: ReturnType<typeof setup>,
       workflowId: string,
       timeoutSeconds?: number,
+      trailingSteps: readonly StepSpec[] = [],
     ) => {
       const { api, json } = service;
       const { id } = await json<{ id: string }>(
@@ -341,6 +349,7 @@ describe(
                 processingDate: { ref: "context.processingDate" },
               },
             },
+            ...trailingSteps,
           ],
         }),
         201,
@@ -352,6 +361,132 @@ describe(
       );
       return { workflowId: portfolioWorkflow, subject };
     };
+
+    test("portfolio volatility publishes retry-safe data and leaves it intact on numerical failures", async () => {
+      const processed = join(root, "volatility-processed");
+      const engine = await startPythonService({
+        artifactRoot: join(root, "raw"),
+        processedRoot: processed,
+      });
+      try {
+        const service = setup({ processed, pythonUrl: engine.url });
+        const assets = await service.configure(["AAPL.US", "MSFT.US"]);
+        const portfolio = await configurePortfolio(service, assets, undefined, [
+          {
+            id: "volatility",
+            type: "calculate-portfolio-volatility",
+            params: { window: 3, normalise_weights: true },
+            inputs: {
+              holdings: { ref: "steps.holdings.outputs.holdings" },
+              holdingsDate: { ref: "steps.holdings.outputs.holdingsDate" },
+              publications: { ref: "steps.dependencies.outputs.publications" },
+              processingDate: { ref: "context.processingDate" },
+            },
+          },
+          {
+            id: "publish",
+            type: "publish-dataset",
+            params: { dataset: "portfolio_volatility" },
+            inputs: { data: { ref: "steps.volatility.outputs.data" } },
+          },
+        ]);
+        const path = `/datasets/portfolio_volatility/portfolio/${portfolio.subject.id}`;
+
+        assert.equal(
+          (await service.runFor(assets, "2024-01-07")).status,
+          "completed",
+        );
+        service.faults.lostPythonResponses = 1;
+        const calculated = await service.runFor(
+          portfolio.workflowId,
+          "2024-01-07",
+          portfolio.subject,
+        );
+        assert.equal(calculated.status, "completed", calculated.error ?? "");
+        assert.equal(calculated.steps[2]?.attempts, 2);
+        assert.deepEqual(
+          await service.pages.workflowRun(calculated.id),
+          calculated,
+        );
+        const metadata = await service.json<PublicationView>(service.api(path));
+        assert.deepEqual(metadata.subject, portfolio.subject);
+        assert.equal(metadata.processingDate, "2024-01-07");
+        assert.equal(metadata.producer.runId, calculated.id);
+        rmSync(join(root, "raw", "runs", calculated.id), { recursive: true });
+        const data = await service.api(`${path}/data`);
+        assert.equal(data.status, 200);
+        const bytes = Buffer.from(await data.arrayBuffer());
+        const key = join(
+          processed,
+          "dataset=portfolio_volatility",
+          `portfolio=${portfolio.subject.id}`,
+          "data.parquet",
+        );
+        assert.deepEqual(bytes, readFileSync(key));
+        const [row] = await readParquet(key);
+        assert.equal(row?.as_of, "2024-01-07");
+        assert.equal(row?.portfolio_id, portfolio.subject.id);
+        assert.equal(row?.holdings_date, "2024-01-06");
+        assert.equal(row?.window_end, "2024-01-05");
+        assert.equal(row?.observations, 3);
+        // Jan 3/4/5 AAPL returns, weighted at 1.0 after normalization.
+        assert.ok(
+          Math.abs(Number(row?.volatility) - 0.11103462633169292) < 1e-12,
+        );
+
+        assert.equal(
+          (await service.runFor(assets, "2024-01-02")).status,
+          "completed",
+        );
+        const incomplete = await service.runFor(
+          portfolio.workflowId,
+          "2024-01-02",
+          portfolio.subject,
+        );
+        assert.equal(incomplete.status, "failed");
+        assert.match(incomplete.error ?? "", /Only 0 daily returns .* need 3/u);
+        assert.equal(incomplete.steps[2]?.attempts, 1);
+
+        await service.json(
+          service.api(`/portfolios/${portfolio.subject.id}/snapshots`, "POST", {
+            holdingsDate: "2024-01-08",
+            holdings: [
+              { symbol: "AAPL.US", weight: 1 },
+              { symbol: "MSFT.US", weight: -1 },
+            ],
+          }),
+          201,
+        );
+        assert.equal(
+          (await service.runFor(assets, "2024-01-08")).status,
+          "completed",
+        );
+        assert.equal(
+          (
+            await service.runFor(assets, "2024-01-08", {
+              kind: "asset",
+              symbol: "MSFT.US",
+            })
+          ).status,
+          "completed",
+        );
+        const zeroSum = await service.runFor(
+          portfolio.workflowId,
+          "2024-01-08",
+          portfolio.subject,
+        );
+        assert.equal(zeroSum.status, "failed");
+        assert.match(zeroSum.error ?? "", /Weights sum to zero/u);
+        assert.equal(zeroSum.steps[2]?.attempts, 1);
+        assert.deepEqual(await service.json(service.api(path)), metadata);
+        assert.deepEqual(
+          Buffer.from(await (await service.api(`${path}/data`)).arrayBuffer()),
+          bytes,
+        );
+      } finally {
+        await engine.stop();
+      }
+    });
 
     test("a portfolio on a non-trading date uses effective holdings and matching published prices", async () => {
       const service = setup();

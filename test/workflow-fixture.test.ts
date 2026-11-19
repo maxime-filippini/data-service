@@ -95,11 +95,17 @@ test(
         [
           {
             holdingsDate: "2024-01-04",
-            holdings: [{ symbol: "MSFT.US", weight: 0.75 }],
+            holdings: [
+              { symbol: "AAPL.US", weight: 0.25 },
+              { symbol: "MSFT.US", weight: 0.75 },
+            ],
           },
           {
             holdingsDate: "2024-01-05",
-            holdings: [{ symbol: "MSFT.US", weight: 1.25 }],
+            holdings: [
+              { symbol: "AAPL.US", weight: 0.25 },
+              { symbol: "MSFT.US", weight: 1.25 },
+            ],
           },
         ],
       );
@@ -111,15 +117,58 @@ test(
         kind: "portfolio",
         id: portfolio.id,
       });
-      assert.deepEqual(portfolioRun.steps[1]?.outputs?.publications, [
-        {
+      const calculation = portfolioRun.steps.find(
+        ({ id }) => id === "volatility",
+      );
+      assert.equal(calculation?.status, "completed");
+      const { volatility, ...summary } = calculation.outputs?.summary as {
+        volatility: number;
+      };
+      // Sample standard deviation of the Jan 3/4/5 weighted returns times sqrt(252).
+      assert.ok(Math.abs(volatility - 0.16655193949753938) < 1e-12);
+      assert.deepEqual(summary, {
+        observations: 3,
+        windowStart: "2024-01-03",
+        windowEnd: "2024-01-05",
+        holdingsDate: "2024-01-05",
+      });
+      const assetRuns = JSON.parse(
+        readFileSync(join(out, "asset-runs.json"), "utf8"),
+      ) as WorkflowRunDetail[];
+      assert.deepEqual(
+        assetRuns.map(({ subject, status }) => [subject, status]),
+        [
+          [{ kind: "asset", symbol: "MSFT.US" }, "completed"],
+          [{ kind: "asset", symbol: "AAPL.US" }, "completed"],
+        ],
+      );
+      assert.deepEqual(
+        portfolioRun.steps[1]?.outputs?.publications,
+        [...assetRuns].reverse().map((upstream) => ({
           dataset: "prices_eod",
-          subject: detail.subject,
-          processingDate: detail.processingDate,
-          workflowId: detail.workflowId,
-          runId: detail.id,
-        },
-      ]);
+          subject: upstream.subject,
+          processingDate: upstream.processingDate,
+          workflowId: upstream.workflowId,
+          runId: upstream.id,
+        })),
+      );
+      const volatilityPublication = JSON.parse(
+        readFileSync(join(out, "portfolio-publication.json"), "utf8"),
+      ) as PublicationView;
+      assert.equal(volatilityPublication.dataset, "portfolio_volatility");
+      assert.equal(volatilityPublication.producer.runId, portfolioRun.id);
+      const volatilityPath = join(
+        out,
+        "r2",
+        "processed-market-data",
+        "dataset=portfolio_volatility",
+        `portfolio=${portfolio.id}`,
+        "data.parquet",
+      );
+      assert.equal(
+        volatilityPublication.size,
+        readFileSync(volatilityPath).byteLength,
+      );
 
       assert.ok(existsSync(join(out, "d1.sqlite")));
       assert.match(
