@@ -9,6 +9,7 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "./contracts";
+import type { DependencyWaitView } from "./views";
 
 /** A request to claim an assignment's active-run slot. */
 export interface ClaimRun {
@@ -127,11 +128,17 @@ export class WorkflowRuns extends Context.Service<
       readonly final: boolean;
       readonly now: string;
     }) => Effect.Effect<void, WorkflowError>;
+    readonly stepWaiting: (input: {
+      readonly runId: string;
+      readonly stepId: string;
+      readonly waiting: DependencyWaitView;
+    }) => Effect.Effect<void, WorkflowError>;
     readonly stepCompleted: (input: {
       readonly runId: string;
       readonly stepId: string;
       readonly outputs: Readonly<Record<string, unknown>>;
       readonly now: string;
+      readonly resumesRun?: boolean;
     }) => Effect.Effect<void, WorkflowError>;
     /** Complete an active run. False when it was no longer active. */
     readonly complete: (

@@ -195,7 +195,8 @@ a run was still active: `?trigger=schedule&status=skipped`.
 Timestamps are left out above. A scheduled run has `"trigger": "schedule"`
 and `scheduledFor`, the occurrence it was dispatched for (such as
 `"2024-01-10T02:00:00.000Z"`). A step is `pending` until reached, `running`
-while it executes or retries (with the last attempt's `error`), then
+while it executes or retries (with the last attempt's `error`), `waiting`
+while it waits for inputs, then
 `completed` or `failed`; steps a finished run never reached are `skipped`.
 
 The run record keeps each step's small named outputs for inspection. It is
@@ -206,6 +207,22 @@ Run history survives configuration changes. Runs have no foreign keys to
 definitions, assignments or assets, and keep the workflow's name and subject,
 so they stay readable after those are deleted. Deleting a definition, an
 assignment or an asset is refused with `409` while it has an active run.
+
+## Dependency waits
+
+A portfolio workflow can read its effective holdings and wait for each of
+the resulting assets' current `prices_eod` publications. A publication
+qualifies when its producer is a completed run of the specified upstream
+workflow for that asset and processing date, and the stored object matches
+the publication record. A refresh on a non-trading day can qualify.
+
+The first check fixes an absolute deadline. Cloudflare Workflows sleeps
+between checks, at most one minute at a time, and reuses the deadline on
+replay. A waiting step's `waiting` field shows `deadline` and `missing`
+entries with each symbol and reason. The step returns the matching
+publication references and continues when ready. A timeout fails the run
+and leaves the last missing inputs in the outcome. The checks do not
+launch upstream runs.
 
 ## Artifacts
 
@@ -254,22 +271,26 @@ the Worker, without credentials or network. It needs
 5. an in-process Workflow binding executes the run. The real EODHD adapter
    is answered from `fixtures/eodhd/<SYMBOL>.json`, the normalize step calls
    the Python service over HTTP, and the publish step copies its output to
-   the local processed bucket.
+   the local processed bucket;
+6. the command creates a portfolio with two dated holdings snapshots and
+   starts its workflow, which reads the effective holdings and resolves the
+   published asset data for that date.
 
 Both languages read and write run artifacts in the same directory,
 `r2/raw-market-data/`. Output goes to `.local/workflow-fixture/`, emptied
 first:
 
-| Path                                                                       | What                              |
-| -------------------------------------------------------------------------- | --------------------------------- |
-| `d1.sqlite`                                                                | The local database                |
-| `r2/raw-market-data/runs/<runId>/download/raw.json`                        | The raw artifact                  |
-| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                 | Python's normalized output        |
-| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet` | The published dataset             |
-| `run.json`                                                                 | The run and its step outcomes     |
-| `publication.json`                                                         | The publication's metadata        |
-| `portfolio.json`                                                           | Dated portfolio snapshots         |
-| `api.log`                                                                  | Each API request and its response |
+| Path                                                                       | What                                              |
+| -------------------------------------------------------------------------- | ------------------------------------------------- |
+| `d1.sqlite`                                                                | The local database                                |
+| `r2/raw-market-data/runs/<runId>/download/raw.json`                        | The raw artifact                                  |
+| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                 | Python's normalized output                        |
+| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet` | The published dataset                             |
+| `run.json`                                                                 | The run and its step outcomes                     |
+| `publication.json`                                                         | The publication's metadata                        |
+| `portfolio.json`                                                           | Dated portfolio snapshots                         |
+| `portfolio-run.json`                                                       | The effective holdings and publication references |
+| `api.log`                                                                  | Each API request and its response                 |
 
 Options: `--out DIR`, `--symbol MSFT.US` (fixtures exist for `AAPL.US` and
 `MSFT.US`), `--date YYYY-MM-DD` (default `2024-01-10`) and `--scheduled`. Retries happen

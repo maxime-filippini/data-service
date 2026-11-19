@@ -11,8 +11,10 @@ import type {
 import type { Contract } from "./contract";
 import { downloadPrices } from "./download-prices";
 import { normalizePrices } from "./normalize-prices";
+import { loadPortfolioHoldings } from "./portfolio-holdings";
 import { publishDataset } from "./publish-dataset";
 import { type Ports, runContextFields, type StepType } from "./step-type";
+import { waitForAssetPublications } from "./wait-for-asset-publications";
 
 export * from "./contract";
 export * from "./step-type";
@@ -22,6 +24,8 @@ export const builtInStepTypes: readonly StepType[] = [
   downloadPrices,
   normalizePrices,
   publishDataset,
+  loadPortfolioHoldings,
+  waitForAssetPublications,
 ];
 
 /**

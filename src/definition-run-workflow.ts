@@ -11,6 +11,7 @@ import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { R2DatasetObjectStoreLive } from "$/datasets/r2";
 import { MarketDataSourcesLayer, liveSourceFor } from "$/market-data/sources";
 import { HttpPythonOperationsLive } from "$/operations/client";
+import { D1PortfoliosLive } from "$/portfolios/d1";
 import { R2RunArtifactsLive } from "$/workflows/artifacts";
 import { executeWorkflowRun } from "$/workflows/executor";
 import { StepRegistryLive } from "$/workflows/registry";
@@ -39,6 +40,7 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
       D1WorkflowRunsLive(db),
       StepRegistryLive,
       D1AssetsLive(db),
+      D1PortfoliosLive(db),
       MarketDataSourcesLayer(liveSourceFor(this.env)),
       R2RunArtifactsLive(this.env.MARKET_DATA_BUCKET),
       // One engine instance, as for calculations.

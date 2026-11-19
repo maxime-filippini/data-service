@@ -37,6 +37,8 @@ export interface LocalServiceOptions {
   /** Step types besides the built-in ones (test-only types). */
   readonly extraStepTypes?: readonly StepType[];
   readonly platform?: LocalPlatformOptions;
+  /** Wall clock for tests that advance durable waits without real delays. */
+  readonly now?: () => number;
 }
 
 const missing = (name: string) =>
@@ -93,6 +95,7 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     D1WorkflowRunsLive(options.db),
     registry,
     D1AssetsLive(options.db),
+    D1PortfoliosLive(options.db),
     MarketDataSourcesLayer(options.sourceFor),
     options.artifacts,
     options.python ?? noPython,
@@ -100,8 +103,12 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
   );
   const platform = localRunPlatform(
     (params, steps) =>
-      executeWorkflowRun(params, steps, (program) =>
-        program.pipe(Effect.provide(executorLayer), Effect.runPromise),
+      executeWorkflowRun(
+        params,
+        steps,
+        (program) =>
+          program.pipe(Effect.provide(executorLayer), Effect.runPromise),
+        options.now,
       ),
     options.platform,
   );

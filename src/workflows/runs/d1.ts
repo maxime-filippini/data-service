@@ -8,6 +8,7 @@ import {
 } from "$/workflows/contracts";
 
 import type {
+  DependencyWaitView,
   StepOutcome,
   StepOutcomeStatus,
   WorkflowRunDetail,
@@ -49,6 +50,7 @@ interface StepRow {
   readonly attempts: number;
   readonly outputs_json: string | null;
   readonly error: string | null;
+  readonly waiting_json: string | null;
   readonly started_at: string;
   readonly finished_at: string | null;
 }
@@ -102,6 +104,7 @@ const toDetail = (
         attempts: 0,
         outputs: null,
         error: null,
+        waiting: null,
         startedAt: null,
         finishedAt: null,
       };
@@ -116,6 +119,10 @@ const toDetail = (
           ? null
           : (JSON.parse(step.outputs_json) as Record<string, unknown>),
       error: step.error,
+      waiting:
+        step.waiting_json === null
+          ? null
+          : (JSON.parse(step.waiting_json) as DependencyWaitView),
       startedAt: step.started_at,
       finishedAt: step.finished_at,
     };
@@ -493,12 +500,32 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
             .run(),
         ).pipe(Effect.asVoid),
 
-      stepCompleted: (input) =>
+      stepWaiting: (input) =>
         query(() =>
-          db
+          db.batch([
+            db
+              .prepare(
+                `UPDATE workflow_runs SET status = 'waiting'
+                 WHERE run_id = ?1 AND status IN ('running', 'waiting')`,
+              )
+              .bind(input.runId),
+            db
+              .prepare(
+                `UPDATE workflow_run_steps SET status = 'waiting', error = NULL, waiting_json = ?3
+                 WHERE run_id = ?1 AND step_id = ?2
+                   AND EXISTS (SELECT 1 FROM workflow_runs WHERE run_id = ?1 AND status = 'waiting')`,
+              )
+              .bind(input.runId, input.stepId, JSON.stringify(input.waiting)),
+          ]),
+        ).pipe(Effect.asVoid),
+
+      stepCompleted: (input) =>
+        query(async () => {
+          const completed = db
             .prepare(
               `UPDATE workflow_run_steps SET
-                 status = 'completed', outputs_json = ?3, error = NULL, finished_at = ?4
+                 status = 'completed', outputs_json = ?3, error = NULL,
+                 waiting_json = NULL, finished_at = ?4
                WHERE run_id = ?1 AND step_id = ?2`,
             )
             .bind(
@@ -506,9 +533,21 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
               input.stepId,
               JSON.stringify(input.outputs),
               input.now,
-            )
-            .run(),
-        ).pipe(Effect.asVoid),
+            );
+          if (input.resumesRun) {
+            await db.batch([
+              completed,
+              db
+                .prepare(
+                  `UPDATE workflow_runs SET status = 'running'
+                 WHERE run_id = ?1 AND status = 'waiting'`,
+                )
+                .bind(input.runId),
+            ]);
+          } else {
+            await completed.run();
+          }
+        }),
 
       complete: (runId, now) =>
         query(() =>

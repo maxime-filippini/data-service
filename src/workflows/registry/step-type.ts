@@ -8,8 +8,10 @@ import type {
 } from "$/datasets/store";
 import type { MarketDataSources } from "$/market-data/sources";
 import type { PythonOperations } from "$/operations/client";
+import type { Portfolios } from "$/portfolios/store";
 import type { RunArtifacts } from "$/workflows/artifacts";
 import type { Subject, SubjectKind } from "$/workflows/contracts";
+import type { MissingDependency } from "$/workflows/runs/views";
 import {
   assetSubject,
   type Contract,
@@ -104,6 +106,7 @@ export const terminal = (message: string) =>
 /** The services step implementations can use. */
 export type StepServices =
   | Assets
+  | Portfolios
   | MarketDataSources
   | RunArtifacts
   | PythonOperations
@@ -119,6 +122,11 @@ export const DEFAULT_STEP_POLICY = {
   retries: { limit: 3, delay: "10 seconds", backoff: "exponential" },
   timeout: "10 minutes",
 } as const satisfies WorkflowStepConfig;
+
+/** A durable check is either ready to produce outputs or waiting for inputs. */
+export type WaitCheck<O> =
+  | { readonly ready: true; readonly outputs: O }
+  | { readonly ready: false; readonly missing: readonly MissingDependency[] };
 
 /**
  * A registered, version-controlled operation a workflow step can use: its
@@ -144,6 +152,14 @@ export interface StepType<
   implementation?(
     request: StepRequest<P, PortValues<I>>,
   ): Effect.Effect<PortValues<O>, StepFailure, StepServices>;
+  /** The executor checkpoints each check and durably sleeps between checks. */
+  readonly wait?: {
+    timeoutMs(params: P): number;
+    check(
+      request: StepRequest<P, PortValues<I>>,
+      deadline: string,
+    ): Effect.Effect<WaitCheck<PortValues<O>>, StepFailure, StepServices>;
+  };
 }
 
 /** Declare a step type, inferring its params, input and output types. */

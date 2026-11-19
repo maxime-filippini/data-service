@@ -25,6 +25,21 @@ export type ActiveRunStatus = "queued" | "running" | "waiting";
 export type StepOutcomeStatus =
   "pending" | "running" | "waiting" | "completed" | "failed" | "skipped";
 
+export interface MissingDependency {
+  readonly symbol: string;
+  readonly reason:
+    | "no-successful-run"
+    | "no-publication"
+    | "publication-does-not-match"
+    | "publication-object-does-not-match";
+}
+
+export interface DependencyWaitView {
+  /** An absolute UTC deadline that stays fixed during replay. */
+  readonly deadline: string;
+  readonly missing: readonly MissingDependency[];
+}
+
 /** What started a run. */
 export type RunTrigger = "manual" | "schedule";
 
@@ -72,6 +87,8 @@ export interface StepOutcome {
   readonly outputs: Readonly<Record<string, unknown>> | null;
   /** The latest attempt's error. */
   readonly error: string | null;
+  /** The latest missing dependencies while waiting or after a failed wait. */
+  readonly waiting: DependencyWaitView | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
 }

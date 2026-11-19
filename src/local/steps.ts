@@ -1,6 +1,6 @@
 import type { WorkflowStepConfig } from "cloudflare:workers";
 
-import { NonRetryableStepError, type Steps } from "$/workflows/steps";
+import { NonRetryableStepError, type WorkflowSteps } from "$/workflows/steps";
 
 /**
  * Cloudflare's defaults when a step declares no policy: five retries, ten
@@ -55,6 +55,8 @@ export interface LocalStepsOptions {
    * long as the platform would.
    */
   readonly delayScale?: number;
+  /** Advance a test clock or block on an external test action until wake. */
+  readonly sleepUntil?: (timestamp: number) => Promise<void>;
   /**
    * Called before a step that has no checkpoint runs. Returning true stops
    * this execution there, as an evicted isolate would: the step never runs
@@ -77,27 +79,48 @@ export interface LocalStepsOptions {
 export const localSteps = (
   checkpoints: Map<string, string>,
   options: LocalStepsOptions = {},
-): Steps => ({
-  do: async (name, run, config) => {
+): WorkflowSteps => {
+  const checkpoint = async <T>(
+    name: string,
+    run: () => Promise<T>,
+  ): Promise<T> => {
     const saved = checkpoints.get(name);
     if (saved !== undefined) return JSON.parse(saved);
     if (options.interruptBefore?.(name) === true) {
       options.onInterrupt?.(name);
       return new Promise<never>(() => {});
     }
-    const limit = config?.retries?.limit ?? PLATFORM_DEFAULT.limit;
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        const result = await run();
-        const serialized = JSON.stringify(result ?? null);
-        checkpoints.set(name, serialized);
-        return JSON.parse(serialized);
-      } catch (error) {
-        if (error instanceof NonRetryableStepError || attempt > limit)
-          throw error;
-        const delay = retryDelayMs(config, attempt) * (options.delayScale ?? 1);
-        if (delay > 0) await new Promise((wake) => setTimeout(wake, delay));
-      }
-    }
-  },
-});
+    const serialized = JSON.stringify((await run()) ?? null);
+    checkpoints.set(name, serialized);
+    return JSON.parse(serialized);
+  };
+
+  return {
+    do: (name, run, config) =>
+      checkpoint(name, async () => {
+        const limit = config?.retries?.limit ?? PLATFORM_DEFAULT.limit;
+        for (let attempt = 1; ; attempt += 1) {
+          try {
+            return await run();
+          } catch (error) {
+            if (error instanceof NonRetryableStepError || attempt > limit)
+              throw error;
+            const delay =
+              retryDelayMs(config, attempt) * (options.delayScale ?? 1);
+            if (delay > 0) await new Promise((wake) => setTimeout(wake, delay));
+          }
+        }
+      }),
+    sleepUntil: async (name, timestamp) => {
+      await checkpoint(name, async () => {
+        if (options.sleepUntil !== undefined) {
+          await options.sleepUntil(timestamp);
+        } else {
+          const delay = timestamp - Date.now();
+          if (delay > 0) await new Promise((wake) => setTimeout(wake, delay));
+        }
+        return null;
+      });
+    },
+  };
+};

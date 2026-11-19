@@ -6,11 +6,14 @@ import {
   PricesEodReference,
   RawPricesEodReference,
 } from "$/operations/contracts.generated";
+import { HoldingsSchema, MAX_SNAPSHOT_HOLDINGS } from "$/portfolios/contracts";
 import {
   AssetSubjectSchema,
   PortfolioSubjectSchema,
   SubjectSchema,
+  WorkflowIdSchema,
 } from "$/workflows/contracts";
+import { RunIdSchema } from "$/workflows/runs/contracts";
 
 /**
  * A named data contract: the explicit identity two step ports must share to
@@ -91,4 +94,39 @@ export const datasetPublication = defineContract({
     subject: SubjectSchema,
     processingDate: MarketDateSchema,
   }),
+});
+
+export const portfolioHoldings = defineContract({
+  id: "holdings",
+  description: "A portfolio's effective asset symbols and weights",
+  schema: HoldingsSchema,
+});
+
+export const assetSubjects = defineContract({
+  id: "asset-subjects",
+  description: "Distinct asset subjects required by a portfolio",
+  schema: Schema.Array(AssetSubjectSchema).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS),
+    Schema.makeFilter(
+      (assets) =>
+        new Set(assets.map(({ symbol }) => symbol)).size === assets.length ||
+        "Each asset can appear only once",
+    ),
+  ),
+});
+
+export const publishedAssetPrices = defineContract({
+  id: "published-asset-prices",
+  description:
+    "Current published prices for each required asset, with the matching processing date and upstream run",
+  schema: Schema.Array(
+    Schema.Struct({
+      dataset: Schema.Literal("prices_eod"),
+      subject: AssetSubjectSchema,
+      processingDate: MarketDateSchema,
+      workflowId: WorkflowIdSchema,
+      runId: RunIdSchema,
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS)),
 });

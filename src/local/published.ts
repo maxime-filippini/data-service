@@ -65,6 +65,18 @@ export const FileDatasetObjectStoreLive = (
             ),
           catch: () => storageError("Could not read the published dataset"),
         }),
+      etag: (key) =>
+        Effect.tryPromise({
+          try: () =>
+            readFile(pathOf(key)).then(
+              etagOf,
+              (error: NodeJS.ErrnoException) => {
+                if (error.code === "ENOENT") return null;
+                throw error;
+              },
+            ),
+          catch: () => storageError("Could not check the published dataset"),
+        }),
     }),
   );
 };
@@ -101,6 +113,11 @@ export const memoryDatasetObjectStore = () => {
                 etag: etagOf(body),
                 size: body.byteLength,
               };
+        }),
+      etag: (key) =>
+        Effect.sync(() => {
+          const body = objects.get(key);
+          return body === undefined ? null : etagOf(body);
         }),
     }),
   );

@@ -2,14 +2,14 @@ import type {
   RunPlatform,
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
-import type { Steps } from "$/workflows/steps";
+import type { WorkflowSteps } from "$/workflows/steps";
 
 import { type LocalStepsOptions, localSteps } from "./steps";
 
 /** Executes one run's Workflow body with the given steps adapter. */
 export type ExecuteRun = (
   params: WorkflowRunParams,
-  steps: Steps,
+  steps: WorkflowSteps,
 ) => Promise<unknown>;
 
 type LocalStatus = "queued" | "running" | "complete" | "errored";
