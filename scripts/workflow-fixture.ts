@@ -23,7 +23,9 @@
  *   run.json               the run and its step outcomes (API view)
  *   publication.json       the publication's metadata (API view)
  *   portfolio.json         a portfolio with two dated holdings snapshots
- *   portfolio-run.json     the portfolio's holdings and matching publications
+ *   asset-runs.json        all asset run outcomes
+ *   portfolio-run.json     dependencies, volatility summary and run artifact
+ *   portfolio-publication.json  metadata for the published volatility dataset
  *   api.log                every API request and response status
  *
  * Both languages share `r2/raw-market-data/` as the run artifact store.
@@ -36,7 +38,10 @@
 import { Console, Effect, FileSystem, Path } from "effect";
 import { Command, Flag } from "effect/cli";
 
-import { publishedDatasetKey } from "$/datasets/contracts";
+import {
+  type PublicationView,
+  publishedDatasetKey,
+} from "$/datasets/contracts";
 import { previousDay } from "$/datetime";
 import { FileRunArtifactsLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
@@ -85,7 +90,7 @@ const command = Command.make(
     scheduled: Flag.Boolean("scheduled").pipe(
       Flag.withDefault(false),
       Flag.withDescription(
-        "Start the run with an hourly dispatch tick instead of manually",
+        "Start the runs with an hourly dispatch tick instead of manually",
       ),
     ),
   },
@@ -100,9 +105,21 @@ const command = Command.make(
 
       const rawBucket = path.join(out, "r2", "raw-market-data");
       const processedBucket = path.join(out, "r2", "processed-market-data");
+      const fixtures = loadEodhdFixtures(path.resolve(options.fixtures));
+      const symbol = options.symbol;
+      const secondSymbol = [...fixtures.keys()]
+        .sort()
+        .find((name) => name !== symbol);
+      const symbols =
+        secondSymbol === undefined ? [symbol] : [symbol, secondSymbol];
       yield* Console.log("Starting the Python service with uv…");
       const python = yield* Effect.acquireRelease(
-        Effect.promise(() => startPythonService({ artifactRoot: rawBucket })),
+        Effect.promise(() =>
+          startPythonService({
+            artifactRoot: rawBucket,
+            processedRoot: processedBucket,
+          }),
+        ),
         (python) => Effect.promise(() => python.stop()),
       );
 
@@ -110,9 +127,7 @@ const command = Command.make(
       const service = localWorkflowService({
         db,
         artifacts: FileRunArtifactsLive(rawBucket),
-        sourceFor: fixtureSourceFor(
-          loadEodhdFixtures(path.resolve(options.fixtures)),
-        ),
+        sourceFor: fixtureSourceFor(fixtures),
         python: HttpPythonOperationsLive({ fetch }, python.url),
         published: FileDatasetObjectStoreLive(processedBucket),
         platform: { steps: { delayScale: 0 } },
@@ -120,6 +135,7 @@ const command = Command.make(
       const routes = createRoutes(service.dependencies, {
         fetch: () => new Response("No app locally", { status: 404 }),
       });
+      const idle = Effect.promise(() => service.platform.idle());
 
       const log = (line: string) =>
         fs
@@ -142,7 +158,6 @@ const command = Command.make(
 
       const scenario = Effect.gen(function* () {
         const { request: api } = yield* ManagementApi;
-        const symbol = options.symbol;
         const workflow = yield* api<{ id: string }>("POST", "/workflows", {
           name: "Daily asset prices (fixture)",
           scope: "asset",
@@ -172,16 +187,24 @@ const command = Command.make(
         });
         // The default assigns the definition to the asset when it is created.
         yield* api("PUT", `/workflow-defaults/asset/${workflow.id}`);
-        yield* api("POST", "/assets", {
-          symbol,
-          provider: "eodhd",
-          backfillStartDate: "2024-01-01",
-        });
+        for (const assetSymbol of symbols)
+          yield* api("POST", "/assets", {
+            symbol: assetSymbol,
+            provider: "eodhd",
+            backfillStartDate: "2024-01-01",
+          });
 
-        const startManual = api<{ id: string }>("POST", "/runs", {
-          workflowId: workflow.id,
-          subject: { kind: "asset", symbol },
-          processingDate: options.date,
+        const startManual = Effect.gen(function* () {
+          const started = new Map<string, string>();
+          for (const assetSymbol of symbols) {
+            const { id } = yield* api<{ id: string }>("POST", "/runs", {
+              workflowId: workflow.id,
+              subject: { kind: "asset", symbol: assetSymbol },
+              processingDate: options.date,
+            });
+            started.set(assetSymbol, id);
+          }
+          return started;
         });
         const dispatch = Effect.gen(function* () {
           const at = `${options.date}T03:00:00Z`;
@@ -193,40 +216,58 @@ const command = Command.make(
               localSteps(new Map(), { delayScale: 0 }),
             ),
           );
-          const run = tick.status === "dispatched" ? tick.runs[0] : undefined;
-          if (run === undefined)
-            return yield* Effect.fail(
-              new ScriptError("The tick dispatched no run"),
-            );
-          yield* log(`tick ${at} -> run ${run.runId} (${run.status})`);
-          return { id: run.runId };
+          if (tick.status !== "dispatched")
+            return yield* Effect.fail(new ScriptError("The tick was disabled"));
+          const started = new Map<string, string>();
+          for (const run of tick.runs) {
+            if (run.subject.kind !== "asset") continue;
+            yield* log(`tick ${at} -> run ${run.runId} (${run.status})`);
+            started.set(run.subject.symbol, run.runId);
+          }
+          return started;
         });
         const started = yield* options.scheduled ? dispatch : startManual;
 
-        yield* Effect.promise(() => service.platform.idle());
-        const run = yield* api<WorkflowRunDetail>("GET", `/runs/${started.id}`);
+        yield* idle;
+        const assetRuns: WorkflowRunDetail[] = [];
+        for (const assetSymbol of symbols) {
+          const id = started.get(assetSymbol);
+          if (id === undefined)
+            return yield* Effect.fail(
+              new ScriptError(`No asset run started for ${assetSymbol}`),
+            );
+          assetRuns.push(yield* api<WorkflowRunDetail>("GET", `/runs/${id}`));
+        }
+        const run = assetRuns[0]!;
         yield* writeJson("run.json", run);
+        yield* writeJson("asset-runs.json", assetRuns);
         const publication =
           run.status === "completed"
             ? yield* api<unknown>("GET", `/datasets/prices_eod/asset/${symbol}`)
             : undefined;
         let portfolioRun: WorkflowRunDetail | undefined;
 
-        if (publication !== undefined) {
+        if (publication !== undefined)
           yield* writeJson("publication.json", publication);
+        if (assetRuns.every((entry) => entry.status === "completed")) {
           const firstDate = previousDay(
             new Date(`${run.processingDate}T00:00:00Z`),
           );
+          const holdingsAt = (primaryWeight: number, secondaryWeight: number) =>
+            symbols.map((assetSymbol, index) => ({
+              symbol: assetSymbol,
+              weight: index === 0 ? primaryWeight : secondaryWeight,
+            }));
           const { id } = yield* api<Portfolio>("POST", "/portfolios", {
             name: `${symbol} fixture portfolio`,
             snapshot: {
               holdingsDate: firstDate,
-              holdings: [{ symbol, weight: 0.75 }],
+              holdings: holdingsAt(0.75, 0.25),
             },
           });
           yield* api("POST", `/portfolios/${id}/snapshots`, {
             holdingsDate: run.processingDate,
-            holdings: [{ symbol, weight: 1.25 }],
+            holdings: holdingsAt(1.25, 0.25),
           });
           yield* writeJson(
             "portfolio.json",
@@ -236,7 +277,7 @@ const command = Command.make(
             "POST",
             "/workflows",
             {
-              name: "Portfolio price dependencies (fixture)",
+              name: "Portfolio volatility (fixture)",
               scope: "portfolio",
               enabled: true,
               schedule: { hourUtc: 4 },
@@ -258,6 +299,27 @@ const command = Command.make(
                     processingDate: { ref: "context.processingDate" },
                   },
                 },
+                {
+                  id: "volatility",
+                  type: "calculate-portfolio-volatility",
+                  params: { window: 3 },
+                  inputs: {
+                    holdings: { ref: "steps.holdings.outputs.holdings" },
+                    holdingsDate: {
+                      ref: "steps.holdings.outputs.holdingsDate",
+                    },
+                    publications: {
+                      ref: "steps.dependencies.outputs.publications",
+                    },
+                    processingDate: { ref: "context.processingDate" },
+                  },
+                },
+                {
+                  id: "publish",
+                  type: "publish-dataset",
+                  params: { dataset: "portfolio_volatility" },
+                  inputs: { data: { ref: "steps.volatility.outputs.data" } },
+                },
               ],
             },
           );
@@ -270,12 +332,20 @@ const command = Command.make(
             subject,
             processingDate: run.processingDate,
           });
-          yield* Effect.promise(() => service.platform.idle());
+          yield* idle;
           portfolioRun = yield* api<WorkflowRunDetail>(
             "GET",
             `/runs/${startedPortfolio.id}`,
           );
           yield* writeJson("portfolio-run.json", portfolioRun);
+          if (portfolioRun.status === "completed")
+            yield* writeJson(
+              "portfolio-publication.json",
+              yield* api<PublicationView>(
+                "GET",
+                `/datasets/portfolio_volatility/portfolio/${id}`,
+              ),
+            );
         }
 
         const show = (file: string) => path.relative(".", file) || ".";
@@ -302,10 +372,16 @@ const command = Command.make(
             `Portfolio:  ${show(path.join(out, "portfolio.json"))}`,
           );
         }
-        if (portfolioRun !== undefined)
+        if (portfolioRun !== undefined) {
           yield* Console.log(
             `Portfolio run ${portfolioRun.id}: ${portfolioRun.status} (${show(path.join(out, "portfolio-run.json"))})`,
           );
+          if (portfolioRun.status === "completed")
+            yield* Console.log(
+              `Published:  ${show(path.join(processedBucket, publishedDatasetKey("portfolio_volatility", portfolioRun.subject)))}`,
+            );
+          else yield* Console.error(portfolioRun.error);
+        }
         yield* Console.log(`Run record: ${show(path.join(out, "run.json"))}`);
         yield* Console.log(`Database:   ${show(path.join(out, "d1.sqlite"))}`);
         if (run.status !== "completed")
@@ -323,7 +399,7 @@ const command = Command.make(
     }).pipe(Effect.scoped),
 ).pipe(
   Command.withDescription(
-    "Run the asset prices workflow locally against fixture data",
+    "Run the asset and portfolio workflows locally against fixture data",
   ),
 );
 

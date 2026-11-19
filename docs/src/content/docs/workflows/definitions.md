@@ -83,13 +83,14 @@ identity; there is no structural subtyping.
 JSON Schema and its ports, every contract with its JSON Schema, and the
 run-context fields with the contract each provides per scope.
 
-| Step type                     | Scopes    | Inputs                                                       | Outputs                                          |
-| ----------------------------- | --------- | ------------------------------------------------------------ | ------------------------------------------------ |
-| `download-prices`             | asset     | `asset` (`asset-subject`), `throughDate` (`date`)            | `raw` (`raw-prices-eod`)                         |
-| `normalize-prices`            | asset     | `raw` (`raw-prices-eod`)                                     | `prices` (`prices-eod`)                          |
-| `publish-dataset`             | asset     | `data` (`prices-eod`)                                        | `publication` (`dataset-publication`)            |
-| `portfolio-holdings`          | portfolio | `portfolio` (`portfolio-subject`), `processingDate` (`date`) | `holdingsDate` (`date`), `holdings` (`holdings`) |
-| `wait-for-asset-publications` | portfolio | `holdings` (`holdings`), `processingDate` (`date`)           | `publications` (`published-asset-prices`)        |
+| Step type                        | Scopes           | Inputs                                                                                                                 | Outputs                                                                          |
+| -------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `download-prices`                | asset            | `asset` (`asset-subject`), `throughDate` (`date`)                                                                      | `raw` (`raw-prices-eod`)                                                         |
+| `normalize-prices`               | asset            | `raw` (`raw-prices-eod`)                                                                                               | `prices` (`prices-eod`)                                                          |
+| `publish-dataset`                | asset, portfolio | `data` (`publishable-dataset`)                                                                                         | `publication` (`dataset-publication`)                                            |
+| `portfolio-holdings`             | portfolio        | `portfolio` (`portfolio-subject`), `processingDate` (`date`)                                                           | `holdingsDate` (`date`), `holdings` (`holdings`)                                 |
+| `wait-for-asset-publications`    | portfolio        | `holdings` (`holdings`), `processingDate` (`date`)                                                                     | `publications` (`published-asset-prices`)                                        |
+| `calculate-portfolio-volatility` | portfolio        | `holdings` (`holdings`), `holdingsDate` (`date`), `publications` (`published-asset-prices`), `processingDate` (`date`) | `data` (`portfolio-volatility-data`), `summary` (`portfolio-volatility-summary`) |
 
 `download-prices` requests the asset's prices from its provider, from the
 asset's backfill start (or the optional `startDate` param) through
@@ -109,6 +110,11 @@ containing their matching publication list. The wait's `workflowId` parameter na
 upstream workflow. Its optional `timeoutSeconds` can shorten the default
 two-hour deadline. See [Dependency waits](/docs/workflows/runs/#dependency-waits).
 
+`calculate-portfolio-volatility` uses the effective snapshot and the matching
+published prices to calculate ex-ante volatility. Pass its `data` output to
+`publish-dataset` with `dataset: "portfolio_volatility"`. The `summary` output
+shows the volatility, return window and effective holdings date in the run.
+
 ## Validation
 
 `POST` and `PUT` reject a malformed body with `400`. A well-formed
@@ -122,7 +128,8 @@ each with a `path` into the submitted JSON:
 - a literal that does not satisfy the input's contract;
 - a reference that is malformed, names an unknown context field, an unknown
   step, the step itself, a later step, or an output the step does not have;
-- a reference whose contract differs from the input's.
+- a reference whose contract differs from the input's and is absent from its
+  explicit `accepts` list in the catalog.
 
 ```json
 {

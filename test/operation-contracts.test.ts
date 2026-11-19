@@ -57,6 +57,7 @@ test("a changed Pydantic schema changes the generated contracts", async () => {
   const changed = {
     ...exported,
     operations: {
+      ...exported.operations,
       "normalize-prices-eod": {
         ...operation,
         response: {

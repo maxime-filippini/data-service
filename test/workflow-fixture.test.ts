@@ -95,11 +95,17 @@ test(
         [
           {
             holdingsDate: "2024-01-04",
-            holdings: [{ symbol: "MSFT.US", weight: 0.75 }],
+            holdings: [
+              { symbol: "AAPL.US", weight: 0.25 },
+              { symbol: "MSFT.US", weight: 0.75 },
+            ],
           },
           {
             holdingsDate: "2024-01-05",
-            holdings: [{ symbol: "MSFT.US", weight: 1.25 }],
+            holdings: [
+              { symbol: "AAPL.US", weight: 0.25 },
+              { symbol: "MSFT.US", weight: 1.25 },
+            ],
           },
         ],
       );
@@ -111,39 +117,73 @@ test(
         kind: "portfolio",
         id: portfolio.id,
       });
-      const publications = portfolioRun.steps[1]?.outputs?.publications as {
-        id: string;
+      const calculation = portfolioRun.steps.find(
+        ({ id }) => id === "volatility",
+      );
+      assert.equal(calculation?.status, "completed");
+      const { volatility, ...summary } = calculation.outputs?.summary as {
+        volatility: number;
       };
+      // Sample standard deviation of the Jan 3/4/5 weighted returns times sqrt(252).
+      assert.ok(Math.abs(volatility - 0.16655193949753938) < 1e-12);
+      assert.deepEqual(summary, {
+        observations: 3,
+        windowStart: "2024-01-03",
+        windowEnd: "2024-01-05",
+        holdingsDate: "2024-01-05",
+      });
+      const assetRuns = JSON.parse(
+        readFileSync(join(out, "asset-runs.json"), "utf8"),
+      ) as WorkflowRunDetail[];
       assert.deepEqual(
-        JSON.parse(
-          readFileSync(
-            join(out, "r2", "raw-market-data", publications.id),
-            "utf8",
-          ),
-        ),
+        assetRuns.map(({ subject, status }) => [subject, status]),
         [
-          {
-            dataset: "prices_eod",
-            subject: detail.subject,
-            processingDate: detail.processingDate,
-            workflowId: detail.workflowId,
-            runId: detail.id,
-          },
+          [{ kind: "asset", symbol: "MSFT.US" }, "completed"],
+          [{ kind: "asset", symbol: "AAPL.US" }, "completed"],
         ],
       );
-      const holdings = portfolioRun.steps[0]?.outputs?.holdings as {
-        id: string;
-      };
-      assert.deepEqual(
+      const readRunArtifact = (output: unknown) =>
         JSON.parse(
-          readFileSync(join(out, "r2", "raw-market-data", holdings.id), "utf8"),
-        ),
+          readFileSync(
+            join(out, "r2", "raw-market-data", (output as { id: string }).id),
+            "utf8",
+          ),
+        ) as unknown;
+      assert.deepEqual(
+        readRunArtifact(portfolioRun.steps[0]?.outputs?.holdings),
         {
           portfolio: portfolioRun.subject,
-          processingDate: detail.processingDate,
-          holdingsDate: detail.processingDate,
-          holdings: [{ symbol: "MSFT.US", weight: 1.25 }],
+          processingDate: portfolioRun.processingDate,
+          holdingsDate: "2024-01-05",
+          holdings: portfolio.snapshots[1]?.holdings,
         },
+      );
+      assert.deepEqual(
+        readRunArtifact(portfolioRun.steps[1]?.outputs?.publications),
+        [...assetRuns].reverse().map((upstream) => ({
+          dataset: "prices_eod",
+          subject: upstream.subject,
+          processingDate: upstream.processingDate,
+          workflowId: upstream.workflowId,
+          runId: upstream.id,
+        })),
+      );
+      const volatilityPublication = JSON.parse(
+        readFileSync(join(out, "portfolio-publication.json"), "utf8"),
+      ) as PublicationView;
+      assert.equal(volatilityPublication.dataset, "portfolio_volatility");
+      assert.equal(volatilityPublication.producer.runId, portfolioRun.id);
+      const volatilityPath = join(
+        out,
+        "r2",
+        "processed-market-data",
+        "dataset=portfolio_volatility",
+        `portfolio=${portfolio.id}`,
+        "data.parquet",
+      );
+      assert.equal(
+        volatilityPublication.size,
+        readFileSync(volatilityPath).byteLength,
       );
 
       assert.ok(existsSync(join(out, "d1.sqlite")));

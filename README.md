@@ -117,11 +117,12 @@ engine (calculation types, saving params, runs) show its error.
 To follow the new workflow path locally without credentials, run
 `pnpm workflow:fixture` (it needs uv): it starts the Python service, creates
 a download-normalize-publish definition, makes it the asset default and
-creates an asset through the API, runs it (by hand, or with `--scheduled`
-through the daily dispatcher) against fixture data with the same executor and Python
-operations, and leaves the database, run artifacts, published Parquet file
-and run record in `.local/workflow-fixture/` (see the
-[workflow runs docs](docs/src/content/docs/workflows/runs.md)). After
+creates assets through the API. The asset runs publish fixture prices. A
+portfolio with changing holdings then consumes those publications, calculates
+ex-ante volatility in Python and publishes the result. Use `--scheduled` to
+start the asset runs through the daily dispatcher. The database, run artifacts,
+published Parquet files and run records are in `.local/workflow-fixture/`.
+See the [workflow runs docs](docs/src/content/docs/workflows/runs.md). After
 changing a Python operation's Pydantic models, run
 `pnpm operations:generate` to regenerate the TypeScript contracts
 ([docs](docs/src/content/docs/workflows/datasets.md)).

@@ -157,7 +157,8 @@ export const validateWorkflowSpec = (
       if (
         port !== undefined &&
         provided !== undefined &&
-        provided.id !== port.contract.id
+        provided.id !== port.contract.id &&
+        !port.contract.accepts?.includes(provided.id)
       )
         issue(
           refPath,

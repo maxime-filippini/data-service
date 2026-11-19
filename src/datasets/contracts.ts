@@ -8,17 +8,26 @@
 
 import { Schema } from "effect";
 
-import { canonicalKey, DatasetSchema } from "$/market-data/schemas";
 import { type Subject, SubjectKindSchema } from "$/workflows/contracts";
 
 /** The datasets workflows can publish. */
-export const PublishedDatasetSchema = DatasetSchema;
+export const PublishedDatasetSchema = Schema.Literals([
+  "prices_eod",
+  "portfolio_volatility",
+]);
 export type PublishedDataset = typeof PublishedDatasetSchema.Type;
 
-/** The artifact schema each dataset's published data must have. */
-export const DATASET_ARTIFACT_SCHEMAS = {
-  prices_eod: "prices-eod/v1",
-} as const satisfies Record<PublishedDataset, string>;
+/** The subject kind and artifact schema required by each dataset. */
+export const PUBLISHED_DATASETS = {
+  prices_eod: { subjectKind: "asset", schema: "prices-eod/v1" },
+  portfolio_volatility: {
+    subjectKind: "portfolio",
+    schema: "portfolio-volatility/v1",
+  },
+} as const satisfies Record<
+  PublishedDataset,
+  { readonly subjectKind: Subject["kind"]; readonly schema: string }
+>;
 
 /**
  * Where a dataset's current data lives in the processed bucket. Asset
@@ -30,7 +39,7 @@ export const publishedDatasetKey = (
   subject: Subject,
 ) =>
   subject.kind === "asset"
-    ? canonicalKey(dataset, subject.symbol)
+    ? `dataset=${dataset}/symbol=${subject.symbol}/data.parquet`
     : `dataset=${dataset}/portfolio=${subject.id}/data.parquet`;
 
 /** Query filters for listing publications. */

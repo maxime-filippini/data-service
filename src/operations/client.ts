@@ -21,6 +21,14 @@ export type OperationRequest<N extends OperationName> =
 export type OperationResponse<N extends OperationName> =
   Operations[N]["response"]["Type"];
 
+/** Widen each generated schema while keeping the types tied to its operation name. */
+const operationContracts: {
+  readonly [N in OperationName]: {
+    readonly request: Schema.Codec<OperationRequest<N>, unknown>;
+    readonly response: Schema.Codec<OperationResponse<N>, unknown>;
+  };
+} = operations;
+
 /**
  * A failed call. `transient` (unreachable service, storage trouble, an
  * unexpected Python error) may succeed when retried; `terminal` (invalid
@@ -114,7 +122,7 @@ export const HttpPythonOperationsLive = (
     PythonOperations.of({
       invoke: (name, request) =>
         Effect.gen(function* () {
-          const operation = operations[name];
+          const operation = operationContracts[name];
           const valid = validate(operation.request, request);
           if (Result.isFailure(valid))
             return yield* terminal(
@@ -150,7 +158,7 @@ export const HttpPythonOperationsLive = (
             return yield* terminal(
               `The ${name} response does not satisfy its contract: ${output.failure}`,
             );
-          return output.success as OperationResponse<typeof name>;
+          return output.success;
         }),
     }),
   );
