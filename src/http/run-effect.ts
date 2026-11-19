@@ -2,12 +2,14 @@ import { Effect, type Layer, Result } from "effect";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+import type { AssetError } from "$/assets/contracts";
 import type { CalculationError } from "$/calculations/contracts";
 import type { EngineError } from "$/calculations/engine";
 import type { ScheduleError } from "$/market-data/schedule/contracts";
 import type { PipelineStatusError } from "$/market-data/status";
 import type { SymbolRegistryError } from "$/market-data/symbol-registry";
 import type { PortfolioError } from "$/portfolios/contracts";
+import type { WorkflowError } from "$/workflows/contracts";
 
 const calculationStatus = {
   not_found: 404,
@@ -32,8 +34,23 @@ const portfolioStatus = {
   database: 500,
 } as const satisfies Record<PortfolioError["kind"], ContentfulStatusCode>;
 
+const assetStatus = {
+  not_found: 404,
+  conflict: 409,
+  database: 500,
+} as const satisfies Record<AssetError["kind"], ContentfulStatusCode>;
+
+const workflowStatus = {
+  not_found: 404,
+  conflict: 409,
+  invalid: 422,
+  database: 500,
+} as const satisfies Record<WorkflowError["kind"], ContentfulStatusCode>;
+
 /** Expected failures exposed by the Worker's JSON routes. */
 type RequestError =
+  | AssetError
+  | WorkflowError
   | CalculationError
   | EngineError
   | PortfolioError
@@ -46,6 +63,13 @@ const httpException = (error: RequestError): HTTPException => {
   let status: ContentfulStatusCode;
   let extra: Record<string, unknown> = {};
   switch (error._tag) {
+    case "AssetError":
+      status = assetStatus[error.kind];
+      break;
+    case "WorkflowError":
+      status = workflowStatus[error.kind];
+      if (error.issues !== undefined) extra = { issues: error.issues };
+      break;
     case "CalculationError":
       status = calculationStatus[error.kind];
       if (error.portfolioIds !== undefined)
