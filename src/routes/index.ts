@@ -17,6 +17,7 @@ import { createCalculationRoutes } from "$/routes/calculations";
 import { createDocsRoutes } from "$/routes/docs";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
+import { createRunRoutes } from "$/routes/runs";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
@@ -78,6 +79,7 @@ export const createRoutes = (
     "/step-types",
     createStepTypeRoutes(dependencies.workflowsFor, requireManagementToken),
   );
+  api.route("/runs", createRunRoutes(dependencies, requireManagementToken));
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
   const app = new Hono<{ Bindings: CloudflareBindings }>();

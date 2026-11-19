@@ -37,6 +37,7 @@ import { createAssetRoutes } from "$/routes/assets";
 import { createCalculationRoutes } from "$/routes/calculations";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
+import { createRunRoutes } from "$/routes/runs";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
@@ -287,6 +288,9 @@ export const createAppApiRoutes = (
     "/step-types",
     createStepTypeRoutes(dependencies.workflowsFor, accessChecked),
   );
+  // `/runs` here is the legacy ingestion history, so workflow runs live at
+  // `/workflow-runs` (the management API serves them at `/api/runs`).
+  app.route("/workflow-runs", createRunRoutes(dependencies, accessChecked));
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));
 

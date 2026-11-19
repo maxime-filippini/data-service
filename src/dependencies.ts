@@ -9,8 +9,11 @@ import type { ScheduleWorkflow } from "$/market-data/schedule/operations";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
+import { R2RunArtifactsLive } from "$/workflows/artifacts";
 import { D1WorkflowsLive } from "$/workflows/d1";
 import { StepRegistryLive } from "$/workflows/registry";
+import type { RunPlatform } from "$/workflows/runs/contracts";
+import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 
 /**
  * Select real adapters using the current request's Cloudflare bindings.
@@ -39,6 +42,13 @@ export const dependencies = {
   // Definitions are validated and inspected against the code-owned registry.
   workflowsFor: (env: CloudflareBindings) =>
     Layer.merge(D1WorkflowsLive(env.MARKET_DATA_DB), StepRegistryLive),
+  // Run records in D1; run artifacts under `runs/` in the raw bucket.
+  workflowRunsFor: (env: CloudflareBindings) =>
+    Layer.merge(
+      D1WorkflowRunsLive(env.MARKET_DATA_DB),
+      R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
+    ),
+  runPlatformFor: (env: CloudflareBindings): RunPlatform => env.WORKFLOW_RUNS,
 };
 
 /**
