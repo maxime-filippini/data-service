@@ -43,6 +43,30 @@ export const publishDataset = defineStepType({
       description: "The published dataset's identity",
     },
   },
+  validateConfiguration: ({ dataset }, scope, inputs) => {
+    const expected = PUBLISHED_DATASETS[dataset];
+    if (scope !== expected.subjectKind)
+      return [
+        {
+          path: ["params", "dataset"],
+          message: `${dataset} can only be published for a subject of kind ${expected.subjectKind}`,
+        },
+      ];
+    const data = inputs.data;
+    if (
+      data !== undefined &&
+      "value" in data &&
+      Schema.is(publishableDataset.schema)(data.value) &&
+      data.value.schema !== expected.schema
+    )
+      return [
+        {
+          path: ["inputs", "data", "value"],
+          message: `${dataset} must be published from ${expected.schema} data`,
+        },
+      ];
+    return [];
+  },
   implementation: ({ params, inputs, context, execution }) =>
     Effect.gen(function* () {
       const expected = PUBLISHED_DATASETS[params.dataset];

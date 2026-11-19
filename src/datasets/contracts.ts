@@ -8,6 +8,7 @@
 
 import { Schema } from "effect";
 
+import { canonicalKey } from "$/market-data/schemas";
 import { type Subject, SubjectKindSchema } from "$/workflows/contracts";
 
 /** The datasets workflows can publish. */
@@ -15,8 +16,6 @@ export const PublishedDatasetSchema = Schema.Literals([
   "prices_eod",
   "portfolio_volatility",
 ]);
-export type PublishedDataset = typeof PublishedDatasetSchema.Type;
-
 /** The subject kind and artifact schema required by each dataset. */
 export const PUBLISHED_DATASETS = {
   prices_eod: { subjectKind: "asset", schema: "prices-eod/v1" },
@@ -28,19 +27,6 @@ export const PUBLISHED_DATASETS = {
   PublishedDataset,
   { readonly subjectKind: Subject["kind"]; readonly schema: string }
 >;
-
-/**
- * Where a dataset's current data lives in the processed bucket. Asset
- * datasets keep the location existing consumers read (the app's explorer,
- * calculations): `dataset=<name>/symbol=<SYMBOL>/data.parquet`.
- */
-export const publishedDatasetKey = (
-  dataset: PublishedDataset,
-  subject: Subject,
-) =>
-  subject.kind === "asset"
-    ? `dataset=${dataset}/symbol=${subject.symbol}/data.parquet`
-    : `dataset=${dataset}/portfolio=${subject.id}/data.parquet`;
 
 /** Query filters for listing publications. */
 export const PublicationsQuerySchema = Schema.Struct({
@@ -56,6 +42,8 @@ export const PublicationParamsSchema = Schema.Struct({
   subjectId: Schema.NonEmptyString,
 });
 
+export type PublishedDataset = typeof PublishedDatasetSchema.Type;
+
 /**
  * Expected failure reading or publishing datasets: no publication or data,
  * a database outage, or object storage failing.
@@ -67,5 +55,14 @@ export class DatasetError extends Schema.TaggedError<DatasetError>()(
     message: Schema.String,
   },
 ) {}
+
+/** The canonical object for a dataset and a subject of its supported kind. */
+export const publishedDatasetKey = (
+  dataset: PublishedDataset,
+  subject: Subject,
+) =>
+  subject.kind === "asset"
+    ? canonicalKey("prices_eod", subject.symbol)
+    : `dataset=${dataset}/portfolio=${subject.id}/data.parquet`;
 
 export type * from "./views";
