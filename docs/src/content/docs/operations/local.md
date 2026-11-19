@@ -41,6 +41,17 @@ pnpm docs:dev          # http://localhost:4321/docs/
 same local D1 database as `pnpm dev`, and it forwards `/app-api` to the Worker
 on 8787, so run both. It always signs you in as `local@localhost`.
 
+## Workflows against fixtures
+
+```sh
+pnpm workflow:fixture
+```
+
+Runs the asset download workflow through the API, executor and step
+implementations without credentials, network or wrangler, and writes the
+database, raw artifact and run record to `.local/workflow-fixture/`. See
+[Workflow runs](/docs/workflows/runs/#running-locally-against-fixtures).
+
 ## Limits of `pnpm dev`
 
 `pnpm dev` can't run the full pipeline: the containers read real R2 while the

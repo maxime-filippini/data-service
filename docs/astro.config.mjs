@@ -37,7 +37,7 @@ export default defineConfig({
         },
         {
           label: "Workflows",
-          items: ["workflows/definitions"],
+          items: ["workflows/definitions", "workflows/runs"],
         },
         {
           label: "Calculations",

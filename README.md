@@ -114,6 +114,13 @@ local Worker writes to simulated buckets. To try the dashboard without them,
 run `pnpm exec wrangler dev --enable-containers=false`; pages that need the
 engine (calculation types, saving params, runs) show its error.
 
+To follow the new workflow path locally without credentials, run
+`pnpm workflow:fixture`: it creates an asset, a download definition and an
+assignment through the API, runs it against fixture data with the same
+executor, and leaves the database, raw artifact and run record in
+`.local/workflow-fixture/` (see the
+[workflow runs docs](docs/src/content/docs/workflows/runs.md)).
+
 ## Managing symbols
 
 The management API is served under `/api` at
@@ -322,6 +329,8 @@ there:
 - **`/assets`** and **`/workflows`** show assets and workflow definitions
   read-only: each definition's schedule, assignments and ordered steps with
   their parameters and input/output connections.
+- **`/workflow-runs`** lists workflow runs; a run's page shows each step's
+  status, attempts, errors and outputs, with links to its artifacts.
 - **`/calculations`** creates and edits calculations, pauses or enables them,
   runs them for any as-of date and shows their runs.
 - **`/explore`** browses each symbol's Parquet data and each calculation's
