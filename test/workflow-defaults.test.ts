@@ -5,6 +5,7 @@ import type {
   WorkflowAssignment,
   WorkflowDefault,
 } from "$/workflows/contracts";
+import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 
 import { assetPricesSpec, workflowService } from "./support/workflow-service";
 
@@ -211,4 +212,58 @@ test("removing a definition removes it from the defaults", async () => {
     ).assignments,
     [],
   );
+});
+
+test("the app's pages read the defaults, assigned schedules and scheduled outcomes", async () => {
+  const { api, json, pages, createAsset, createWorkflow, dependencies, env } =
+    workflowService({
+      platform: { autoStart: false },
+      env: { WORKFLOW_DISPATCH: "on" },
+    });
+  const prices = await createWorkflow(assetPricesSpec(6));
+  const other = await createWorkflow(assetPricesSpec(9, "Other"));
+  await json(api(`/workflow-defaults/asset/${prices}`, "PUT"));
+  await createAsset("AAPL.US");
+
+  const defaults = await pages.workflowDefaults();
+  assert.deepEqual(
+    defaults.map((entry) => [entry.subjectKind, entry.workflowName]),
+    [["asset", "Daily asset prices"]],
+  );
+  assert.equal((await pages.workflow(prices)).isDefault, true);
+  assert.equal((await pages.workflow(other)).isDefault, false);
+
+  const asset = await pages.asset("AAPL.US");
+  assert.deepEqual(
+    asset.assignments.map((assignment) => [
+      assignment.workflowName,
+      assignment.schedule.hourUtc,
+      assignment.workflowEnabled,
+    ]),
+    [["Daily asset prices", 6, true]],
+  );
+
+  // A dispatched occurrence and a manual run, told apart by trigger.
+  await scheduledWorkflowTick(
+    dependencies,
+    env,
+    new Date("2024-01-10T06:00:00Z"),
+  );
+  await json(
+    api("/runs", "POST", {
+      workflowId: prices,
+      subject: { kind: "asset", symbol: "AAPL.US" },
+    }),
+    202,
+  );
+  const scheduled = await pages.workflowRuns({ trigger: "schedule" });
+  assert.deepEqual(
+    scheduled.map((run) => [run.scheduledFor, run.status]),
+    [["2024-01-10T06:00:00.000Z", "queued"]],
+  );
+  assert.deepEqual(
+    (await pages.workflowRuns({ trigger: "manual" })).map((run) => run.status),
+    ["skipped"],
+  );
+  assert.equal((await pages.workflowRuns({ trigger: "bogus" })).length, 2);
 });

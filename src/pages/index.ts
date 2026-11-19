@@ -23,7 +23,11 @@ import {
   inspectWorkflowById,
   subjectAssignments,
 } from "$/workflows/operations";
-import { RunIdSchema, RunStatusSchema } from "$/workflows/runs/contracts";
+import {
+  RunIdSchema,
+  RunStatusSchema,
+  RunTriggerSchema,
+} from "$/workflows/runs/contracts";
 import { WorkflowRuns } from "$/workflows/runs/store";
 import { Workflows } from "$/workflows/store";
 
@@ -201,29 +205,40 @@ export const pageData = (
 
     workflows: () => workflows(Workflows.use((w) => w.list())),
 
+    workflowDefaults: () => workflows(Workflows.use((w) => w.listDefaults())),
+
     workflow: async (id) => {
       if (!isUuid(WorkflowIdSchema, id))
         throw new PageDataError(404, "Workflow not found");
-      const [inspected, runs] = await Promise.all([
+      const [inspected, defaults, runs] = await Promise.all([
         workflows(inspectWorkflowById(id)),
+        workflows(Workflows.use((w) => w.listDefaults())),
         workflowRuns(
           WorkflowRuns.use((r) =>
             r.list({ workflowId: id, limit: RECENT_RUNS }),
           ),
         ),
       ]);
-      return { ...inspected, runs };
+      return {
+        ...inspected,
+        isDefault: defaults.some((entry) => entry.workflowId === id),
+        runs,
+      };
     },
 
     workflowRuns: (filter) => {
       const status = Schema.is(RunStatusSchema)(filter.status)
         ? filter.status
         : undefined;
+      const trigger = Schema.is(RunTriggerSchema)(filter.trigger)
+        ? filter.trigger
+        : undefined;
       const symbol = filter.symbol?.trim().toUpperCase();
       return workflowRuns(
         WorkflowRuns.use((r) =>
           r.list({
             ...(status === undefined ? {} : { status }),
+            ...(trigger === undefined ? {} : { trigger }),
             ...(symbol ? { subject: { kind: "asset", id: symbol } } : {}),
             limit: WORKFLOW_RUN_PAGE_SIZE,
           }),

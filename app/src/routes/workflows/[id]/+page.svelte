@@ -25,6 +25,12 @@
   <dd class="mono">Daily at {formatHourUtc(workflow.schedule.hourUtc)}</dd>
   <dt>Enabled</dt>
   <dd>{workflow.enabled ? "On" : "Paused"}</dd>
+  <dt>Default</dt>
+  <dd>
+    {data.isDefault
+      ? `Assigned to each new ${workflow.scope}`
+      : "Not a default"}
+  </dd>
   <dt>ID</dt>
   <dd class="mono">{workflow.id}</dd>
   <dt>Updated</dt>
