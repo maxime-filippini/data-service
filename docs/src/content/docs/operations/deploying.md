@@ -68,6 +68,16 @@ database (`data-service-market-data-dev`), buckets (`raw-market-data-dev`,
 `processed-market-data-dev`), queues (`*-dev`), Workflows and secrets, and
 **no cron**: use "Run now" or `POST /schedule/runs` to try the schedule there.
 
+## Workflow dispatch switch
+
+The `WORKFLOW_DISPATCH` var in `wrangler.jsonc` decides whether the hourly
+cron also [dispatches workflow assignments](/docs/workflows/runs/#scheduled-dispatch).
+It is `"off"` for production and dev: the legacy
+[daily schedule](/docs/pipeline/schedule/) owns automatic downloads, and
+running both would download twice. Set it to `"on"` only as part of the
+download cutover, after stopping the legacy schedule. Dev has no cron, so the
+switch has no effect there.
+
 ## Resources and secrets
 
 Remote resources: the D1 database, the raw and processed buckets, and the

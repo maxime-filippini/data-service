@@ -116,8 +116,9 @@ engine (calculation types, saving params, runs) show its error.
 
 To follow the new workflow path locally without credentials, run
 `pnpm workflow:fixture` (it needs uv): it starts the Python service, creates
-an asset, a download-normalize-publish definition and an assignment through
-the API, runs it against fixture data with the same executor and Python
+a download-normalize-publish definition, makes it the asset default and
+creates an asset through the API, runs it (by hand, or with `--scheduled`
+through the daily dispatcher) against fixture data with the same executor and Python
 operations, and leaves the database, run artifacts, published Parquet file
 and run record in `.local/workflow-fixture/` (see the
 [workflow runs docs](docs/src/content/docs/workflows/runs.md)). After

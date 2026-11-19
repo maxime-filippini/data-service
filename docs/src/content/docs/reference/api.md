@@ -60,6 +60,11 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 | `POST`   | `/api/workflows/:id/assignments`                | Assign it to an asset or portfolio                    |
 | `PATCH`  | `/api/workflows/:id/assignments/:kind/:subject` | Enable or disable one assignment                      |
 | `DELETE` | `/api/workflows/:id/assignments/:kind/:subject` | Remove one assignment                                 |
+| `GET`    | `/api/workflow-assignments`                     | Assignments with their schedules (filters)            |
+| `GET`    | `/api/workflow-defaults`                        | Defaults per subject kind (`?subjectKind=`)           |
+| `PUT`    | `/api/workflow-defaults/:kind/:id`              | Make a definition a default for new subjects          |
+| `DELETE` | `/api/workflow-defaults/:kind/:id`              | Stop assigning it to new subjects                     |
+| `POST`   | `/api/workflow-defaults/:kind/apply`            | Add missing default assignments to existing subjects  |
 | `POST`   | `/api/runs`                                     | Run an assignment now (`processingDate` optional)     |
 | `GET`    | `/api/runs`                                     | Runs, newest first (filters, `?limit=` up to 200)     |
 | `GET`    | `/api/runs/:runId`                              | One run with its step outcomes                        |
@@ -197,7 +202,21 @@ problem in `issues`; a rejected `PUT` changes nothing. Assigning to a missing
 subject or one of the other kind returns `422`, assigning twice `409`, and a
 `PUT` that changes the scope while assignments exist `409`. Portfolio
 assignments use `{"kind":"portfolio","id":"<uuid>"}` and
-`/assignments/portfolio/<uuid>`. See
+`/assignments/portfolio/<uuid>`.
+
+```sh
+curl "$URL/api/workflow-assignments?subjectKind=asset&subjectId=AAPL.US" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X PUT "$URL/api/workflow-defaults/asset/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X POST "$URL/api/workflow-defaults/asset/apply" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+Assignments carry their definition's `schedule` and `workflowEnabled`. A
+default is assigned to subjects created afterwards; making a definition of
+the other scope a default returns `422`, an unknown definition `404`.
+Applying the defaults adds only missing assignments and never re-enables a
+disabled one. The app serves the same routes at `/app-api/workflow-defaults`
+and `/app-api/workflow-assignments`. See
 [Assets and workflow definitions](/docs/workflows/definitions/).
 
 ## Runs
@@ -210,6 +229,8 @@ curl -X POST "$URL/api/runs" \
 
 curl "$URL/api/runs?subjectKind=asset&subjectId=AAPL.US&status=failed" \
   -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/runs?trigger=schedule&status=skipped" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 curl "$URL/api/runs/$RUN" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 curl -X POST "$URL/api/runs/$RUN/rerun" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 curl "$URL/api/runs/$RUN/steps/download/artifacts/raw" \
@@ -220,7 +241,9 @@ Starting a run returns `202` with the run (`queued`, or `skipped` when the
 assignment already has an active run). The processing date defaults to
 today's UTC date. A disabled definition, assignment or asset returns `409`,
 an unknown definition or assignment `404`. Deleting a definition, assignment
-or asset while it has an active run returns `409`. The app serves the same
+or asset while it has an active run returns `409`. Scheduled runs have
+`trigger: "schedule"` and `scheduledFor`, their daily occurrence; they are
+dispatched only where `WORKFLOW_DISPATCH` is `on`. The app serves the same
 routes at `/app-api/workflow-runs` (its `/app-api/runs` is the legacy
 ingestion history). See [Workflow runs](/docs/workflows/runs/).
 
