@@ -126,7 +126,7 @@ These details complete the agreed model; they are proposed synthesis defaults ra
 
 ## Testing Decisions
 
-- Primary proposed seam: the public application/API boundary driving a fixture-backed execution scenario. Create subjects, submit complete definitions, run the same executor and real Python operations, and assert run outcomes and published datasets. Avoid mocking each internal module or asserting private call sequences. This is the highest useful seam for the maintainer's understanding goal.
+- Confirmed primary seam: the public application/API boundary driving a fixture-backed execution scenario. Create subjects, submit complete definitions, run the same executor and real Python operations, and assert run outcomes and published datasets. Avoid mocking each internal module or asserting private call sequences. This is the highest useful seam for the maintainer's understanding goal.
 - Reuse the existing real-migration SQLite D1 test adapter, request-level Hono tests, dependency-injected Effect services, and narrow durable Steps adapter. Extend the latter only as needed for durable waits; do not create a separate local workflow engine with different semantics.
 - Keep focused Python numerical and transformation tests, including existing injected data loaders and storage test doubles. They verify math and schema behavior independently from the orchestration acceptance scenario.
 - Cross-language acceptance runs the real Python dispatcher through its HTTP boundary with shared local storage. Generated contract checks detect stale exports and incompatible responses; TypeScript compile-time types do not replace runtime validation.
@@ -162,6 +162,7 @@ branch; this specification is based on develop and must not inherit those commit
 
 Remaining review choices are the concrete defaults explicitly marked above, particularly
 retry counts, dependency timeout, and manual-run enablement. They do not reopen the
-settled architecture. Test-seam confirmation and issue-tracker publication status are
-recorded during specification handoff. Publication with ready-for-agent is the requested
-triage state; it does not authorize a production deployment.
+settled architecture. The maintainer confirmed the API/fixture acceptance seam,
+focused numerical tests, and separate Cloudflare durability smoke test. The
+maintainer also confirmed publication to the repository GitHub Issues with the
+ready-for-agent label. That triage state does not authorize a production deployment.
