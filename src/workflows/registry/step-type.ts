@@ -95,14 +95,6 @@ export class StepFailure extends Schema.TaggedError<StepFailure>()(
   { retry: Schema.Boolean, message: Schema.String },
 ) {}
 
-/** A transient step failure, retried within the step's policy. */
-export const transient = (message: string) =>
-  new StepFailure({ retry: true, message });
-
-/** A terminal step failure, which stops the run. */
-export const terminal = (message: string) =>
-  new StepFailure({ retry: false, message });
-
 /** The services step implementations can use. */
 export type StepServices =
   | Assets
@@ -161,6 +153,14 @@ export interface StepType<
     ): Effect.Effect<WaitCheck<PortValues<O>>, StepFailure, StepServices>;
   };
 }
+
+/** A transient step failure, retried within the step's policy. */
+export const transient = (message: string) =>
+  new StepFailure({ retry: true, message });
+
+/** A terminal step failure, which stops the run. */
+export const terminal = (message: string) =>
+  new StepFailure({ retry: false, message });
 
 /** Declare a step type, inferring its params, input and output types. */
 export const defineStepType = <P, I extends Ports, O extends Ports>(

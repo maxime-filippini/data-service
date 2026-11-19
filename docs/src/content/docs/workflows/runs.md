@@ -224,6 +224,15 @@ publication references and continues when ready. A timeout fails the run
 and leaves the last missing inputs in the outcome. The checks do not
 launch upstream runs.
 
+Only publications ready by the deadline can satisfy the wait. Platform
+scheduling and infrastructure retries can delay the final outcome. The
+step's attempt count tracks starts of the wait itself. Each dependency check
+is a separate platform checkpoint.
+
+The holdings and publication-reference lists are inline step outputs. They
+share the 32 KiB serialized output limit with other step outputs, so a large
+portfolio can exceed the workflow limit even when its holdings are valid.
+
 ## Artifacts
 
 Data too large for a step output is stored as a temporary run artifact under
