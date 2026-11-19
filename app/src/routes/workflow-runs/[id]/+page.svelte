@@ -75,7 +75,7 @@
   const datasetsHref = (subject: SubjectView) =>
     subject.kind === "asset"
       ? `${href("assets", { id: subject.symbol })}#datasets`
-      : href("portfolios", { id: subject.id });
+      : `${href("portfolios", { id: subject.id })}#datasets`;
 
   const outputs = (step: StepOutcome) => Object.entries(step.outputs ?? {});
 </script>
@@ -178,6 +178,14 @@
                 >
                 (processing date
                 <span class="mono">{value.processingDate}</span>) ·
+                <a
+                  href={href("explore", {
+                    dataset: value.dataset,
+                    kind: value.subject.kind,
+                    subject: subjectLabel(value.subject),
+                  })}>explore</a
+                >
+                ·
                 <a href={publicationDataUrl(value.dataset, value.subject)}
                   >current data</a
                 >

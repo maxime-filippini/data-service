@@ -4,187 +4,237 @@ import test from "node:test";
 import { Layer } from "effect";
 
 import { D1AssetsLive } from "$/assets/d1";
-import { D1CalculationsLive } from "$/calculations/d1";
-import type { Dependencies } from "$/dependencies";
-import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
-import { D1PipelineStatusLive } from "$/market-data/status/d1";
-import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
-import { PageDataError, pageData } from "$/pages";
-import { D1PortfoliosLive } from "$/portfolios/d1";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
+import type { Dependencies } from "$/dependencies";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { memoryDatasetObjectStore } from "$/local/published";
+import { PageDataError, pageData } from "$/pages";
+import { D1PortfoliosLive } from "$/portfolios/d1";
 import { D1WorkflowsLive } from "$/workflows/d1";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import { StepRegistryLive } from "$/workflows/registry";
+import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 
 import { makeTestDatabase } from "./support/d1";
-import { makeFakeEngine } from "./support/engine";
 
-const CALC_A = "0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b";
-
-const CALC_B = "1d8f9a2b-3c4e-4f6a-9b0c-2d3e4f5a6b7c";
-
-const CALC_PAUSED = "2e9a0b3c-4d5f-4a7b-8c1d-3e4f5a6b7c8d";
+const WORKFLOW_A = "0c7e8f1a-2b3d-4e5f-8a9b-1c2d3e4f5a6b";
+const WORKFLOW_B = "1d8f9a2b-3c4e-4f6a-9b0c-2d3e4f5a6b7c";
+const PORTFOLIO_ID = "2e9a0b3c-4d5f-4a7b-8c1d-3e4f5a6b7c8d";
+const RUN_1 = "3f0b1c4d-5e6a-4b8c-9d2e-4f5a6b7c8d9e";
+const RUN_2 = "4a1c2d5e-6f7b-4c9d-8e3f-5a6b7c8d9e0f";
 
 type Sqlite = ReturnType<typeof makeTestDatabase>["sqlite"];
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
-  const workflow = {
-    create: async () => ({ id: "unused" }) as WorkflowInstance,
-    get: async (id: string) => ({ id }) as WorkflowInstance,
-  };
   const dependencies: Dependencies = {
-    statusFor: () => D1PipelineStatusLive(db),
-    registryFor: () => D1SymbolRegistryLive(db),
-    scheduleFor: () => D1ScheduleStoreLive(db),
-    downloadWorkflowFor: () => workflow,
-    portfoliosFor: () => D1PortfoliosLive(db),
-    engineFor: () => makeFakeEngine().layer,
-    calculationsFor: () => D1CalculationsLive(db),
-    runWorkflowFor: () => workflow,
     assetsFor: () => D1AssetsLive(db),
+    portfoliosFor: () => D1PortfoliosLive(db),
     workflowsFor: () => Layer.merge(D1WorkflowsLive(db), StepRegistryLive),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
+    runPlatformFor: () => ({
+      create: async () => ({ id: "unused" }) as WorkflowInstance,
+      get: async (id: string) => ({ id }) as WorkflowInstance,
+    }),
     datasetsFor: () =>
       Layer.merge(
         D1DatasetPublicationStoreLive(db),
         memoryDatasetObjectStore().layer,
       ),
-  } as unknown as Dependencies;
+  };
   return { sqlite, pages: pageData({} as CloudflareBindings, dependencies) };
 };
 
-const insertSymbol = (sqlite: Sqlite, symbol: string, enabled = 1) =>
+const insertAsset = (sqlite: Sqlite, symbol: string, enabled = 1) =>
   sqlite
     .prepare(
-      `INSERT INTO tracked_symbols VALUES ('prices_eod', ?, 'eodhd', ?, '2016-01-01',
-         '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`,
+      `INSERT INTO assets
+         (symbol, provider, backfill_start_date, enabled, created_at, updated_at)
+       VALUES (?, 'eodhd', '2024-01-01', ?, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`,
     )
     .run(symbol, enabled);
 
-const insertFailedRun = (
-  sqlite: Sqlite,
-  id: string,
-  symbol: string,
-  createdAt: string,
-) =>
-  sqlite
-    .prepare(
-      `INSERT INTO ingestion_runs (run_id, dataset, symbol, provider, requested_from, requested_to,
-         status, created_at, completed_at, error)
-       VALUES (?, 'prices_eod', ?, 'eodhd', '2016-01-01', '2026-10-27', 'failed', ?, ?, 'Provider said no')`,
-    )
-    .run(id, symbol, createdAt, createdAt);
-
-const insertCalculation = (
+const insertWorkflow = (
   sqlite: Sqlite,
   id: string,
   name: string,
-  cron: string,
+  scope: "asset" | "portfolio",
+  hourUtc: number,
   enabled = 1,
 ) =>
   sqlite
     .prepare(
-      `INSERT INTO calculations (calculation_id, name, type, params_json, cron, enabled, created_at, updated_at)
-       VALUES (?, ?, 'ex_ante_vol', '{}', ?, ?, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`,
+      `INSERT INTO workflow_definitions
+         (workflow_id, name, scope, enabled, schedule_hour_utc, steps_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, '[]', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`,
     )
-    .run(id, name, cron, enabled);
+    .run(id, name, scope, enabled, hourUtc);
 
-const insertCalculationRun = (
+const insertRun = (
   sqlite: Sqlite,
-  runId: string,
-  calculationId: string,
-  status: string,
-  createdAt: string,
+  run: {
+    id: string;
+    workflowId: string;
+    workflowName: string;
+    subjectKind: "asset" | "portfolio";
+    subjectId: string;
+    trigger: "manual" | "schedule";
+    status: string;
+    createdAt: string;
+  },
 ) =>
   sqlite
     .prepare(
-      `INSERT INTO calculation_runs (run_id, calculation_id, trigger, as_of, params_json, status, created_at)
-       VALUES (?, ?, 'schedule', '2026-10-27', '{}', ?, ?)`,
+      `INSERT INTO workflow_runs
+         (run_id, workflow_id, workflow_name, subject_kind, subject_id, processing_date,
+          trigger, status, steps_json, created_at)
+       VALUES (?, ?, ?, ?, ?, '2026-10-27', ?, ?, '[]', ?)`,
     )
-    .run(runId, calculationId, status, createdAt);
+    .run(
+      run.id,
+      run.workflowId,
+      run.workflowName,
+      run.subjectKind,
+      run.subjectId,
+      run.trigger,
+      run.status,
+      run.createdAt,
+    );
 
-test("the home page sums up both pipelines", async () => {
+test("the home page summarizes assets, portfolios, workflows, recent runs and publications", async () => {
   const { sqlite, pages } = setup();
-  insertSymbol(sqlite, "AAPL.US");
-  insertSymbol(sqlite, "MSFT.US");
-  insertSymbol(sqlite, "SPY.US", 0);
-  insertFailedRun(sqlite, "r1", "SPY.US", "2026-10-27T06:00:00.000Z");
-  insertFailedRun(sqlite, "r2", "MSFT.US", "2026-10-28T06:00:00.000Z");
-  insertCalculation(sqlite, CALC_A, "Daily vol", "0 6 * * *");
-  insertCalculation(sqlite, CALC_B, "Hourly vol", "0 * * * *");
-  insertCalculation(sqlite, CALC_PAUSED, "Paused vol", "0 * * * *", 0);
-  insertCalculationRun(
-    sqlite,
-    "c1",
-    CALC_A,
-    "completed",
-    "2026-10-27T06:00:00.000Z",
-  );
-  insertCalculationRun(
-    sqlite,
-    "c2",
-    CALC_B,
-    "failed",
-    "2026-10-28T09:00:00.000Z",
-  );
+  insertAsset(sqlite, "AAPL.US", 1);
+  insertAsset(sqlite, "MSFT.US", 1);
+  insertAsset(sqlite, "SPY.US", 0);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolios (portfolio_id, name, created_at, updated_at)
+       VALUES (?, 'Core equity', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')`,
+    )
+    .run(PORTFOLIO_ID);
+  insertWorkflow(sqlite, WORKFLOW_A, "Daily asset prices", "asset", 2, 1);
+  insertWorkflow(sqlite, WORKFLOW_B, "Portfolio volatility", "portfolio", 4, 0);
+  insertRun(sqlite, {
+    id: RUN_1,
+    workflowId: WORKFLOW_A,
+    workflowName: "Daily asset prices",
+    subjectKind: "asset",
+    subjectId: "AAPL.US",
+    trigger: "schedule",
+    status: "completed",
+    createdAt: "2026-10-27T02:00:00.000Z",
+  });
+  insertRun(sqlite, {
+    id: RUN_2,
+    workflowId: WORKFLOW_B,
+    workflowName: "Portfolio volatility",
+    subjectKind: "portfolio",
+    subjectId: PORTFOLIO_ID,
+    trigger: "manual",
+    status: "failed",
+    createdAt: "2026-10-28T04:00:00.000Z",
+  });
+  sqlite
+    .prepare(
+      `INSERT INTO dataset_publications
+         (dataset, subject_kind, subject_id, processing_date, workflow_id, run_id, step_id,
+          source_artifact, format, schema, etag, size, published_at)
+       VALUES
+         ('prices_eod', 'asset', 'AAPL.US', '2026-10-27', ?, ?, 'publish',
+          'runs/' || ? || '/normalize/prices.parquet', 'parquet', 'prices-eod/v1',
+          'etag-1', 512, '2026-10-27T02:01:00.000Z'),
+         ('portfolio_volatility', 'portfolio', ?, '2026-10-27', ?, ?, 'publish',
+          'runs/' || ? || '/vol/volatility.parquet', 'parquet', 'portfolio-volatility/v1',
+          'etag-2', 256, '2026-10-27T04:05:00.000Z')`,
+    )
+    .run(WORKFLOW_A, RUN_1, RUN_1, PORTFOLIO_ID, WORKFLOW_B, RUN_2, RUN_2);
 
   const home = await pages.home();
 
-  assert.deepEqual(home.symbols, {
-    total: 3,
-    scheduled: 2,
-    failedDownloads: 2,
-    failedRebuilds: 0,
-    neverDownloaded: 3,
-  });
+  assert.deepEqual(home.assets, { total: 3, enabled: 2 });
+  assert.equal(home.portfolioCount, 1);
+  assert.equal(home.workflows.total, 2);
+  assert.equal(home.workflows.enabled, 1);
   assert.deepEqual(
-    home.failedRuns.map((run) => run.runId),
-    ["r2", "r1"],
+    home.workflows.definitions.map((w) => w.name),
+    ["Daily asset prices", "Portfolio volatility"],
   );
-  assert.equal(home.schedule.paused, true);
-  assert.deepEqual(home.scheduleRuns, []);
-  assert.equal(home.portfolioCount, 0);
-  assert.equal(home.calculations.total, 3);
-  assert.equal(home.calculations.enabled, 2);
   assert.deepEqual(
-    home.calculations.latestRuns.map((run) => [run.runId, run.calculationName]),
-    [
-      ["c2", "Hourly vol"],
-      ["c1", "Daily vol"],
-    ],
+    home.recentRuns.map((r) => r.id),
+    [RUN_2, RUN_1],
   );
-  // Paused calculations aren't upcoming; the hourly one runs next.
+  assert.equal(home.publications.total, 2);
   assert.deepEqual(
-    home.calculations.upcoming.map((c) => c.name),
-    ["Hourly vol", "Daily vol"],
+    home.publications.recent.map((p) => p.dataset),
+    ["portfolio_volatility", "prices_eod"],
   );
+
+  const portfolioDetail = await pages.portfolioDetail(PORTFOLIO_ID);
+  assert.equal(portfolioDetail.portfolio.name, "Core equity");
+  assert.deepEqual(
+    portfolioDetail.runs.map((r) => r.id),
+    [RUN_2],
+  );
+  assert.deepEqual(
+    portfolioDetail.publications.map((p) => p.dataset),
+    ["portfolio_volatility"],
+  );
+  assert.equal((await pages.publications()).length, 2);
 });
 
-test("the runs page filters by symbol and status, ignoring unknown statuses", async () => {
+test("workflowRuns filters by symbol, status and trigger, ignoring unknown values", async () => {
   const { sqlite, pages } = setup();
-  insertFailedRun(sqlite, "r1", "SPY.US", "2026-10-27T06:00:00.000Z");
-  insertFailedRun(sqlite, "r2", "MSFT.US", "2026-10-28T06:00:00.000Z");
+  insertWorkflow(sqlite, WORKFLOW_A, "Daily asset prices", "asset", 2, 1);
+  insertRun(sqlite, {
+    id: RUN_1,
+    workflowId: WORKFLOW_A,
+    workflowName: "Daily asset prices",
+    subjectKind: "asset",
+    subjectId: "SPY.US",
+    trigger: "schedule",
+    status: "failed",
+    createdAt: "2026-10-27T06:00:00.000Z",
+  });
+  insertRun(sqlite, {
+    id: RUN_2,
+    workflowId: WORKFLOW_A,
+    workflowName: "Daily asset prices",
+    subjectKind: "asset",
+    subjectId: "MSFT.US",
+    trigger: "manual",
+    status: "completed",
+    createdAt: "2026-10-28T06:00:00.000Z",
+  });
 
   assert.deepEqual(
-    (await pages.runs({ symbol: " spy.us " })).runs.map((run) => run.runId),
-    ["r1"],
+    (await pages.workflowRuns({ symbol: " spy.us " })).map((r) => r.id),
+    [RUN_1],
   );
-  assert.deepEqual((await pages.runs({ status: "failed" })).runs.length, 2);
-  assert.deepEqual((await pages.runs({ status: "completed" })).runs.length, 0);
-  assert.deepEqual((await pages.runs({ status: "nonsense" })).runs.length, 2);
+  assert.deepEqual(
+    (await pages.workflowRuns({ status: "failed" })).map((r) => r.id),
+    [RUN_1],
+  );
+  assert.deepEqual(
+    (await pages.workflowRuns({ trigger: "manual" })).map((r) => r.id),
+    [RUN_2],
+  );
+  assert.equal(
+    (await pages.workflowRuns({ status: "nonsense", trigger: "other" })).length,
+    2,
+  );
 });
 
-test("an unknown portfolio or calculation is a 404", async () => {
+test("unknown asset, portfolio, workflow or run returns 404", async () => {
   const { pages } = setup();
   for (const load of [
+    () => pages.asset("not valid"),
+    () => pages.asset("MISSING.US"),
     () => pages.portfolio("not-a-uuid"),
-    () => pages.portfolio(CALC_A),
-    () => pages.calculation("not-a-uuid"),
-    () => pages.calculation(CALC_A),
+    () => pages.portfolio(PORTFOLIO_ID),
+    () => pages.workflow("not-a-uuid"),
+    () => pages.workflow(WORKFLOW_A),
+    () => pages.workflowRun("not-a-uuid"),
+    () => pages.workflowRun(RUN_1),
   ]) {
     await assert.rejects(
       load,
@@ -192,30 +242,4 @@ test("an unknown portfolio or calculation is a 404", async () => {
         error instanceof PageDataError && error.status === 404,
     );
   }
-});
-
-test("a calculation page has the calculation and its runs, newest first", async () => {
-  const { sqlite, pages } = setup();
-  insertCalculation(sqlite, CALC_A, "Daily vol", "0 6 * * *");
-  insertCalculationRun(
-    sqlite,
-    "c1",
-    CALC_A,
-    "completed",
-    "2026-10-26T06:00:00.000Z",
-  );
-  insertCalculationRun(
-    sqlite,
-    "c2",
-    CALC_A,
-    "failed",
-    "2026-10-27T06:00:00.000Z",
-  );
-
-  const { calculation, runs } = await pages.calculation(CALC_A);
-  assert.equal(calculation.name, "Daily vol");
-  assert.deepEqual(
-    runs.map((run) => run.runId),
-    ["c2", "c1"],
-  );
 });

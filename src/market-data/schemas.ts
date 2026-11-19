@@ -32,21 +32,16 @@ export const MarketSymbolSchema = Schema.String.check(
   }),
 ).annotate({ identifier: "MarketSymbol" });
 
-/** Datasets the processor knows how to build. Each has its own Parquet schema. */
+/** Datasets supported by the market-data adapters. */
 export const DatasetSchema = Schema.Literals(["prices_eod"]);
 
-/** Providers with an ingestion adapter. */
+/** Providers with a market-data download adapter. */
 export const ProviderSchema = Schema.Literals(["eodhd"]);
 
-/** Which providers can supply each dataset. */
-export const datasetProviders: Record<Dataset, readonly Provider[]> = {
-  prices_eod: ["eodhd"],
-};
-
 /**
- * One provider end-of-day price/volume row validated before raw storage.
- * Its field names are retained in the raw envelope and mirrored by the Python
- * processor model; this schema checks values, not completeness of price history.
+ * One provider end-of-day price/volume row validated before storing the raw
+ * run artifact. Its field names are mirrored by the Python normalization
+ * operation; this schema checks values, not completeness of price history.
  */
 export const EodEntrySchema = Schema.Struct({
   date: MarketDateSchema,

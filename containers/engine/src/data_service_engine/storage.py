@@ -7,7 +7,7 @@ from datetime import date
 import polars as pl
 from botocore.exceptions import ClientError
 
-from .framework import MissingDataError
+from .errors import MissingDataError
 
 PARQUET = "application/vnd.apache.parquet"
 _DATASET = re.compile(r"[a-z0-9_]+")

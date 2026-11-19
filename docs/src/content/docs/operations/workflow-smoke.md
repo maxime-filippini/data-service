@@ -112,3 +112,17 @@ Cloudflare reported a 2,592,000-second age transition for prefix `runs/`
 on the dev raw bucket and no object deletion rule on the dev processed
 bucket. The raw prefix was empty before the smoke scenario. Production
 configuration was outside the deployment.
+
+After removing the superseded download, calculation, queue, and processor
+paths (issue #39), the contracted Worker and single Python container were
+re-deployed to `data-service-workflow-smoke-f7b3ef21` (Worker version
+`84243533-0934-4596-abdb-c51f78bc2786`, container digest
+`sha256:546e4d8715e52cfd18220fd6eb50b58954daefa3b7e08caa53a1fd7d32c718d7`).
+The full recovery suite passed again: paused/resumed scheduled portfolio run
+`e8ab1c75-cb47-4476-a7d6-6596d11a7197` published 2,882 bytes decoding to
+volatility `0.16655193949753969`, timeout run
+`ee211194-474f-47f5-9ad3-e3603899a5a9` reported missing upstream assets,
+manual rerun `9dd4b5a9-24ef-4aba-a004-719239d4dd1a` ran the edited
+definition, terminal run `332fc249-fa3e-4127-8b72-77b576063ba2` failed on
+attempt 1, and transient outage run `e36dae80-1b01-48c4-9764-e463acda24dc`
+exhausted all 4 attempts.

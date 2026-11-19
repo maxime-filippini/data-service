@@ -9,18 +9,10 @@ import type { Dependencies } from "$/dependencies";
 import { type AppHandler, createAppRoutes } from "$/routes/app";
 import { createAppApiRoutes } from "$/routes/app-api";
 import { createAssetRoutes } from "$/routes/assets";
-import {
-  createCalculateRoutes,
-  createCalculationTypeRoutes,
-} from "$/routes/calculate";
-import { createCalculationRoutes } from "$/routes/calculations";
 import { createDatasetRoutes } from "$/routes/datasets";
 import { createDocsRoutes } from "$/routes/docs";
-import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createRunRoutes } from "$/routes/runs";
-import { createScheduleRoutes } from "$/routes/schedule";
-import { createSymbolRoutes } from "$/routes/symbols";
 import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
 import {
   createAssignmentRoutes,
@@ -34,7 +26,7 @@ import {
  *   Cloudflare Access lets it through.
  * - `/app-api/*`: the JSON API the app's pages call from the browser.
  * - `/docs/*`: the docs site.
- * - everything else: the SvelteKit app (home page and dashboard).
+ * - everything else: the SvelteKit app.
  *
  * All but `/api` need an allowlisted Access user.
  */
@@ -45,36 +37,12 @@ export const createRoutes = (
 ) => {
   const api = new Hono<{ Bindings: CloudflareBindings }>();
   api.route(
-    "/symbols",
-    createSymbolRoutes(dependencies.registryFor, requireManagementToken),
-  );
-  api.route(
-    "/ingestions",
-    createIngestionRoutes(dependencies.registryFor, requireManagementToken),
-  );
-  api.route(
-    "/schedule",
-    createScheduleRoutes(dependencies, requireManagementToken),
+    "/assets",
+    createAssetRoutes(dependencies.assetsFor, requireManagementToken),
   );
   api.route(
     "/portfolios",
     createPortfolioRoutes(dependencies.portfoliosFor, requireManagementToken),
-  );
-  api.route(
-    "/calculation-types",
-    createCalculationTypeRoutes(dependencies.engineFor, requireManagementToken),
-  );
-  api.route(
-    "/calculate",
-    createCalculateRoutes(dependencies, requireManagementToken),
-  );
-  api.route(
-    "/calculations",
-    createCalculationRoutes(dependencies, requireManagementToken),
-  );
-  api.route(
-    "/assets",
-    createAssetRoutes(dependencies.assetsFor, requireManagementToken),
   );
   api.route(
     "/workflows",

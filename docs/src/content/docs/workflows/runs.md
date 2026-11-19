@@ -1,13 +1,11 @@
 ---
 title: Workflow runs
-description: Starting a definition for one subject by hand or on its daily schedule, how its steps execute, run and step outcomes, artifacts, and running it locally against fixtures.
+description: Starting a definition for one subject by hand or on its daily schedule, how steps execute, failure recovery, dependency waits, artifacts, and the local fixture scenario.
 ---
 
-A run executes one workflow definition for one assigned subject and one
-processing date. Runs are started by hand or
-[dispatched daily](#scheduled-dispatch) by the hourly tick. Dispatch is off
-in every deployed environment: the legacy
-[daily schedule](/docs/pipeline/schedule/) still owns production downloads.
+A **workflow run** executes one workflow definition for one assigned subject
+and one **processing date**. Runs are started manually through the API or
+[dispatched daily](#scheduled-dispatch) by the Worker's hourly cron.
 
 ## Starting a run
 
@@ -18,34 +16,30 @@ curl -X POST "$URL/api/runs" \
   -d '{"workflowId":"'$ID'","subject":{"kind":"asset","symbol":"AAPL.US"},"processingDate":"2026-11-18"}'
 ```
 
-The response is `202` with the run straight away; the run executes in its own
-Cloudflare Workflow instance, whose ID is the run ID. `processingDate`
-defaults to today's UTC date.
+The response is `202` immediately; the run executes asynchronously in its own
+Cloudflare Workflow instance (`DefinitionRunWorkflow`), whose instance ID
+equals the run ID. `processingDate` defaults to today's UTC date.
 
-A run needs an enabled definition, an enabled assignment and, for an asset,
-an enabled asset. Otherwise the request fails (`404` for an unknown
-definition or assignment, `409` for something disabled) and nothing is
-recorded.
+A run requires an enabled definition, an enabled assignment, and (for an asset)
+an enabled asset. Otherwise the request fails (`404` for an unknown definition
+or assignment, `409` for something disabled) without recording a run.
 
-Only one run per assignment can be active (`queued`, `running` or
-`waiting`). A submission while one is active is recorded as a `skipped` run
-whose `error` names the active run, and nothing executes. Runs of different
-assignments run independently.
+Only one run per assignment may be active (`queued`, `running`, or `waiting`).
+Submitting while one is active records a `skipped` run whose `error` names the
+active run, and executes nothing. Different assignments run concurrently.
 
 `POST /api/runs/:runId/rerun` starts a new run of the same assignment and
-processing date from the beginning, with the definition as it is now. Its
-`rerunOf` names the earlier run. There is no resuming from a chosen step.
+processing date from the beginning using the current definition, recording the
+previous run ID in `rerunOf`. Arbitrary mid-workflow resume is not supported.
 
 ## Scheduled dispatch
 
-The Worker's hourly cron starts a durable dispatcher
-(`WorkflowDispatchWorkflow`, bound as `WORKFLOW_DISPATCHES`) when the
-`WORKFLOW_DISPATCH` var is `on`.
-It is `off` in `wrangler.jsonc` for both production and dev, so the new
-dispatcher and the legacy scheduled download never both download. Switching
-it on is a step of the download cutover, together with stopping the legacy
-schedule. Tests and the [fixture command](#running-locally-against-fixtures)
-run it with a controlled clock.
+The Worker's hourly cron (`0 * * * *`) starts a durable dispatcher
+(`WorkflowDispatchWorkflow`, bound as `WORKFLOW_DISPATCHES`) whenever
+`WORKFLOW_DISPATCH` is `"on"` (the default in `wrangler.jsonc`; set `"off"` only
+as an emergency kill switch to pause all scheduled dispatch). Tests and the
+[fixture command](#running-locally-against-fixtures) run it with a controlled
+clock.
 
 The dispatcher uses one instance ID per UTC tick hour, so a repeated trigger
 or a lost launch response does not start a second dispatcher for that hour.
@@ -56,20 +50,17 @@ through dispatch.
 Each dispatch:
 
 1. **Reconciles** active runs (`queued`, `running`, `waiting`) against their
-   Workflow instances, as a submission does (see
-   [Reconciling launches](#reconciling-launches)), so an uncertain launch is
-   relaunched under its ID and a stopped instance's run fails without waiting
-   for a new submission.
-2. **Finds** each enabled definition's latest due occurrence: today at its
+   Workflow instances so uncertain launches are retried under the same ID and
+   stopped instances release their assignment slot.
+2. **Selects** each enabled definition's latest due occurrence: today at
    `schedule.hourUtc` once that hour has started, otherwise yesterday's. The
-   run's processing date is the occurrence's UTC date, so a 23:00 workflow
-   ticked at 00:10 runs for the previous day.
-3. **Claims and launches** every enabled assignment (of an enabled
-   definition and, for an asset, an enabled asset) that has not claimed that
-   occurrence, through the same claim and launch path as a manual run, with
-   `trigger: "schedule"` and `scheduledFor` set to the occurrence.
+   run's processing date is the occurrence's UTC date, so a `23:00 UTC`
+   workflow ticked at `00:10 UTC` runs for the previous day.
+3. **Claims and launches** every enabled assignment that has not yet claimed
+   that occurrence, through the same claim-and-launch path as manual runs,
+   recording `trigger: "schedule"` and `scheduledFor`.
 
-Rules that follow:
+Dispatch guarantees:
 
 - **Once per occurrence.** A unique index on
   `(workflow_id, subject_kind, subject_id, scheduled_for)` makes the claim a
@@ -104,72 +95,73 @@ Rules that follow:
 
 ## How a run executes
 
-1. **Claim.** One D1 batch claims the assignment's active-run slot and
-   captures the definition's name and steps into the run record, or records
-   a skipped run. A partial unique index makes concurrent claims safe.
-2. **Launch.** The Worker creates the Workflow instance with the run ID. If
-   the create call fails but the instance exists, it launched. If the outcome
-   can't be confirmed, the run stays `queued`.
-3. **Execute.** The instance's first step loads the captured run (so a
-   replay uses the same sequence, even if the definition was edited since)
-   and marks it `running`. Then each step runs in the saved order, each as
-   one durable step:
-   - inputs are resolved (a literal, `context.subject`,
-     `context.processingDate`, or an earlier step's output) and validated
-     against their contracts;
-   - the step type's implementation runs;
-   - its outputs are validated against their contracts and must serialize to
-     32 KB or less.
-4. **Record.** The run ends `completed`, or `failed` with the failing step
-   and its error.
+1. **Claim.** One atomic D1 batch claims the assignment's active-run slot and
+   captures the definition's `workflowName` and `steps` into `workflow_runs`
+   (or records a `skipped` run).
+2. **Launch.** The Worker creates the `DefinitionRunWorkflow` instance with
+   `id = runId`. If launch confirmation is lost, reconciliation checks the same
+   deterministic ID without creating duplicates.
+3. **Execute.** The first durable step loads the captured run (so edits to the
+   definition never alter an in-flight run's step sequence) and marks it
+   `running`. Each step then runs sequentially as a durable Cloudflare step:
+   - resolves input bindings (`literal`, `context.*`, `steps.<id>.outputs.*`)
+     and validates them against step contracts;
+   - executes the step implementation;
+   - validates outputs against contracts and enforces the 32 KiB inline output
+     size bound.
+4. **Record.** The run finishes `completed`, or `failed` with the failing step
+   and diagnostic error.
 
-Completed steps are checkpointed by Cloudflare Workflows: when an instance
-replays (after a restart or eviction), they return their saved outputs
-without running again.
+Completed steps are checkpointed by Cloudflare Workflows: on replay after an
+eviction or wait, completed steps return their checkpointed outputs without
+running again.
 
 ### Retries and failures
 
-Each step type owns its retry policy. The default is three retries with
-exponential backoff (10 s, 20 s, 40 s) and a 10-minute timeout per attempt,
-for transient failures: provider requests, storage and database errors. A
-terminal failure stops the run at once without retries: invalid params or
-inputs, an unknown step type, an output that breaks its contract or the size
-bound, or a deterministic domain error such as a provider response that
-fails raw-data validation. A transient failure that outlasts its retries also
-fails the run.
+Each step type owns its retry policy. The default is **3 retries with
+exponential backoff** (`10 s`, `20 s`, `40 s`) and a 10-minute attempt timeout
+for transient failures (provider HTTP errors, R2/D1 errors, container network
+or 5xx failures).
 
-Step bodies may run more than once, so their writes tolerate repeats:
-artifacts go to IDs fixed by the run and step, and step records are upserts.
+Terminal failures throw `NonRetryableError` and stop the run immediately
+without retrying: invalid parameters or inputs, unknown step types, schema or
+size-bound violations, or deterministic domain errors (such as malformed
+provider rows or insufficient return history for volatility).
+
+Because step bodies may run more than once when a response is lost or a retry
+occurs, all writes are retry-safe: run artifacts use deterministic
+`runs/<runId>/<stepId>/<name>.<ext>` keys, and D1 step records and publication
+rows are upserts.
 
 ### Reconciling launches
 
-Before claiming, a submission checks the assignment's active run against its
-Workflow instance:
+Before claiming (and on every hourly tick), reconciliation inspects active runs
+against Cloudflare Workflows:
 
-- an instance that stopped (`complete`, `errored` or `terminated`) without
-  recording an outcome fails the run, which releases the assignment;
-- an instance whose status can't be read is not evidence that it is absent,
-  so the claim is kept. A `queued` run is launched again under the same ID,
-  which can't create a second instance.
+- if the instance stopped (`complete`, `errored`, or `terminated`) without
+  recording an outcome in D1, reconciliation marks the run `failed` and
+  releases the assignment claim;
+- if instance status lookup itself is unavailable, reconciliation **never**
+  releases the claim;
+- a `queued` run whose instance does not exist yet is relaunched under the same
+  `runId`.
 
 ## Run and step outcomes
 
-`GET /api/runs` lists runs, newest first (filters: `workflowId`,
-`subjectKind` and `subjectId`, `status`, `trigger` (`manual` or
-`schedule`), `limit` up to 200). For example, the occurrences skipped because
-a run was still active: `?trigger=schedule&status=skipped`.
-`GET /api/runs/:runId` returns a run with every captured step:
+`GET /api/runs` lists runs newest first (filters: `workflowId`, `subjectKind` +
+`subjectId`, `status`, `trigger`, `limit` up to 200). `GET /api/runs/:runId`
+returns the run and every captured step:
 
 ```json
 {
   "id": "fe8a9dca-0389-454b-aabf-427493a2f082",
-  "workflowId": "a702df57-f79b-45c6-ac40-41ff3ae5dd5b",
-  "workflowName": "Daily asset prices",
+  "workflowId": "7f8b4e30-2c1a-4d6e-9b5a-100000000001",
+  "workflowName": "Daily EOD prices",
   "subject": { "kind": "asset", "symbol": "AAPL.US" },
   "processingDate": "2024-01-10",
-  "trigger": "manual",
+  "trigger": "schedule",
   "rerunOf": null,
-  "scheduledFor": null,
+  "scheduledFor": "2024-01-10T04:00:00.000Z",
   "status": "completed",
   "error": null,
   "steps": [
@@ -192,42 +184,33 @@ a run was still active: `?trigger=schedule&status=skipped`.
 }
 ```
 
-Timestamps are left out above. A scheduled run has `"trigger": "schedule"`
-and `scheduledFor`, the occurrence it was dispatched for (such as
-`"2024-01-10T02:00:00.000Z"`). A step is `pending` until reached, `running`
-while it executes or retries (with the last attempt's `error`), `waiting`
-while it waits for inputs, then
-`completed` or `failed`; steps a finished run never reached are `skipped`.
-
-The run record keeps each step's small named outputs for inspection. It is
-operational history, not a second checkpoint store: execution state lives in
-Cloudflare Workflows.
-
-Run history survives configuration changes. Runs have no foreign keys to
-definitions, assignments or assets, and keep the workflow's name and subject,
-so they stay readable after those are deleted. Deleting a definition, an
-assignment or an asset is refused with `409` while it has an active run.
+Step statuses: `pending`, `running` (shows last attempt's `error` during
+retries), `waiting`, `completed`, `failed`, or `skipped` (not reached after an
+earlier failure). Run records have no foreign keys to definitions, assignments,
+assets, or portfolios, so operational history stays readable after allowed
+configuration deletion.
 
 ## Dependency waits
 
-A portfolio workflow can read its effective holdings and wait for each of
-the resulting assets' current `prices_eod` publications. A publication
-qualifies when its producer is a completed run of the specified upstream
-workflow for that asset and processing date, and the stored object matches
-the publication record. A refresh on a non-trading day can qualify.
+`wait-for-asset-publications` lets a portfolio workflow wait explicitly for
+upstream `prices_eod` publications for every asset in the holdings artifact from
+`portfolio-holdings`:
 
-The first check fixes an absolute deadline. Cloudflare Workflows sleeps
-between checks, at most one minute at a time, and reuses the deadline on
-replay. A waiting step's `waiting` field shows `deadline` and `missing`
-entries with each symbol and reason. The step returns the matching
-publication references and continues when ready. A timeout fails the run
-and leaves the last missing inputs in the outcome. The checks do not
-launch upstream runs.
-
-Only publications ready by the deadline can satisfy the wait. Platform
-scheduling and infrastructure retries can delay the final outcome. The
-step's attempt count tracks starts of the wait itself. Each dependency check
-is a separate platform checkpoint.
+- A publication qualifies only when the specified upstream `workflowId` has a
+  `completed` run for that asset and `processingDate`, **and** the current
+  `dataset_publications` record matches that run and stored object ETag.
+- A successful refresh on a non-trading day qualifies (market-calendar
+  completeness remains the numerical operation's responsibility).
+- The first check checkpoints an absolute deadline (default 2 hours,
+  configurable via `timeoutSeconds`). Cloudflare sleeps durably between checks
+  (at most 1 minute per sleep) and reuses the same deadline across replays.
+  Only publications ready by the deadline count; platform scheduling and
+  infrastructure retries can delay the final outcome.
+- While waiting, the step records `waiting: { deadline, missing }` naming each
+  missing symbol and reason. On timeout, the run fails with the missing symbols
+  identified. Dependency checks **never** launch upstream workflows.
+- The step's attempt count tracks starts of the wait itself; each dependency
+  check is a separate platform checkpoint.
 
 The resolved holdings and matching publication-reference lists are JSON run
 artifacts in R2. Only their small references are checkpointed and recorded as
@@ -243,28 +226,21 @@ under the same 30-day lifecycle as other temporary run artifacts.
 
 ## Artifacts
 
-Data too large for a step output is stored as a temporary run artifact under
-`runs/<runId>/<stepId>/<name>.<ext>` in the raw bucket, and the step outputs
-an artifact reference (`id`, `format`, `schema`). The download step's `raw`
-artifact is the provider response in the same envelope as legacy raw objects:
-`version`, `runId`, `dataset`, `provider`, `symbol`, `requestedRange`,
-`receivedAt` and the validated `entries`.
+Large step outputs are persisted under `runs/<runId>/<stepId>/<name>.<ext>` in
+`raw-market-data`, and steps pass small JSON artifact references
+(`{ id, format, schema }`) through checkpoints.
 
-`GET /api/runs/:runId/steps/:stepId/artifacts/:output` returns the artifact
-an output references. Only references recorded as a run's outputs are
-read, so no storage paths are accepted from callers.
-
-Run artifacts are temporary: they expire 30 days after they are written
-(see [Storage layout](/docs/reference/storage/#lifecycle)). Data meant to
-last is [published](/docs/workflows/datasets/) to a separate location.
+`GET /api/runs/:runId/steps/:stepId/artifacts/:output` retrieves an artifact
+referenced by a recorded step output (callers never supply arbitrary storage
+paths). Temporary run artifacts expire after 30 days through R2's lifecycle
+rule; see [Storage layout](/docs/reference/storage/#lifecycle).
 
 ## In the app
 
-**Workflow runs** (`/workflow-runs`) lists runs with status, trigger and
-asset filters; scheduled runs show their occurrence's hour, and a skipped
-run's reason is on its status badge. A run's page shows its status, error, processing date and each step
-with its attempts, error and outputs, linking artifacts. Workflow and asset
-pages list their recent runs.
+**Runs** (`/workflow-runs`, `/workflow-runs/:id`) filters runs by asset
+symbol, status, and trigger, and shows every step's status, waiting deadline
+and missing inputs, retry count, errors, inline outputs (such as volatility
+summaries), artifact downloads, and published dataset links.
 
 ## Running locally against fixtures
 
@@ -272,56 +248,43 @@ pages list their recent runs.
 pnpm workflow:fixture
 ```
 
-The command runs the asset prices and portfolio volatility workflows through
-the same API routes, executor, step implementations and Python operations as
-the Worker. It uses [uv](https://docs.astral.sh/uv/) and fixture data.
+Runs the complete asset and portfolio workflow path locally through the real
+API routes, executor, step implementations, and Python HTTP service (started
+via [uv](https://docs.astral.sh/uv/)) without Cloudflare credentials or live
+EODHD access:
 
-1. It starts the Python service with uv on a free localhost port.
-2. It opens a local SQLite database with the real D1 migrations.
-3. Through the management API it creates a definition, makes it the
-   [asset default](/docs/workflows/definitions/#defaults) and creates the
-   assets, which assigns it.
-4. It starts the asset runs with `POST /api/runs` or, with `--scheduled`, runs one
-   [dispatch tick](#scheduled-dispatch) at 03:00 UTC on the date, which
-   dispatches the definition's 02:00 occurrence.
-5. An in-process Workflow binding executes the asset runs. The EODHD adapter
-   is answered from `fixtures/eodhd/<SYMBOL>.json`, the normalize step calls
-   the Python service over HTTP, and the publish step copies its output to
-   the local processed bucket.
-6. The command creates a portfolio with two dated holdings snapshots and
-   starts its workflow, which reads the effective holdings and resolves the
-   published asset data for that date. The volatility step uses both outputs
-   and the processing date to calculate the result in Python. The final step
-   publishes the portfolio's `portfolio_volatility` dataset.
+1. Starts `containers/engine` on a free localhost port backed by local
+   directories.
+2. Applies all real D1 migrations (`0001`–`0014`) to `.local/workflow-fixture/d1.sqlite`.
+3. Creates the `download → normalize → publish` asset workflow through
+   `POST /api/workflows`, sets it as the asset default, and creates fixture
+   assets (`AAPL.US`, `MSFT.US`).
+4. Runs both asset workflows (manually, or with `--scheduled` through
+   `scheduledWorkflowTick`), normalizing EODHD fixture responses in Python and
+   publishing `prices_eod` Parquet files.
+5. Creates a portfolio with two dated holdings snapshots and runs the
+   `portfolio-holdings → wait-for-asset-publications → calculate-portfolio-volatility → publish-dataset`
+   workflow, publishing `portfolio_volatility`.
 
-Both languages share `r2/raw-market-data/` for run artifacts and
-`r2/processed-market-data/` for published datasets. The command empties
-`.local/workflow-fixture/` before writing the following files.
+All outputs are written to `.local/workflow-fixture/` (emptied on each run):
 
-| Path                                                                                | What                                                        |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `d1.sqlite`                                                                         | The local database                                          |
-| `r2/raw-market-data/runs/<runId>/download/raw.json`                                 | The raw artifact                                            |
-| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                          | Python's normalized output                                  |
-| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet`          | The published dataset                                       |
-| `run.json`                                                                          | The run and its step outcomes                               |
-| `publication.json`                                                                  | The publication's metadata                                  |
-| `asset-runs.json`                                                                   | Run outcomes for all fixture assets                         |
-| `portfolio.json`                                                                    | Dated portfolio snapshots                                   |
-| `portfolio-run.json`                                                                | Effective holdings, price references and volatility outputs |
-| `portfolio-publication.json`                                                        | Published volatility metadata                               |
-| `r2/raw-market-data/runs/<runId>/volatility/volatility.parquet`                     | Python's volatility output                                  |
-| `r2/processed-market-data/dataset=portfolio_volatility/portfolio=<ID>/data.parquet` | Published volatility for the portfolio                      |
-| `api.log`                                                                           | Each API request and its response                           |
+| Path                                                                                | What                                                     |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `d1.sqlite`                                                                         | Local SQLite database with real D1 migrations            |
+| `r2/raw-market-data/runs/<runId>/download/raw.json`                                 | Raw EODHD fixture envelope                               |
+| `r2/raw-market-data/runs/<runId>/normalize/prices.parquet`                          | Python's normalized prices artifact                      |
+| `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet`          | Published asset prices dataset                           |
+| `r2/raw-market-data/runs/<runId>/volatility/volatility.parquet`                     | Python's portfolio volatility artifact                   |
+| `r2/processed-market-data/dataset=portfolio_volatility/portfolio=<ID>/data.parquet` | Published portfolio volatility dataset                   |
+| `run.json`, `asset-runs.json`                                                       | Asset workflow run outcomes                              |
+| `publication.json`, `portfolio-publication.json`                                    | Publication metadata (API shape)                         |
+| `portfolio.json`, `portfolio-run.json`                                              | Portfolio snapshots, dependencies and volatility outputs |
+| `api.log`                                                                           | Every management API call and HTTP status                |
 
-Options: `--out DIR`, `--symbol MSFT.US` (fixtures exist for `AAPL.US` and
-`MSFT.US`), `--date YYYY-MM-DD` (default `2024-01-10`) and `--scheduled`. Retries happen
-without waiting locally.
-
-The local Workflow binding and Steps adapter follow the platform's rules
-(checkpoints by step name, retries within the step's policy, no retry after a
-terminal failure), but they are stand-ins. They are not evidence of
-Cloudflare's durability; that needs a run on the dev environment.
+Options: `--out DIR`, `--symbol MSFT.US`, `--date YYYY-MM-DD` (default
+`2024-01-10`), and `--scheduled`. The in-process Workflow stand-in mirrors
+checkpointing and retries without waiting; real Cloudflare platform durability
+is verified by the [Cloudflare smoke test](/docs/operations/workflow-smoke/).
 
 ### Tracing checkpoints and replay
 

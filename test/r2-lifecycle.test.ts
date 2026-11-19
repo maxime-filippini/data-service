@@ -4,8 +4,14 @@ import test from "node:test";
 import { URL } from "node:url";
 
 import { publishedDatasetKey } from "$/datasets/contracts";
-import { rawMarketDataKey } from "$/market-data/r2-raw-store";
 import { runArtifactId } from "$/workflows/artifacts";
+
+/** Retained pre-workflow raw-history key prefix in `raw-market-data`. */
+const legacyRawMarketDataKey = (input: {
+  readonly dataset: string;
+  readonly symbol: string;
+  readonly runId: string;
+}) => `dataset=${input.dataset}/symbol=${input.symbol}/run=${input.runId}.json`;
 
 /**
  * The checked-in lifecycle configuration for the raw buckets (applied with
@@ -71,10 +77,10 @@ test("the rule covers every run artifact and nothing retained", () => {
       ),
     );
 
-  // Retained raw history from the legacy downloader stays.
+  // Retained raw history from the pre-workflow downloader stays.
   assert.equal(
     expires(
-      rawMarketDataKey({
+      legacyRawMarketDataKey({
         dataset: "prices_eod",
         symbol: "AAPL.US",
         runId: RUN_ID,
@@ -92,7 +98,7 @@ test("the rule covers every run artifact and nothing retained", () => {
   // A symbol or dataset that merely starts with "runs" is not a run artifact.
   assert.equal(
     expires(
-      rawMarketDataKey({
+      legacyRawMarketDataKey({
         dataset: "prices_eod",
         symbol: "RUNS.US",
         runId: RUN_ID,

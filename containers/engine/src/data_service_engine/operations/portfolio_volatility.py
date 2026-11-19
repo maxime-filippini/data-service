@@ -6,11 +6,9 @@ from math import isfinite
 from typing import Literal, Self
 
 import polars as pl
-from pydantic import Field, FiniteFloat, model_validator
+from pydantic import Field, FiniteFloat, field_validator, model_validator
 
 from ..errors import CalculationError
-from ..framework import Context
-from ..models import Holding, Portfolio, Snapshot
 from ..types import ex_ante_vol
 from .artifacts import PARQUET, ArtifactStore, run_artifact_id
 from .contracts import (
@@ -40,8 +38,16 @@ class PublishedAssetPrice(Contract):
     run_id: str = Field(pattern=UUID_PATTERN)
 
 
-class VolatilityHolding(Holding, Contract):
+class VolatilityHolding(Contract):
     symbol: str = Field(pattern=SYMBOL_PATTERN)
+    weight: FiniteFloat
+
+    @field_validator("weight")
+    @classmethod
+    def _non_zero(cls, weight: float) -> float:
+        if weight == 0:
+            raise ValueError("Weight must be non-zero")
+        return weight
 
 
 class PortfolioVolatilityInputs(Contract):
@@ -118,15 +124,14 @@ def calculate(
                 f"Invalid published {dataset} prices for {symbol}"
             ) from error
 
-    portfolio = Portfolio(
-        id=inputs.portfolio_id,
-        snapshots=(
-            Snapshot(holdings_date=inputs.holdings_date, holdings=inputs.holdings),
-        ),
-    )
+    holdings = {holding.symbol: holding.weight for holding in inputs.holdings}
     try:
         result = ex_ante_vol.run(
-            request.params, Context(inputs.processing_date, portfolio, load)
+            request.params,
+            as_of=inputs.processing_date,
+            holdings_date=inputs.holdings_date,
+            holdings=holdings,
+            load_symbol=load,
         )
     except (CalculationError, OverflowError, pl.exceptions.PolarsError) as error:
         raise TerminalError(str(error)) from error
