@@ -2,7 +2,12 @@ import type { WorkflowStepConfig } from "cloudflare:workers";
 import { type Effect, Schema } from "effect";
 
 import type { Assets } from "$/assets/store";
+import type {
+  DatasetPublications,
+  PublishedDatasets,
+} from "$/datasets/store";
 import type { MarketDataSources } from "$/market-data/sources";
+import type { PythonOperations } from "$/operations/client";
 import type { RunArtifacts } from "$/workflows/artifacts";
 import type { Subject, SubjectKind } from "$/workflows/contracts";
 import {
@@ -56,8 +61,12 @@ export const runContextFields = {
   }
 >;
 
-/** Which run and step an implementation executes, for retry-safe outputs. */
+/**
+ * Which run and step an implementation executes, for retry-safe outputs,
+ * and the workflow the run belongs to, for recording producers.
+ */
 export interface StepExecution {
+  readonly workflowId: string;
   readonly runId: string;
   readonly stepId: string;
 }
@@ -93,7 +102,13 @@ export const terminal = (message: string) =>
   new StepFailure({ retry: false, message });
 
 /** The services step implementations can use. */
-export type StepServices = Assets | MarketDataSources | RunArtifacts;
+export type StepServices =
+  | Assets
+  | MarketDataSources
+  | RunArtifacts
+  | PythonOperations
+  | DatasetPublications
+  | PublishedDatasets;
 
 /**
  * The registry-owned retry policy: three retries with exponential backoff

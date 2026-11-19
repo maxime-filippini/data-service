@@ -2,6 +2,8 @@ import { Layer } from "effect";
 
 import { D1AssetsLive } from "$/assets/d1";
 import { D1CalculationsLive } from "$/calculations/d1";
+import { D1DatasetPublicationsLive } from "$/datasets/d1";
+import { R2PublishedDatasetsLive } from "$/datasets/r2";
 import { EngineLive } from "$/calculations/engine";
 import type { RunWorkflow } from "$/calculations/runs";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
@@ -49,6 +51,12 @@ export const dependencies = {
       R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
     ),
   runPlatformFor: (env: CloudflareBindings): RunPlatform => env.WORKFLOW_RUNS,
+  // Publication metadata in D1; published objects in the processed bucket.
+  datasetsFor: (env: CloudflareBindings) =>
+    Layer.merge(
+      D1DatasetPublicationsLive(env.MARKET_DATA_DB),
+      R2PublishedDatasetsLive(env.PROCESSED_MARKET_DATA_BUCKET),
+    ),
 };
 
 /**

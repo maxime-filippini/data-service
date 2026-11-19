@@ -164,7 +164,11 @@ const runImplementation = Effect.fn("Workflows.runImplementation")(function* (
       params: params.success,
       inputs,
       context: run.context,
-      execution: { runId: run.runId, stepId: spec.id },
+      execution: {
+        workflowId: run.workflowId,
+        runId: run.runId,
+        stepId: spec.id,
+      },
     })
     .pipe(
       // An unexpected exception may be an outage as much as a bug.

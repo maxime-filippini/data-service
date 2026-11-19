@@ -14,6 +14,7 @@ import {
   createCalculationTypeRoutes,
 } from "$/routes/calculate";
 import { createCalculationRoutes } from "$/routes/calculations";
+import { createDatasetRoutes } from "$/routes/datasets";
 import { createDocsRoutes } from "$/routes/docs";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
@@ -80,6 +81,10 @@ export const createRoutes = (
     createStepTypeRoutes(dependencies.workflowsFor, requireManagementToken),
   );
   api.route("/runs", createRunRoutes(dependencies, requireManagementToken));
+  api.route(
+    "/datasets",
+    createDatasetRoutes(dependencies, requireManagementToken),
+  );
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
   const app = new Hono<{ Bindings: CloudflareBindings }>();

@@ -1,0 +1,76 @@
+import { Effect, Schema } from "effect";
+
+import {
+  DATASET_ARTIFACT_SCHEMAS,
+  PublishedDatasetSchema,
+} from "$/datasets/contracts";
+import { publishDataset as publish } from "$/datasets/operations";
+
+import { datasetPublication, pricesEod } from "./contract";
+import { defineStepType, terminal, transient } from "./step-type";
+
+/**
+ * Publish a run's dataset artifact as the run subject's current dataset.
+ * The data is copied to the dataset's stable location (for prices_eod the
+ * location existing consumers read), so it does not depend on the expiring
+ * run artifact, and the publication's producer and processing date are
+ * recorded after the copy succeeds. The subject and processing date are the
+ * run's own, never inputs, so a definition cannot publish another subject's
+ * dataset. A run whose earlier steps fail never reaches this step, leaving
+ * the previous publication intact.
+ */
+export const publishDataset = defineStepType({
+  type: "publish-dataset",
+  description:
+    "Publish a dataset artifact as the subject's current dataset, independently of temporary run storage",
+  scopes: ["asset"],
+  params: Schema.Struct({
+    dataset: PublishedDatasetSchema.annotate({
+      description: "The dataset to publish, e.g. prices_eod",
+    }),
+  }),
+  inputs: {
+    data: {
+      contract: pricesEod,
+      description: "The dataset's data, from a normalization step",
+    },
+  },
+  outputs: {
+    publication: {
+      contract: datasetPublication,
+      description: "The published dataset's identity",
+    },
+  },
+  implementation: ({ params, inputs, context, execution }) =>
+    Effect.gen(function* () {
+      const expected = DATASET_ARTIFACT_SCHEMAS[params.dataset];
+      if (inputs.data.schema !== expected)
+        return yield* terminal(
+          `${params.dataset} must be published from ${expected} data, not ${inputs.data.schema}`,
+        );
+      yield* publish({
+        dataset: params.dataset,
+        subject: context.subject,
+        processingDate: context.processingDate,
+        artifact: inputs.data,
+        producer: execution,
+      }).pipe(
+        Effect.mapError((error) =>
+          error._tag === "DatasetError"
+            ? error.kind === "not_found"
+              ? terminal(error.message)
+              : transient(error.message)
+            : error.kind === "storage"
+              ? transient(error.message)
+              : terminal(error.message),
+        ),
+      );
+      return {
+        publication: {
+          dataset: params.dataset,
+          subject: context.subject,
+          processingDate: context.processingDate,
+        },
+      };
+    }),
+});

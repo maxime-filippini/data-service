@@ -10,13 +10,19 @@ import type {
 
 import type { Contract } from "./contract";
 import { downloadPrices } from "./download-prices";
+import { normalizePrices } from "./normalize-prices";
+import { publishDataset } from "./publish-dataset";
 import { type Ports, runContextFields, type StepType } from "./step-type";
 
 export * from "./contract";
 export * from "./step-type";
 
 /** The step types the service ships, in catalog order. */
-export const builtInStepTypes: readonly StepType[] = [downloadPrices];
+export const builtInStepTypes: readonly StepType[] = [
+  downloadPrices,
+  normalizePrices,
+  publishDataset,
+];
 
 /**
  * The step types definitions can use, by type name. Validation, inspection,

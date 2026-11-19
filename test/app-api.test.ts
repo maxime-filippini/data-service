@@ -76,6 +76,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
     {
       workflowRunsFor: local.dependencies.workflowRunsFor,
       runPlatformFor: local.dependencies.runPlatformFor,
+      datasetsFor: local.dependencies.datasetsFor,
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
       scheduleFor: () => D1ScheduleStoreLive(db),
@@ -726,7 +727,7 @@ test("the app serves assets, workflow definitions and the step catalog behind Ac
   };
   assert.deepEqual(
     stepTypes.map((stepType) => stepType.type),
-    ["download-prices"],
+    ["download-prices", "normalize-prices", "publish-dataset"],
   );
 
   const asset = {
