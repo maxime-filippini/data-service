@@ -4,11 +4,15 @@
  * implementations and Python operations as the Worker:
  *
  *   pnpm workflow:fixture [--out DIR] [--symbol AAPL.US] [--date 2024-01-10]
+ *                         [--scheduled]
  *
  * It starts the real Python service with uv on a free localhost port, then
- * creates an asset, a workflow definition and an assignment through the
- * management API, starts a manual run, waits for it, and leaves everything
- * to inspect in the output directory (default `.local/workflow-fixture`,
+ * through the management API creates a workflow definition, makes it the
+ * asset default and creates the asset (which assigns it). It then starts a
+ * manual run for the date or, with `--scheduled`, runs one hourly dispatch
+ * tick (WORKFLOW_DISPATCH on) an hour after the definition's 02:00 UTC
+ * occurrence on that date. It waits for the run and leaves everything to
+ * inspect in the output directory (default `.local/workflow-fixture`,
  * emptied first):
  *
  *   d1.sqlite              the local D1 database (real migrations)
@@ -40,12 +44,16 @@ import { makeSqliteD1 } from "$/local/sqlite-d1";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { createRoutes } from "$/routes";
 import type { WorkflowRunDetail } from "$/workflows/runs/contracts";
+import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 
 import { runScript, ScriptError } from "./cli";
 
 // A local-only token: the management API's authentication stays in place.
 const TOKEN = "local-fixture-token";
-const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
+const env = {
+  MANAGEMENT_API_TOKEN: TOKEN,
+  WORKFLOW_DISPATCH: "on",
+} as unknown as CloudflareBindings;
 
 const text = (name: string, fallback: string, description: string) =>
   Flag.String(name).pipe(
@@ -67,6 +75,12 @@ const command = Command.make(
       "fixtures",
       "fixtures/eodhd",
       "Directory of EODHD responses, one <SYMBOL>.json per asset",
+    ),
+    scheduled: Flag.Boolean("scheduled").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription(
+        "Start the run with an hourly dispatch tick instead of manually",
+      ),
     ),
   },
   (options) =>
@@ -140,11 +154,6 @@ const command = Command.make(
         );
 
       const symbol = options.symbol;
-      yield* api("POST", "/assets", {
-        symbol,
-        provider: "eodhd",
-        backfillStartDate: "2024-01-01",
-      });
       const workflow = yield* api<{ id: string }>("POST", "/workflows", {
         name: "Daily asset prices (fixture)",
         scope: "asset",
@@ -172,14 +181,37 @@ const command = Command.make(
           },
         ],
       });
-      yield* api("POST", `/workflows/${workflow.id}/assignments`, {
-        subject: { kind: "asset", symbol },
+      // The default assigns the definition to the asset when it is created.
+      yield* api("PUT", `/workflow-defaults/asset/${workflow.id}`);
+      yield* api("POST", "/assets", {
+        symbol,
+        provider: "eodhd",
+        backfillStartDate: "2024-01-01",
       });
-      const started = yield* api<{ id: string }>("POST", "/runs", {
+
+      const startManual = api<{ id: string }>("POST", "/runs", {
         workflowId: workflow.id,
         subject: { kind: "asset", symbol },
         processingDate: options.date,
       });
+      const dispatch = Effect.gen(function* () {
+        const at = `${options.date}T03:00:00Z`;
+        const tick = yield* Effect.promise(() =>
+          scheduledWorkflowTick(service.dependencies, env, new Date(at)),
+        );
+        const run = tick.status === "dispatched" ? tick.runs[0] : undefined;
+        if (run === undefined)
+          return yield* Effect.fail(
+            new ScriptError("The tick dispatched no run"),
+          );
+        yield* fs.writeFileString(
+          path.join(out, "api.log"),
+          `tick ${at} -> run ${run.runId} (${run.status})\n`,
+          { flag: "a" },
+        );
+        return { id: run.runId };
+      });
+      const started = yield* options.scheduled ? dispatch : startManual;
 
       yield* Effect.promise(() => service.platform.idle());
       const run = yield* api<WorkflowRunDetail>("GET", `/runs/${started.id}`);
