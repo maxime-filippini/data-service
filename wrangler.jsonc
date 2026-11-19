@@ -64,8 +64,9 @@
       { "name": "CALCULATION_ENGINE", "class_name": "CalculationEngine" },
     ],
   },
-  // One instance per run of the daily schedule (queues the downloads) and one
-  // per calculation run (calls the engine off the request path).
+  // One instance per run of the daily schedule (queues the downloads), one
+  // per calculation run (calls the engine off the request path), and one per
+  // workflow-definition run (its instance ID is the run ID).
   "workflows": [
     {
       "name": "data-service-scheduled-downloads",
@@ -76,6 +77,11 @@
       "name": "data-service-calculation-runs",
       "binding": "CALCULATION_RUNS",
       "class_name": "CalculationRunWorkflow",
+    },
+    {
+      "name": "data-service-workflow-runs",
+      "binding": "WORKFLOW_RUNS",
+      "class_name": "DefinitionRunWorkflow",
     },
   ],
   "migrations": [
@@ -189,6 +195,11 @@
           "name": "data-service-calculation-runs-dev",
           "binding": "CALCULATION_RUNS",
           "class_name": "CalculationRunWorkflow",
+        },
+        {
+          "name": "data-service-workflow-runs-dev",
+          "binding": "WORKFLOW_RUNS",
+          "class_name": "DefinitionRunWorkflow",
         },
       ],
       "queues": {
