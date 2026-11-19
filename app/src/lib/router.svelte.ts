@@ -13,10 +13,16 @@ export const route = {
  * query filters are passed separately so callers share one URL-building convention.
  */
 export type View =
-  "runs" | "symbols" | "portfolios" | "calculations" | "explore";
+  | "runs"
+  | "symbols"
+  | "assets"
+  | "portfolios"
+  | "workflows"
+  | "calculations"
+  | "explore";
 
 /**
- * A link to a page. `id` opens a portfolio or calculation
+ * A link to a page. `id` opens an asset, portfolio, workflow or calculation
  * (`/portfolios/<id>`); other params go in the query string.
  */
 export const href = (
