@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { publishedDatasetKey } from "$/datasets/contracts";
-import { DatasetPublications, PublishedDatasets } from "$/datasets/store";
+import { DatasetPublicationStore, DatasetObjectStore } from "$/datasets/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/views";
 
@@ -49,7 +49,7 @@ export const waitForAssetPublications = defineStepType({
       (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
     check: ({ params, inputs }, deadline) =>
       Effect.gen(function* () {
-        const checks = yield* DatasetPublications.use((publications) =>
+        const checks = yield* DatasetPublicationStore.use((publications) =>
           publications.checkAssetPrices({
             workflowId: params.workflowId,
             processingDate: inputs.processingDate,
@@ -59,7 +59,7 @@ export const waitForAssetPublications = defineStepType({
         );
         const missing: MissingDependency[] = [];
         const publications = [];
-        const objects = yield* PublishedDatasets;
+        const objects = yield* DatasetObjectStore;
         for (const { symbol, succeeded, publication } of checks) {
           const subject = { kind: "asset", symbol } as const;
           if (!succeeded) {
