@@ -361,21 +361,22 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
             .all<RunRow>(),
         ).pipe(Effect.map(({ results }) => results.map(toSummary))),
 
-      allActive: (limit) =>
+      allActive: (limit, after) =>
         query(() =>
           db
             .prepare(
               `SELECT * FROM workflow_runs WHERE status IN ${ACTIVE}
-               ORDER BY created_at, run_id LIMIT ?`,
+               AND (?2 IS NULL OR (created_at, run_id) > (?2, ?3))
+               ORDER BY created_at, run_id LIMIT ?1`,
             )
-            .bind(limit)
+            .bind(limit, after?.createdAt ?? null, after?.id ?? null)
             .all<RunRow>(),
         ).pipe(Effect.map(({ results }) => results.map(toSummary))),
 
       // Each enabled definition's occurrence is the entry for its hour in
       // the JSON array ?1; claimed occurrences are excluded by the same
       // column the claim's unique index covers.
-      due: (occurrenceByHour, limit) =>
+      due: (occurrenceByHour, limit, after) =>
         query(() =>
           db
             .prepare(
@@ -388,12 +389,22 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
                JOIN workflow_definitions d ON d.workflow_id = o.workflow_id
                JOIN workflow_assignments a ON a.workflow_id = d.workflow_id
                WHERE ${RUNNABLE}
+                 AND (?3 IS NULL OR
+                   (o.scheduled_for, a.workflow_id, a.subject_kind, a.subject_id)
+                     > (?3, ?4, ?5, ?6))
                  AND NOT EXISTS (SELECT 1 FROM workflow_runs r
                    WHERE ${OF_ASSIGNMENT} AND r.scheduled_for = o.scheduled_for)
-               ORDER BY o.scheduled_for, d.name, a.workflow_id, a.subject_kind, a.subject_id
+               ORDER BY o.scheduled_for, a.workflow_id, a.subject_kind, a.subject_id
                LIMIT ?2`,
             )
-            .bind(JSON.stringify(occurrenceByHour), limit)
+            .bind(
+              JSON.stringify(occurrenceByHour),
+              limit,
+              after?.scheduledFor ?? null,
+              after?.workflowId ?? null,
+              after?.subject.kind ?? null,
+              after === undefined ? null : subjectId(after.subject),
+            )
             .all<{
               workflow_id: string;
               subject_kind: "asset" | "portfolio";

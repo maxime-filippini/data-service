@@ -38,15 +38,22 @@ processing date from the beginning, with the definition as it is now. Its
 
 ## Scheduled dispatch
 
-The Worker's hourly cron also ticks the workflow dispatcher
-(`src/workflows/runs/dispatch.ts`) when the `WORKFLOW_DISPATCH` var is `on`.
+The Worker's hourly cron starts a durable dispatcher
+(`WorkflowDispatchWorkflow`, bound as `WORKFLOW_DISPATCHES`) when the
+`WORKFLOW_DISPATCH` var is `on`.
 It is `off` in `wrangler.jsonc` for both production and dev, so the new
 dispatcher and the legacy scheduled download never both download. Switching
 it on is a step of the download cutover, together with stopping the legacy
 schedule. Tests and the [fixture command](#running-locally-against-fixtures)
 run it with a controlled clock.
 
-Each tick:
+The dispatcher uses one instance ID per UTC tick hour, so a repeated trigger
+or a lost launch response does not start a second dispatcher for that hour.
+It uses the original tick time throughout, including after replay or across
+midnight, rather than moving assignments to a newer occurrence partway
+through dispatch.
+
+Each dispatch:
 
 1. **Reconciles** active runs (`queued`, `running`, `waiting`) against their
    Workflow instances, as a submission does (see
@@ -79,9 +86,21 @@ Rules that follow:
   catches up the latest occurrence if it never claimed it; the same goes for
   a new assignment (for example an asset created after its default's hour)
   and a definition whose hour moved later in the day.
-- **Bounded.** A tick claims at most 100 assignments and reconciles at most
-  100 active runs; the rest are handled by the next ticks while the
-  occurrence is still the latest.
+- **Batched, not capped per tick.** The dispatcher reconciles active runs
+  and claims due assignments in batches of at most 100, continuing until
+  both scans are exhausted. For example, 500 assignments are dispatched in
+  five batches by the same dispatcher, without waiting for five hourly
+  ticks. Each assignment still executes its own workflow independently;
+  there is no cross-assignment barrier between steps.
+- **Checkpointed.** Selecting and processing each batch are separate durable
+  steps. After interruption, the dispatcher reuses the selected batch and
+  resumes from its checkpoints. Occurrence claims and run IDs remain
+  retry-safe if a batch executes again before its checkpoint is saved.
+- **Forward progress.** Keyset cursors advance past each selected page,
+  including assignments rejected after selection and active runs kept
+  active. Removing claimed rows or keeping older runs active cannot skip
+  later pages or keep the dispatcher cycling over the first batch. A
+  rejected assignment is reported and can be reconsidered by a later tick.
 
 ## How a run executes
 

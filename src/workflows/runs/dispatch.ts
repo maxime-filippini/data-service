@@ -2,10 +2,15 @@ import { Effect, type Layer } from "effect";
 
 import { addUtcDays, atUtcHour } from "$/datetime";
 import type { Subject } from "$/workflows/contracts";
+import type { Steps } from "$/workflows/steps";
 
-import type { RunPlatform, WorkflowRunStatus } from "./contracts";
+import type {
+  RunPlatform,
+  WorkflowRunStatus,
+  WorkflowRunSummary,
+} from "./contracts";
 import { claimAndLaunch, reconcileRun } from "./operations";
-import { WorkflowRuns } from "./store";
+import { type DueAssignment, WorkflowRuns } from "./store";
 
 /**
  * Scheduled dispatch: the hourly tick runs each enabled assignment once per
@@ -28,12 +33,10 @@ import { WorkflowRuns } from "./store";
  */
 
 /**
- * Most assignments one tick claims, and most active runs it reconciles,
- * bounding the tick's database and Workflow calls. Assignments left over
- * are dispatched by the next ticks while their occurrence is still the
- * latest.
+ * Most assignments dispatched or active runs reconciled in one durable
+ * batch. The dispatcher continues through all pages in the same execution.
  */
-export const MAX_DISPATCH_PER_TICK = 100;
+export const DISPATCH_BATCH_SIZE = 100;
 
 /** The latest daily occurrence of `hourUtc` at or before `now`. */
 export const latestOccurrence = (hourUtc: number, now: Date): Date => {
@@ -71,62 +74,115 @@ export type TickReport =
     };
 
 export interface DispatchOptions {
-  /** Default `MAX_DISPATCH_PER_TICK`. */
-  readonly limit?: number;
+  /** Default `DISPATCH_BATCH_SIZE`, at most that many per durable batch. */
+  readonly batchSize?: number;
 }
 
-/**
- * Reconcile active runs, then claim and launch every enabled assignment's
- * latest due occurrence it has not claimed yet.
- */
-export const dispatchScheduledRuns = Effect.fn("WorkflowRuns.dispatch")(
-  function* (now: Date, platform: RunPlatform, options: DispatchOptions = {}) {
-    const limit = options.limit ?? MAX_DISPATCH_PER_TICK;
-    const runs = yield* WorkflowRuns;
-
-    const reconciled = { kept: 0, failed: 0 };
-    for (const active of yield* runs.allActive(limit))
-      reconciled[yield* reconcileRun(platform, active, now)] += 1;
-
-    const occurrenceByHour = Array.from({ length: 24 }, (_, hour) =>
-      latestOccurrence(hour, now).toISOString(),
-    );
-    const dispatched: DispatchedRun[] = [];
-    const failures: DispatchFailure[] = [];
-    for (const due of yield* runs.due(occurrenceByHour, limit)) {
-      const processingDate = due.scheduledFor.slice(0, 10);
-      const outcome = yield* Effect.result(
-        claimAndLaunch(
-          {
-            workflowId: due.workflowId,
-            subject: due.subject,
-            processingDate,
-            trigger: "schedule",
-            scheduledFor: due.scheduledFor,
-          },
-          now,
-          platform,
-        ),
-      );
-      if (outcome._tag === "Failure")
-        // Disabled or removed since it was found due: not dispatched.
-        failures.push({ ...due, error: outcome.failure.message });
-      else if (outcome.success.claimed)
-        dispatched.push({
-          ...due,
-          runId: outcome.success.run.id,
+const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
+  assignments: readonly DueAssignment[],
+  now: Date,
+  platform: RunPlatform,
+) {
+  const dispatched: DispatchedRun[] = [];
+  const failures: DispatchFailure[] = [];
+  for (const due of assignments) {
+    const processingDate = due.scheduledFor.slice(0, 10);
+    const outcome = yield* Effect.result(
+      claimAndLaunch(
+        {
+          workflowId: due.workflowId,
+          subject: due.subject,
           processingDate,
-          status: outcome.success.run.status,
-        });
-    }
-    return {
-      status: "dispatched" as const,
-      reconciled,
-      runs: dispatched,
-      failures,
-    };
-  },
-);
+          trigger: "schedule",
+          scheduledFor: due.scheduledFor,
+        },
+        now,
+        platform,
+      ),
+    );
+    if (outcome._tag === "Failure")
+      // Disabled or removed since it was found due: not dispatched.
+      failures.push({ ...due, error: outcome.failure.message });
+    else if (outcome.success.claimed)
+      dispatched.push({
+        ...due,
+        runId: outcome.success.run.id,
+        processingDate,
+        status: outcome.success.run.status,
+      });
+  }
+  return { runs: dispatched, failures };
+});
+
+type Runner = <A, E>(program: Effect.Effect<A, E, WorkflowRuns>) => Promise<A>;
+
+export const dispatchScheduledRuns = async (
+  now: Date,
+  platform: RunPlatform,
+  steps: Steps,
+  run: Runner,
+  options: DispatchOptions = {},
+): Promise<Extract<TickReport, { status: "dispatched" }>> => {
+  const batchSize = options.batchSize ?? DISPATCH_BATCH_SIZE;
+  if (
+    !Number.isInteger(batchSize) ||
+    batchSize < 1 ||
+    batchSize > DISPATCH_BATCH_SIZE
+  )
+    throw new RangeError(
+      `Dispatch batch size must be an integer between 1 and ${DISPATCH_BATCH_SIZE}`,
+    );
+
+  const reconciled = { kept: 0, failed: 0 };
+  let afterActive: Pick<WorkflowRunSummary, "createdAt" | "id"> | undefined;
+  for (let page = 1; ; page += 1) {
+    const active = await steps.do(`select active batch ${page}`, () =>
+      run(WorkflowRuns.use((runs) => runs.allActive(batchSize, afterActive))),
+    );
+    if (active.length === 0) break;
+    const counts = await steps.do(`reconcile active batch ${page}`, () =>
+      run(
+        Effect.gen(function* () {
+          const counts = { kept: 0, failed: 0 };
+          for (const current of active)
+            counts[yield* reconcileRun(platform, current, now)] += 1;
+          return counts;
+        }),
+      ),
+    );
+    reconciled.kept += counts.kept;
+    reconciled.failed += counts.failed;
+    const last = active.at(-1)!;
+    afterActive = { createdAt: last.createdAt, id: last.id };
+    if (active.length < batchSize) break;
+  }
+
+  const occurrenceByHour = Array.from({ length: 24 }, (_, hour) =>
+    latestOccurrence(hour, now).toISOString(),
+  );
+  const dispatched: DispatchedRun[] = [];
+  const failures: DispatchFailure[] = [];
+  let afterDue: DueAssignment | undefined;
+  for (let page = 1; ; page += 1) {
+    const assignments = await steps.do(`select due batch ${page}`, () =>
+      run(
+        WorkflowRuns.use((runs) =>
+          runs.due(occurrenceByHour, batchSize, afterDue),
+        ),
+      ),
+    );
+    if (assignments.length === 0) break;
+    const batch = await steps.do(`dispatch due batch ${page}`, () =>
+      run(dispatchBatch(assignments, now, platform)),
+    );
+    dispatched.push(...batch.runs);
+    failures.push(...batch.failures);
+    afterDue = assignments.at(-1)!;
+    if (assignments.length < batchSize) break;
+  }
+
+  return { status: "dispatched", reconciled, runs: dispatched, failures };
+};
 
 /** What the tick selects from the Worker's bindings. */
 export interface DispatchDependencies {
@@ -141,27 +197,70 @@ export interface DispatchDependencies {
  * `WORKFLOW_DISPATCH` var is `on`. It is `off` in every deployed
  * environment while the legacy scheduled download owns automatic downloads.
  */
-export const workflowDispatchEnabled = (env: CloudflareBindings) =>
-  String(env.WORKFLOW_DISPATCH) === "on";
+export const workflowDispatchEnabled = (
+  env: Pick<CloudflareBindings, "WORKFLOW_DISPATCH">,
+) => String(env.WORKFLOW_DISPATCH) === "on";
 
 /**
- * The hourly tick's workflow dispatch, gated by `WORKFLOW_DISPATCH`. The
- * Worker's cron handler calls it with the trigger's scheduled time; tests
- * and the fixture command call it with a controlled clock.
+ * The dispatch Workflow's body, gated by `WORKFLOW_DISPATCH`, with the
+ * trigger's scheduled time and durable steps. Tests and the fixture command
+ * call the same body with a controlled clock and local steps.
  */
 export const scheduledWorkflowTick = (
   dependencies: DispatchDependencies,
   env: CloudflareBindings,
   now: Date,
+  steps: Steps,
   options: DispatchOptions = {},
 ): Promise<TickReport> =>
   workflowDispatchEnabled(env)
     ? dispatchScheduledRuns(
         now,
         dependencies.runPlatformFor(env),
+        steps,
+        (program) =>
+          program.pipe(
+            Effect.provide(dependencies.workflowRunsFor(env)),
+            Effect.runPromise,
+          ),
         options,
-      ).pipe(
-        Effect.provide(dependencies.workflowRunsFor(env)),
-        Effect.runPromise,
       )
     : Promise.resolve({ status: "disabled" });
+
+export interface WorkflowDispatchParams {
+  readonly scheduledTime: string;
+}
+
+interface DispatchPlatform {
+  readonly create: (options: {
+    readonly id: string;
+    readonly params: WorkflowDispatchParams;
+  }) => Promise<unknown>;
+  readonly get: (id: string) => Promise<{
+    readonly status: () => Promise<unknown>;
+  }>;
+}
+
+export const startScheduledWorkflowTick = async (
+  env: Pick<CloudflareBindings, "WORKFLOW_DISPATCH">,
+  now: Date,
+  platform: DispatchPlatform,
+) => {
+  if (!workflowDispatchEnabled(env)) return { status: "disabled" } as const;
+  const id = `dispatch-${now.toISOString().slice(0, 13).replace("T", "-")}`;
+  try {
+    await platform.create({
+      id,
+      params: { scheduledTime: now.toISOString() },
+    });
+    return { status: "started", id } as const;
+  } catch (error) {
+    try {
+      const instance = await platform.get(id);
+      await instance.status();
+    } catch {
+      throw error;
+    }
+    return { status: "existing", id } as const;
+  }
+};

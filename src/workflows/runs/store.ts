@@ -77,12 +77,14 @@ export class WorkflowRuns extends Context.Service<
     /**
      * Enabled assignments (of enabled definitions and, for assets, enabled
      * assets) that have not claimed their definition's occurrence, given the
-     * occurrence for each UTC hour (index 0–23). Oldest occurrence first, at
-     * most `limit`.
+     * occurrence for each UTC hour (index 0–23). Ordered by occurrence,
+     * workflow ID, subject kind and subject ID, at most `limit`, after the
+     * optional last selected assignment (even if it was not claimed).
      */
     readonly due: (
       occurrenceByHour: readonly string[],
       limit: number,
+      after?: DueAssignment,
     ) => Effect.Effect<readonly DueAssignment[], WorkflowError>;
     readonly get: (
       runId: string,
@@ -96,9 +98,10 @@ export class WorkflowRuns extends Context.Service<
       workflowId: string,
       subject: Subject,
     ) => Effect.Effect<readonly WorkflowRunSummary[], WorkflowError>;
-    /** Every assignment's active runs, oldest first, at most `limit`. */
+    /** Active runs by creation time and ID, at most `limit`, after a cursor. */
     readonly allActive: (
       limit: number,
+      after?: Pick<WorkflowRunSummary, "createdAt" | "id">,
     ) => Effect.Effect<readonly WorkflowRunSummary[], WorkflowError>;
     /**
      * Mark an active run `running` and return what it executes, or null when

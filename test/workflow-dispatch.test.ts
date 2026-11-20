@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { LocalPlatformOptions } from "$/local/platform";
+import { localSteps } from "$/local/steps";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/contracts";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import {
+  DISPATCH_BATCH_SIZE,
+  scheduledWorkflowTick,
+  startScheduledWorkflowTick,
+} from "$/workflows/runs/dispatch";
+import type { Steps } from "$/workflows/steps";
 
 import { assetPricesSpec, workflowService } from "./support/workflow-service";
 
@@ -18,7 +24,7 @@ const setup = (
   options: {
     readonly platform?: LocalPlatformOptions;
     readonly dispatch?: string;
-    readonly limit?: number;
+    readonly batchSize?: number;
   } = {},
 ) => {
   const service = workflowService({
@@ -28,12 +34,13 @@ const setup = (
   const { api, json, dependencies, env } = service;
 
   /** One hourly tick at the given instant. */
-  const tick = (at: string) =>
+  const tick = (at: string, steps = localSteps(new Map(), { delayScale: 0 })) =>
     scheduledWorkflowTick(
       dependencies,
       env,
       new Date(at),
-      options.limit === undefined ? {} : { limit: options.limit },
+      steps,
+      options.batchSize === undefined ? {} : { batchSize: options.batchSize },
     );
   /** Runs, oldest first. */
   const runs = async (query = "") =>
@@ -418,16 +425,14 @@ test("a run whose instance stopped without an outcome is failed by the next tick
   );
 });
 
-test("dispatch beyond the per-tick limit continues on the next tick for the same occurrence", async () => {
-  const { configure, tick, outcomes } = setup({
+test("one tick dispatches every due assignment in bounded batches", async () => {
+  const { configure, tick, outcomes, platform } = setup({
     platform: { autoStart: false },
-    limit: 2,
+    batchSize: 2,
   });
   await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
 
   await tick("2024-01-10T06:00:00Z");
-  assert.equal((await outcomes()).length, 2);
-  await tick("2024-01-10T07:00:00Z");
   assert.deepEqual(
     (await outcomes()).map(([symbol, , occurrence]) => [symbol, occurrence]),
     [
@@ -436,4 +441,284 @@ test("dispatch beyond the per-tick limit continues on the next tick for the same
       ["NVDA.US", "2024-01-10T06:00:00.000Z"],
     ],
   );
+  assert.equal(platform.instances.size, 3);
+  const again = await tick("2024-01-10T06:00:00Z");
+  assert.equal(again.status === "dispatched" && again.runs.length, 0);
+  assert.equal(platform.instances.size, 3);
+});
+
+test("one dispatch launches 500 assignments in five checkpointed batches", async () => {
+  const { configure, tick, platform } = setup({
+    platform: { autoStart: false },
+  });
+  const symbols = Array.from(
+    { length: 500 },
+    (_, index) => `ASSET${String(index).padStart(3, "0")}.US`,
+  );
+  await configure(6, symbols);
+  const checkpoints = new Map<string, string>();
+  const report = await tick(
+    "2024-01-10T06:00:00Z",
+    localSteps(checkpoints, { delayScale: 0 }),
+  );
+  assert.equal(report.status, "dispatched");
+  if (report.status !== "dispatched") return;
+  assert.equal(report.runs.length, 500);
+  assert.deepEqual(report.failures, []);
+  assert.deepEqual(
+    report.runs.map((run) => run.subject),
+    symbols.map((symbol) => ({ kind: "asset", symbol })),
+  );
+  assert.ok(
+    report.runs.every(
+      (run) =>
+        run.scheduledFor === "2024-01-10T06:00:00.000Z" &&
+        run.processingDate === "2024-01-10" &&
+        run.status === "queued",
+    ),
+  );
+  const batches = [...checkpoints.entries()].filter(([name]) =>
+    name.startsWith("dispatch due batch "),
+  );
+  assert.equal(batches.length, 5);
+  for (const [, checkpoint] of batches)
+    assert.equal(JSON.parse(checkpoint).runs.length, DISPATCH_BATCH_SIZE);
+  assert.equal(platform.instances.size, 500);
+  const again = await tick("2024-01-10T06:00:00Z");
+  assert.equal(again.status === "dispatched" && again.runs.length, 0);
+  assert.equal(platform.instances.size, 500);
+});
+
+test("dispatch resumes checkpointed batches without losing or duplicating assignments", async () => {
+  const { configure, tick, outcomes, platform } = setup({
+    platform: { autoStart: false },
+    batchSize: 2,
+  });
+  await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
+  const checkpoints = new Map<string, string>();
+  const durable = localSteps(checkpoints, { delayScale: 0 });
+  const interrupted: Steps = {
+    do: (name, run, config) => {
+      if (name === "dispatch due batch 2")
+        throw new Error("dispatcher interrupted");
+      return durable.do(name, run, config);
+    },
+  };
+  await assert.rejects(
+    tick("2024-01-10T06:00:00Z", interrupted),
+    /dispatcher interrupted/,
+  );
+  assert.equal(platform.instances.size, 2);
+  assert.equal(checkpoints.has("select due batch 2"), true);
+  await tick("2024-01-10T06:00:00Z", durable);
+  assert.equal(platform.instances.size, 3);
+  assert.equal((await outcomes()).length, 3);
+});
+
+test("replaying a batch whose checkpoint was lost does not launch duplicate runs", async () => {
+  const { configure, tick, outcomes, platform } = setup({
+    platform: { autoStart: false },
+    batchSize: 2,
+  });
+  await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
+  const durable = localSteps(new Map(), { delayScale: 0 });
+  const interrupted: Steps = {
+    do: async (name, run, config) => {
+      if (name === "dispatch due batch 1") {
+        await run();
+        throw new Error("checkpoint not saved");
+      }
+      return durable.do(name, run, config);
+    },
+  };
+  await assert.rejects(
+    tick("2024-01-10T06:00:00Z", interrupted),
+    /checkpoint not saved/,
+  );
+  const originalIds = [...platform.instances.keys()];
+  assert.equal(originalIds.length, 2);
+  await tick("2024-01-10T06:00:00Z", durable);
+  assert.equal(platform.instances.size, 3);
+  assert.equal((await outcomes()).length, 3);
+  assert.ok(originalIds.every((id) => platform.instances.has(id)));
+});
+
+test("concurrent dispatchers traverse every batch without duplicate occurrences", async () => {
+  const { configure, tick, outcomes, platform } = setup({
+    platform: { autoStart: false },
+    batchSize: 2,
+  });
+  const symbols = ["AAPL.US", "BRK-B.US", "MSFT.US", "NVDA.US", "TSLA.US"];
+  await configure(6, symbols);
+  await Promise.all([
+    tick("2024-01-10T06:00:00Z"),
+    tick("2024-01-10T06:00:00Z"),
+  ]);
+  assert.deepEqual(
+    (await outcomes()).map(([symbol]) => symbol),
+    symbols,
+  );
+  assert.equal(platform.instances.size, symbols.length);
+});
+
+test("a rejected assignment does not block subsequent dispatch batches", async () => {
+  const { api, json, configure, tick, outcomes, platform } = setup({
+    platform: { autoStart: false },
+    batchSize: 1,
+  });
+  const workflowId = await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
+  const durable = localSteps(new Map(), { delayScale: 0 });
+  const steps: Steps = {
+    do: async (name, run, config) => {
+      if (name === "dispatch due batch 1")
+        await json(
+          api(`/workflows/${workflowId}/assignments/asset/AAPL.US`, "PATCH", {
+            enabled: false,
+          }),
+        );
+      return durable.do(name, run, config);
+    },
+  };
+  const report = await tick("2024-01-10T06:00:00Z", steps);
+  assert.equal(report.status === "dispatched" && report.failures.length, 1);
+  assert.deepEqual(
+    (await outcomes()).map(([symbol]) => symbol),
+    ["MSFT.US", "NVDA.US"],
+  );
+  assert.equal(platform.instances.size, 2);
+});
+
+test("reconciliation advances past kept active runs into subsequent batches", async () => {
+  const { configure, tick, runs, detail, platform } = setup({
+    platform: { autoStart: false },
+    batchSize: 2,
+  });
+  await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
+  await tick("2024-01-10T06:00:00Z");
+  const active = (await runs()).sort((left, right) =>
+    left.id < right.id ? -1 : 1,
+  );
+  const stopped = active.at(-1)!;
+  platform.instances.get(stopped.id)!.status = "errored";
+  const report = await tick("2024-01-10T07:00:00Z");
+  assert.deepEqual(report.status === "dispatched" && report.reconciled, {
+    kept: 2,
+    failed: 1,
+  });
+  assert.equal((await detail(stopped.id)).status, "failed");
+});
+
+test("invalid dispatch batch sizes are rejected", async () => {
+  for (const batchSize of [
+    0,
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    DISPATCH_BATCH_SIZE + 1,
+  ]) {
+    const { tick } = setup({ batchSize });
+    await assert.rejects(tick("2024-01-10T06:00:00Z"), RangeError);
+  }
+});
+
+test("the hourly trigger starts a dispatcher only while dispatch is enabled", async () => {
+  const { env } = setup({ dispatch: "off" });
+  const platform = {
+    create: async () => assert.fail("disabled dispatch must not launch"),
+    get: async () =>
+      assert.fail("disabled dispatch must not look up instances"),
+  };
+  assert.deepEqual(
+    await startScheduledWorkflowTick(
+      env,
+      new Date("2024-01-10T06:00:00Z"),
+      platform,
+    ),
+    { status: "disabled" },
+  );
+});
+
+test("the hourly trigger uses one deterministic dispatcher ID per UTC hour", async () => {
+  const { env } = setup();
+  const created = new Map<string, unknown>();
+  const platform = {
+    create: async (options: { id: string; params: unknown }) => {
+      if (created.has(options.id)) throw new Error("instance already exists");
+      created.set(options.id, options.params);
+    },
+    get: async (id: string) => {
+      assert.ok(created.has(id));
+      return { status: async () => ({ status: "running" }) };
+    },
+  };
+  assert.deepEqual(
+    await startScheduledWorkflowTick(
+      env,
+      new Date("2024-01-10T06:00:00Z"),
+      platform,
+    ),
+    { status: "started", id: "dispatch-2024-01-10-06" },
+  );
+  assert.deepEqual(
+    await startScheduledWorkflowTick(
+      env,
+      new Date("2024-01-10T06:30:00Z"),
+      platform,
+    ),
+    { status: "existing", id: "dispatch-2024-01-10-06" },
+  );
+  await startScheduledWorkflowTick(
+    env,
+    new Date("2024-01-10T07:00:00Z"),
+    platform,
+  );
+  assert.deepEqual(
+    [...created.values()],
+    [
+      { scheduledTime: "2024-01-10T06:00:00.000Z" },
+      { scheduledTime: "2024-01-10T07:00:00.000Z" },
+    ],
+  );
+});
+
+test("a lost dispatcher launch response is checked against the existing instance", async () => {
+  const { env } = setup();
+  let lookedUp: string | undefined;
+  const result = await startScheduledWorkflowTick(
+    env,
+    new Date("2024-01-10T06:00:00Z"),
+    {
+      create: async () => {
+        throw new Error("response lost");
+      },
+      get: async (id) => {
+        lookedUp = id;
+        return { status: async () => ({ status: "running" }) };
+      },
+    },
+  );
+  assert.equal(lookedUp, "dispatch-2024-01-10-06");
+  assert.deepEqual(result, { status: "existing", id: lookedUp });
+});
+
+test("an unconfirmed dispatcher launch reports failure instead of claiming success", async () => {
+  const { env } = setup();
+  for (const statusUnavailable of [false, true])
+    await assert.rejects(
+      startScheduledWorkflowTick(env, new Date("2024-01-10T06:00:00Z"), {
+        create: async () => {
+          throw new Error("launch failed");
+        },
+        get: async () => {
+          if (!statusUnavailable) throw new Error("instance absent");
+          return {
+            status: async () => {
+              throw new Error("status unavailable");
+            },
+          };
+        },
+      }),
+      /launch failed/,
+    );
 });

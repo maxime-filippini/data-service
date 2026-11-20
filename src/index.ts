@@ -17,7 +17,7 @@ import { liveSourceFor } from "$/market-data/sources";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createRoutes } from "$/routes";
 import { dependencies } from "$/dependencies";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { startScheduledWorkflowTick } from "$/workflows/runs/dispatch";
 // SvelteKit's handler, built by `pnpm --filter app build` (wrangler's build
 // command runs it before dev and deploy). It has no type declarations.
 // @ts-expect-error -- generated JavaScript, missing until the app is built
@@ -28,6 +28,7 @@ export { DefinitionRunWorkflow } from "./definition-run-workflow";
 export { CalculationEngine } from "./engine-container";
 export { MarketDataProcessor } from "./processor-container";
 export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
+export { WorkflowDispatchWorkflow } from "./workflow-dispatch-workflow";
 
 const app = createRoutes(dependencies, sveltekit);
 
@@ -171,22 +172,15 @@ export default {
     // (WORKFLOW_DISPATCH "off") until the download cutover: the legacy
     // scheduled download above still owns automatic downloads.
     try {
-      const tick = await scheduledWorkflowTick(dependencies, env, now);
-      if (tick.status === "dispatched") {
-        for (const run of tick.runs)
-          console.log(JSON.stringify({ event: "workflow_dispatched", ...run }));
-        for (const failure of tick.failures)
-          console.error(
-            JSON.stringify({ event: "workflow_dispatch_failed", ...failure }),
-          );
-        if (tick.reconciled.failed > 0)
-          console.log(
-            JSON.stringify({
-              event: "workflow_runs_failed_as_stopped",
-              count: tick.reconciled.failed,
-            }),
-          );
-      }
+      const tick = await startScheduledWorkflowTick(
+        env,
+        now,
+        env.WORKFLOW_DISPATCHES,
+      );
+      if (tick.status === "started")
+        console.log(
+          JSON.stringify({ event: "workflow_dispatch_started", id: tick.id }),
+        );
     } catch (error) {
       // Nothing claimed is lost: the next tick dispatches what is still due.
       console.error(

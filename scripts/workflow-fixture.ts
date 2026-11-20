@@ -41,6 +41,7 @@ import { FileDatasetObjectStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
+import { localSteps } from "$/local/steps";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { createRoutes } from "$/routes";
 import type { WorkflowRunDetail } from "$/workflows/runs/contracts";
@@ -197,7 +198,12 @@ const command = Command.make(
       const dispatch = Effect.gen(function* () {
         const at = `${options.date}T03:00:00Z`;
         const tick = yield* Effect.promise(() =>
-          scheduledWorkflowTick(service.dependencies, env, new Date(at)),
+          scheduledWorkflowTick(
+            service.dependencies,
+            env,
+            new Date(at),
+            localSteps(new Map(), { delayScale: 0 }),
+          ),
         );
         const run = tick.status === "dispatched" ? tick.runs[0] : undefined;
         if (run === undefined)
