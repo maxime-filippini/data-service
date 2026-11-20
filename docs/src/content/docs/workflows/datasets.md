@@ -109,12 +109,24 @@ pnpm operations:generate   # after changing an operation's models
 pnpm operations:check      # fails if either file is stale
 ```
 
-The Python tests fail when `schemas.json` differs from the models, and
+Both files are generated locally and committed with the model change that
+produced them: run `pnpm operations:generate` before committing. CI only
+checks them. Its `check` job runs `pnpm operations:check`, which re-exports
+the Pydantic schemas and fails if either file is stale. The Python tests also
+fail when `schemas.json` differs from the models, and
 `test/operation-contracts.test.ts` fails when the generated module differs
-from `schemas.json`. Step registrations use the generated schemas: the
-`raw-prices-eod` and `prices-eod` contracts and `normalize-prices`' params.
-The client validates each request before sending it and each response
-before returning it.
+from `schemas.json`.
+
+The generator's own tests (`test/operation-contract-generator.test.ts`) run
+it on the export of `containers/engine/tests/contract_shapes.py`, models that
+cover each field shape a contract may use, and check that the generated
+schemas accept and reject the same values as Pydantic. A shape the generator
+cannot check, such as a string format other than `date` or `date-time`, makes
+generation fail rather than produce a schema that accepts anything.
+
+Step registrations use the generated schemas: the `raw-prices-eod` and
+`prices-eod` contracts and `normalize-prices`' params. The client validates
+each request before sending it and each response before returning it.
 
 ## Steps
 
