@@ -100,8 +100,8 @@ def environment(monkeypatch, tmp_path):
 
 @pytest.fixture
 def engine_r2(environment, monkeypatch, r2):
-    """Points the runtime at the fake R2 with settings from the environment."""
-    from data_service_engine import runtime
+    """Points the storage helper at the fake R2 with settings from the environment."""
+    from data_service_engine import storage
 
     class FakeClient:
         def __init__(self, settings):
@@ -113,5 +113,5 @@ def engine_r2(environment, monkeypatch, r2):
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(runtime, "s3_client", FakeClient)
+    monkeypatch.setattr(storage, "s3_client", FakeClient)
     return r2

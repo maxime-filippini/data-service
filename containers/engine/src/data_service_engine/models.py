@@ -185,15 +185,36 @@ class ValidateRequest(Contract):
 class CalculateRequest(Contract):
     """POST /calculate payload for one result returned to the caller.
 
-    Matches the Worker CalculateRequest. The as-of date limits visible data;
-    portfolio input may be saved history or inline holdings, or absent for
-    a type that takes none. Execution does not persist result history.
+    Matches the Worker CalculateRequest. Choose one portfolio or an ordered
+    batch, each with saved snapshots or inline holdings. The calculation date
+    limits data and holdings visibility. The independent portfolio types add
+    portfolio_index to batch rows; aggregate types choose their own row shape.
+    Nothing is persisted, and duplicate IDs/inline entries remain distinct.
     """
 
     type: str = Field(min_length=1)
     params: dict[str, Any]
     as_of: date = Field(alias="asOf")
     portfolio: Portfolio | None = None
+    portfolios: tuple[Portfolio, ...] | None = Field(None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _one_selection(self):
+        if self.portfolio is not None and self.portfolios is not None:
+            raise ValueError("Supply either portfolio or portfolios, not both")
+        return self
+
+    @property
+    def selections(self) -> tuple[Portfolio, ...]:
+        """Normalize the two HTTP selection forms without choosing how to execute."""
+        if self.portfolios is not None:
+            return self.portfolios
+        return (self.portfolio,) if self.portfolio is not None else ()
+
+    @property
+    def mode(self) -> Literal["single", "batch"]:
+        """Caller-requested synchronous response/error policy."""
+        return "batch" if self.portfolios is not None else "single"
 
 
 class RunRequest(Contract):
@@ -227,8 +248,8 @@ class RunRequest(Contract):
 class PortfolioOutcome(Contract):
     """Result of executing one type for one portfolio, before persistence.
 
-    Used in saved-run responses and to determine ad hoc success. A null
-    portfolio ID means the type ran without a portfolio. A completed outcome
+    Recorded by independent portfolio calculations for saved-run reporting. A null
+    portfolio ID identifies inline holdings. A completed outcome
     counts produced rows; the subsequent R2 write can still fail.
     """
 

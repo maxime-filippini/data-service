@@ -103,8 +103,10 @@ download run doesn't stop calculations from being scheduled.
   symbol, one active processing job per symbol, one scheduled download run per
   day, one `running` run per calculation.
 - **Types live in Python only.** The Worker knows no calculation types; it asks
-  the engine for them. A new type needs no TypeScript, migration or dashboard
-  change.
+  the engine for them. Each type owns its data access and execution shape,
+  using shared helpers for canonical reads and optional portfolio iteration.
+  Runtime invokes a type once per request and optionally persists its result.
+  A new type needs no TypeScript, migration or dashboard change.
 - **Apps read R2 directly.** The API manages the universe and calculations; it
   never serves data.
 

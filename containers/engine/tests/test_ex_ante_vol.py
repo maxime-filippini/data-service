@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from data_service_engine.framework import get_type
+from data_service_engine.framework import Context, get_type
 from data_service_engine.models import Portfolio
 from data_service_engine.storage import SymbolReader
 
@@ -39,9 +39,11 @@ def portfolio(weights, id="p1"):
 
 
 def calculate(reader, params, weights, as_of=AS_OF):
-    rows, outcomes = VOL.calculate(params, as_of, [portfolio(weights)], reader)
-    assert outcomes[0].error is None
-    return rows.row(0, named=True)
+    result = VOL.calculate(
+        params, Context(as_of, [portfolio(weights)], load_symbol=reader)
+    )
+    assert result.portfolios[0].error is None
+    return result.rows.row(0, named=True)
 
 
 def portfolio_returns(weights, last=None):
@@ -100,9 +102,11 @@ def test_a_past_as_of_date_ignores_later_prices(reader):
     ],
 )
 def test_failures_explain_themselves(reader, params, weights, error):
-    _, outcomes = VOL.calculate(params, AS_OF, [portfolio(weights)], reader)
-    assert outcomes[0].status == "failed"
-    assert outcomes[0].error.startswith(error)
+    result = VOL.calculate(
+        params, Context(AS_OF, [portfolio(weights)], load_symbol=reader)
+    )
+    assert result.status == "failed"
+    assert result.portfolios[0].error.startswith(error)
 
 
 def test_params_reject_unknown_fields_and_bad_values():
@@ -132,8 +136,10 @@ def test_uses_the_snapshot_in_effect_at_the_as_of_date(reader):
             ],
         }
     )
-    rows, _ = VOL.calculate({"window": 3}, date(2026, 10, 15), [history], reader)
-    row = rows.row(0, named=True)
+    result = VOL.calculate(
+        {"window": 3}, Context(date(2026, 10, 15), [history], load_symbol=reader)
+    )
+    row = result.rows.row(0, named=True)
     assert row["holdings_date"] == date(2026, 10, 14)
     expected = statistics.stdev(RETURNS["B.US"][4:7]) * math.sqrt(252)
     assert row["volatility"] == pytest.approx(expected)

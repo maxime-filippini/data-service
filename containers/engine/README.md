@@ -7,60 +7,57 @@ portfolios, calculations and runs in D1; this service only reads and writes
 R2. See [calculations and runs](../../docs/src/content/docs/calculations/runs.md)
 and the [maintainer guide](../../docs/src/content/docs/maintaining.md).
 
+The `hypothetical_portfolio_returns` type returns historical constant-weight
+returns using the holdings selected at `asOf`. The Worker's synchronous route
+resolves mixed saved references/inline holdings into an ordered `portfolios`
+batch. The calculation shares a data-reader scope across entries, adds `portfolio_index`,
+and returns JSON or Arrow without R2 writes. Any batch error aborts the response;
+expected calculation errors retain an indexed 422, and infrastructure errors
+retain an indexed 500. See the
+[return-history contract](../../docs/src/content/docs/calculations/returns.md).
+
 ## Adding a calculation type
 
-Add one module to `src/data_service_engine/types/` that defines
-`TYPE = CalculationType(...)`:
+Add one module to `src/data_service_engine/types/` that exports
+`TYPE = CalculationType(...)`. Its `run(params, ctx)` receives the whole request
+and returns a `CalculationResult`. The runtime invokes it once, then either
+returns its rows or persists its successful result for a saved run.
+
+The calculation chooses its data helpers and calls them directly:
 
 ```python
-class Params(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    window: int = Field(252, ge=2)
-
-
-def run(params: Params, ctx: Context) -> pl.DataFrame:
-    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
-    prices = ctx.load("prices_eod", snapshot.symbols, start=...)
-    return pl.DataFrame({"value": [...]})
-
-
-TYPE = CalculationType(
-    name="my_type",
-    description="What it calculates.",
-    params=Params,
-    output={"value": pl.Float64},
-    run=run,
-    takes_portfolio=True,
-)
+with market_data(ctx.as_of, ctx.load_symbol) as data:
+    for portfolio in ctx.portfolios:
+        inputs = load_portfolio_data(portfolio, data)
+        rows = calculate_portfolio(params, inputs)
 ```
 
-- `params` is a Pydantic model. `GET /types` publishes its JSON Schema, and
-  the Worker stores params as plain JSON.
-- `output` lists the columns `run` returns, in order. The framework checks
-  them, casts to these types and adds `as_of` and `portfolio_id`. `run` may
-  return any number of rows.
-- `takes_portfolio=True` runs the type once per portfolio. Otherwise the type
-  runs once with `ctx.portfolio` set to `None`.
-- `ctx.portfolio` holds every holdings snapshot up to `ctx.as_of`, and the
-  type picks what it needs. A snapshot is the holdings at the close of its
-  `holdings_date`, in effect until the next one:
-  - `holdings_at(day)`: the snapshot in effect at the close of `day`.
-  - `snapshots_between(start, end)`: every snapshot in effect at some close
-    in the period, starting with the one in effect at `start`.
-  - `holdings_df(start, end)`: the same as `holdings_date`, `symbol`,
-    `weight` rows, for joining with prices.
-  - `symbols`: every symbol held in any snapshot.
+- `market_data(as_of, load_symbol=None)` opens date-bounded canonical access.
+  `data.load(dataset, symbols, start=None, end=None)` reads requested symbols.
+  One scope caches each object once and closes the connection on exit. An
+  optional loader supplies local frames for tests.
+- `load_portfolio_data(portfolio, data, start=None)` returns `PortfolioData`:
+  the calculation-date holdings snapshot, raw price rows and their as-of date.
+  Saved IDs are resolved to compositions by the Worker before reaching Python.
+- `price_returns(prices, symbols)` aligns already-loaded adjusted prices and
+  computes unweighted asset returns. It performs no I/O.
 
-  A portfolio with no snapshot on or before the as-of date fails before the
-  type runs.
+Each type's `run` owns its ordinary loop and `try`/`except` error handling.
+`calculate_portfolio` takes prepared data and performs the numerical work.
+`portfolio_rows` validates and tags completed rows; `portfolio_result` combines
+already-produced frames and outcomes. Neither helper executes a calculation,
+loads data or catches errors.
 
-- `ctx.load(dataset, symbols, start, end)` returns the dataset's rows with a
-  `symbol` column. It never returns rows after `ctx.as_of`.
-- Raise `CalculationError` for expected failures, like missing data. Its
-  message is shown as is; other exceptions show their type too.
+A symbol calculation can load symbols from its parameters and return rows
+without a portfolio loop. An aggregate calculation can consume `ctx.portfolios`
+and return one result. `takes_portfolio` is catalog/UI metadata; it does not
+choose an execution strategy. Output columns are validated and cast, and the
+framework adds `as_of`; the type or its chosen helper owns identifying columns.
 
-Modules starting with `_` are skipped, so shared helpers can live there.
-Two types with the same name stop the engine from starting.
+See [Writing a calculation type](../../docs/src/content/docs/calculations/types.md)
+for a complete example, symbol and aggregate variants, and the error contract.
+Modules starting with `_` are skipped by discovery. Duplicate registered names
+stop the engine from starting.
 
 ## Contract
 

@@ -2,34 +2,19 @@
 
 import io
 import re
+from contextlib import contextmanager
 from datetime import date
 
+import boto3
 import polars as pl
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from .framework import MissingDataError
+from .errors import MissingDataError
+from .settings import EngineSettings
 
 PARQUET = "application/vnd.apache.parquet"
 _DATASET = re.compile(r"[a-z0-9_]+")
-
-
-def _is_missing(error: ClientError) -> bool:
-    return error.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}
-
-
-def _read_parquet(s3, bucket: str, key: str) -> tuple[pl.DataFrame, str] | None:
-    try:
-        result = s3.get_object(Bucket=bucket, Key=key)
-    except ClientError as error:
-        if _is_missing(error):
-            return None
-        raise
-    body = result["Body"]
-    try:
-        df = pl.read_parquet(io.BytesIO(body.read()))
-    finally:
-        body.close()
-    return df, result["ETag"].strip('"')
 
 
 class SymbolReader:
@@ -57,6 +42,48 @@ class SymbolReader:
         return self._cache[dataset, symbol]
 
 
+def load_settings() -> EngineSettings:
+    return EngineSettings()  # pyright: ignore[reportCallIssue]
+
+
+@contextmanager
+def s3_client(settings: EngineSettings | None = None):
+    settings = settings if settings is not None else load_settings()
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=str(settings.r2_endpoint_url),
+        region_name="auto",
+        aws_access_key_id=settings.r2_access_key_id.get_secret_value(),
+        aws_secret_access_key=settings.r2_secret_access_key.get_secret_value(),
+        config=Config(
+            connect_timeout=10, read_timeout=120, retries={"max_attempts": 2}
+        ),
+    )
+    try:
+        yield s3
+    finally:
+        s3.close()
+
+
+def _is_missing(error: ClientError) -> bool:
+    return error.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}
+
+
+def _read_parquet(s3, bucket: str, key: str) -> tuple[pl.DataFrame, str] | None:
+    try:
+        result = s3.get_object(Bucket=bucket, Key=key)
+    except ClientError as error:
+        if _is_missing(error):
+            return None
+        raise
+    body = result["Body"]
+    try:
+        df = pl.read_parquet(io.BytesIO(body.read()))
+    finally:
+        body.close()
+    return df, result["ETag"].strip('"')
+
+
 def write_results(s3, bucket: str, key: str, as_of: date, rows: pl.DataFrame) -> str:
     """Replace the as-of date's rows in the calculation's Parquet object.
 
@@ -77,7 +104,9 @@ def write_results(s3, bucket: str, key: str, as_of: date, rows: pl.DataFrame) ->
     leading = [name for name in rows.columns if name in merged.columns]
     trailing = [name for name in merged.columns if name not in leading]
     merged = merged.select(*leading, *trailing).sort(
-        "as_of", "portfolio_id", nulls_last=True, maintain_order=True
+        [name for name in ("as_of", "portfolio_id") if name in merged.columns],
+        nulls_last=True,
+        maintain_order=True,
     )
 
     output = io.BytesIO()

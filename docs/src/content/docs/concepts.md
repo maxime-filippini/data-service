@@ -93,8 +93,10 @@ expression and an enabled flag. Its results are one Parquet file at
 ### Calculation run
 
 One run of a calculation for one **as-of date**, started by its cron or by
-hand. The type runs once per portfolio, and the run saves the params it used.
-It ends `completed`, `partial` (some portfolios failed) or `failed`. A run
+hand. The type receives all inputs in one invocation and chooses how to process
+them. The built-in types compute independent portfolio results through a shared
+helper. The run saves its parameters and ends `completed`, `partial` (some results
+failed) or `failed`. A run
 started while another is going is recorded as `skipped`.
 
 ### Cron slot

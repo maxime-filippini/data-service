@@ -1,95 +1,75 @@
-"""What a calculation type is, how types are found, and how one is run.
+"""Calculation registration and one invocation per request.
 
-A type is a module in `data_service_engine.types` with a module-level
-`TYPE = CalculationType(...)`. Nothing else needs to change to add one.
+Each type owns its execution flow and chooses its data helpers.
+The registry supplies metadata and parameter/output validation, not a strategy
+for portfolio, symbol or aggregate calculations.
 """
 
 import importlib
-import logging
 import pkgutil
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from functools import cache
 from types import ModuleType
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from .errors import CalculationError, MissingDataError, UnknownTypeError
+from .errors import UnknownTypeError
+from .market_data import SymbolLoader
 from .models import Portfolio, PortfolioOutcome
-
-__all__ = ["CalculationError", "MissingDataError", "UnknownTypeError"]
-
-logger = logging.getLogger(__name__)
-
-# Columns the framework adds to every result row.
-RESERVED_COLUMNS = {"as_of": pl.Date, "portfolio_id": pl.String}
-
-# Reads the whole (dataset, symbol) Parquet object. Raises MissingDataError.
-SymbolLoader = Callable[[str, str], pl.DataFrame]
 
 
 @dataclass(frozen=True)
 class Context:
-    """Per-execution input and data access supplied to a calculation type.
+    """Whole-request inputs supplied unchanged to a calculation implementation.
 
-    Use load() to read symbol rows at/before as_of; portfolio is the selected
-    history for this invocation, or None for a type that takes no portfolio.
-    The injected loader hides R2 access so types can be tested with local frames.
+    Portfolios are selections, not an instruction to iterate. A type can use
+    them independently, aggregate them or ignore them. mode records the caller's
+    failure policy: saved runs may retain partial results, synchronous calls
+    must return a complete result. load_symbol optionally substitutes local
+    frames for canonical storage when a type calls market_data().
     """
 
     as_of: date
-    portfolio: Portfolio | None
-    _load_symbol: SymbolLoader = field(repr=False)
+    portfolios: Sequence[Portfolio] = ()
+    mode: Literal["saved", "single", "batch"] = "saved"
+    load_symbol: SymbolLoader | None = field(default=None, repr=False)
 
-    def load(
-        self,
-        dataset: str,
-        symbols: Sequence[str],
-        start: date | None = None,
-        end: date | None = None,
-    ) -> pl.DataFrame:
-        """Rows of `dataset` for `symbols` between `start` and `end`, inclusive.
 
-        Returns a `symbol` column plus the dataset's columns, sorted by symbol
-        and date. Never returns rows after `as_of`, so a past as-of date only
-        sees data up to that date.
-        """
-        end = self.as_of if end is None else min(end, self.as_of)
-        dfs = []
-        for symbol in dict.fromkeys(symbols):
-            df = self._load_symbol(dataset, symbol).filter(pl.col("date") <= end)
-            if start is not None:
-                df = df.filter(pl.col("date") >= start)
-            dfs.append(df.select(pl.lit(symbol).alias("symbol"), pl.all()))
-        if not dfs:
-            raise ValueError("Load at least one symbol")
-        return pl.concat(dfs).sort("symbol", "date")
+@dataclass(frozen=True)
+class CalculationResult:
+    """Rows and execution outcome returned by one calculation invocation.
+
+    The type owns identifying columns and optional per-portfolio outcomes.
+    The framework stamps as_of and checks declared output columns. The runtime
+    uses status to decide whether to persist rows; it does not infer success
+    from portfolio outcomes, which symbol/aggregate types need not provide.
+    """
+
+    rows: pl.DataFrame
+    status: Literal["completed", "partial", "failed"] = "completed"
+    error: str | None = None
+    portfolios: tuple[PortfolioOutcome, ...] = ()
 
 
 @dataclass(frozen=True)
 class CalculationType:
-    """Registration and execution contract implemented by each Python type.
+    """Metadata, parameter schema and entry point exported as module-level TYPE.
 
-    Export an instance as module-level TYPE under data_service_engine.types.
-    The registry exposes its metadata to the Worker/app, and the framework
-    validates params, iterates portfolios and validates output rows.
-
-    - `params`: a Pydantic model for the saved params.
-    - `output`: the columns of each result row (`as_of` and `portfolio_id`
-      are added by the framework).
-    - `run(params, ctx)`: returns a DataFrame with exactly the `output` columns.
-    - `takes_portfolio`: run once per portfolio, with `ctx.portfolio` set to
-      its snapshots up to `as_of`. The type picks the holdings it needs.
+    run(params, ctx) is called exactly once with all request inputs and returns
+    a CalculationResult. output declares required value columns and their
+    types; identifying columns belong to the implementation. takes_portfolio
+    is catalog/UI metadata and never selects an execution strategy.
     """
 
     name: str
     description: str
     params: type[BaseModel]
     output: Mapping[str, pl.DataType | type[pl.DataType]]
-    run: Callable[[Any, Context], pl.DataFrame]
+    run: Callable[[Any, Context], CalculationResult]
     takes_portfolio: bool = False
 
     def __post_init__(self):
@@ -97,9 +77,8 @@ class CalculationType:
             raise ValueError(f"Type name must be snake_case: {self.name!r}")
         if not self.output:
             raise ValueError(f"{self.name}: output needs at least one column")
-        reserved = RESERVED_COLUMNS.keys() & self.output.keys()
-        if reserved:
-            raise ValueError(f"{self.name}: output can't use {sorted(reserved)}")
+        if "as_of" in self.output:
+            raise ValueError(f"{self.name}: output can't use as_of")
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -113,96 +92,30 @@ class CalculationType:
     def validate_params(self, params: Mapping[str, Any]) -> BaseModel:
         return self.params.model_validate(params)
 
-    def result_schema(self) -> dict[str, pl.DataType | type[pl.DataType]]:
-        return {**RESERVED_COLUMNS, **self.output}
+    def calculate(self, params: Mapping[str, Any], ctx: Context) -> CalculationResult:
+        """Validate params, invoke the type once and validate/stamp its rows.
 
-    def calculate(
-        self,
-        params: Mapping[str, Any],
-        as_of: date,
-        portfolios: Sequence[Portfolio],
-        load_symbol: SymbolLoader,
-    ) -> tuple[pl.DataFrame, list[PortfolioOutcome]]:
-        """Run once per portfolio (or once, without one).
-
-        One portfolio failing doesn't stop the others; its outcome holds the
-        error. Invalid params or the wrong number of portfolios raise.
+        Types may add identifying columns such as symbol or portfolio_id. Their
+        output declaration covers the required value columns; helper functions
+        can enforce a stricter schema for individual computation steps.
         """
-        validated = self.validate_params(params)
-
-        if self.takes_portfolio and not portfolios:
-            raise CalculationError(f"{self.name} needs at least one portfolio")
-        if not self.takes_portfolio and portfolios:
-            raise CalculationError(f"{self.name} doesn't take a portfolio")
-
-        dfs, outcomes = [], []
-        for portfolio in portfolios or [None]:
-            portfolio_id = portfolio.id if portfolio else None
-            try:
-                ctx = Context(as_of, _known_on(portfolio, as_of), load_symbol)
-                df = self._finish(self.run(validated, ctx), as_of, portfolio_id)
-            except Exception as error:
-                logger.exception("%s failed for portfolio %s", self.name, portfolio_id)
-                outcomes.append(
-                    PortfolioOutcome(
-                        portfolio_id=portfolio_id,
-                        status="failed",
-                        error=describe_error(error),
-                    )
-                )
-                continue
-            dfs.append(df)
-            outcomes.append(
-                PortfolioOutcome(
-                    portfolio_id=portfolio_id,
-                    status="completed",
-                    row_count=df.height,
-                )
+        result = self.run(self.validate_params(params), ctx)
+        if not isinstance(result, CalculationResult):
+            raise TypeError(
+                f"run returned {type(result).__name__}, not a CalculationResult"
             )
-
-        schema = self.result_schema()
-        result = pl.concat(dfs) if dfs else pl.DataFrame(schema=schema)
-        return result, outcomes
-
-    def _finish(self, df: Any, as_of: date, portfolio_id: str | None):
-        if not isinstance(df, pl.DataFrame):
-            raise TypeError(f"run returned {type(df).__name__}, not a DataFrame")
-        if set(df.columns) != set(self.output):
-            raise ValueError(
-                f"run returned columns {sorted(df.columns)}, "
-                f"expected {sorted(self.output)}"
-            )
-        return df.select(
-            pl.lit(as_of, pl.Date).alias("as_of"),
-            pl.lit(portfolio_id, pl.String).alias("portfolio_id"),
+        if not isinstance(result.rows, pl.DataFrame):
+            raise TypeError("CalculationResult.rows must be a DataFrame")
+        missing = self.output.keys() - set(result.rows.columns)
+        if missing:
+            raise ValueError(f"run omitted output columns {sorted(missing)}")
+        rows = result.rows.with_columns(
             *(
                 pl.col(name).cast(dtype, strict=True)
                 for name, dtype in self.output.items()
-            ),
-        )
-
-
-def describe_error(error: Exception) -> str:
-    if isinstance(error, CalculationError):
-        message = str(error)
-    elif isinstance(error, ValidationError):
-        message = f"Invalid {error.title}: " + "; ".join(
-            f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}"
-            for e in error.errors()
-        )
-    else:
-        message = f"{type(error).__name__}: {error}"
-    return message[:500]
-
-
-def _known_on(portfolio: Portfolio | None, as_of: date) -> Portfolio | None:
-    """The portfolio without snapshots dated after `as_of`."""
-    if portfolio is None:
-        return None
-    known = portfolio.until(as_of)
-    if not known.snapshots:
-        raise CalculationError(f"No holdings on or before {as_of}")
-    return known
+            )
+        ).select(pl.lit(ctx.as_of, pl.Date).alias("as_of"), pl.exclude("as_of"))
+        return replace(result, rows=rows)
 
 
 def discover(package: ModuleType) -> dict[str, CalculationType]:

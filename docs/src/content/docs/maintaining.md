@@ -86,8 +86,9 @@ Start with one operation rather than the root Worker:
    `src/dependencies.ts` for how HTTP reaches that operation.
 5. `src/calculations/runs.ts`, `src/calculations/workflow.ts`, then
    `src/calculation-run-workflow.ts` for background execution.
-6. Python `framework.py`, `types/ex_ante_vol.py`, `runtime.py` and `storage.py`
-   under `containers/engine/src/data_service_engine/`.
+6. Python `types/ex_ante_vol.py`, then `market_data.py`,
+   `portfolio_results.py`, `returns.py`, `framework.py` and `runtime.py` under
+   `containers/engine/src/data_service_engine/`.
 7. Finally `src/index.ts`: by then its cron and queue wiring has context.
 
 ## Effect, using this application
@@ -241,9 +242,34 @@ The thin Cloudflare entry point builds the real layers and passes them to
 the calculation and recording its outcome. `calculateRun` loads portfolios,
 calls the engine and combines the portfolio outcomes.
 
-The engine validates params, runs the selected Python type for each portfolio,
-and conditionally writes result history to R2. The Worker records the response
-in D1. Python never updates the run in D1 itself.
+The engine validates params and invokes the selected Python type once with the
+whole request. The type chooses its data helpers and returns a
+`CalculationResult`; the runtime conditionally writes successful result history
+to R2. The Worker records the response in D1. Python never updates D1 itself.
+
+### Follow a Python calculation
+
+Start at `types/ex_ante_vol.py` or `types/hypothetical_portfolio_returns.py`:
+
+1. `run(params, ctx)` opens `market_data(ctx.as_of, ctx.load_symbol)`. Data
+   acquisition belongs to the calculation; no symbols are preloaded by runtime.
+2. In its own loop, the type calls `load_portfolio_data(portfolio, data)`. This
+   functional helper selects calculation-date holdings and loads their raw
+   prices. `MarketData.load` clamps dates; `SymbolReader` caches object reads.
+3. The type calls `calculate_portfolio(params, inputs)` directly. That function
+   uses `price_returns(inputs.prices, symbols)` and performs the numerical work
+   without I/O. The type's explicit `try`/`except` handles failures;
+   `portfolio_rows` tags completed rows and `portfolio_result` summarizes the
+   recorded outcomes. These helpers never invoke calculation code.
+4. `CalculationType.calculate` checks declared value columns and stamps `as_of`.
+5. `runtime.py` returns the rows for synchronous calls or persists a successful
+   saved result. It uses the result status without inferring it from portfolios.
+
+To add a symbol calculation, read symbols through the same data helper. To add
+an aggregate, consume `ctx.portfolios` together. Neither requires runtime
+handling for that shape. `takes_portfolio` is catalog/UI metadata, not an engine
+execution switch. See [Writing a calculation type](/docs/calculations/types/)
+for complete examples and the input, result and helper contracts.
 
 `src/workflows/steps.ts` supplies a shared, platform-typed step interface. Step
 results must be serializable. Successful results are durable, but a step body

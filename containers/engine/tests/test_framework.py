@@ -5,41 +5,22 @@ import polars as pl
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from data_service_engine import runtime, storage
+from data_service_engine.errors import CalculationFailed, UnknownTypeError
 from data_service_engine.framework import (
-    CalculationError,
+    CalculationResult,
     CalculationType,
     Context,
-    UnknownTypeError,
     discover,
     get_type,
 )
-from data_service_engine.models import Portfolio
-
-from .conftest import prices_df
+from data_service_engine.models import CalculateRequest, Portfolio, RunRequest
 
 AS_OF = date(2026, 10, 16)
 
 
 class Params(BaseModel):
     scale: float = 1
-
-
-def total_weight(params: Params, ctx: Context) -> pl.DataFrame:
-    assert ctx.portfolio is not None
-    if ctx.portfolio.id == "broken":
-        raise RuntimeError("boom")
-    weights = ctx.portfolio.holdings_at(ctx.as_of).weights
-    return pl.DataFrame({"total": [sum(weights.values()) * params.scale]})
-
-
-TOTAL = CalculationType(
-    name="total_weight",
-    description="Sum of weights",
-    params=Params,
-    output={"total": pl.Float64},
-    run=total_weight,
-    takes_portfolio=True,
-)
 
 
 def portfolio(id, *weights):
@@ -49,77 +30,80 @@ def portfolio(id, *weights):
     )
 
 
-def no_data(dataset, symbol):
-    raise AssertionError("not loaded")
+def test_aggregate_runs_once_with_all_inputs_regardless_of_catalog_hint(monkeypatch):
+    calls = []
 
+    def unexpected_settings():
+        raise AssertionError("runtime acquired data without being asked")
 
-def test_runs_once_per_portfolio_and_adds_as_of_and_portfolio_id():
-    rows, outcomes = TOTAL.calculate(
-        {"scale": 2}, AS_OF, [portfolio("a", 1, 2), portfolio("b", 0.5)], no_data
-    )
-    assert rows.schema == pl.Schema(TOTAL.result_schema())
-    assert rows.to_dicts() == [
-        {"as_of": AS_OF, "portfolio_id": "a", "total": 6.0},
-        {"as_of": AS_OF, "portfolio_id": "b", "total": 1.0},
-    ]
-    assert [(o.portfolio_id, o.status, o.row_count) for o in outcomes] == [
-        ("a", "completed", 1),
-        ("b", "completed", 1),
-    ]
+    monkeypatch.setattr(storage, "load_settings", unexpected_settings)
 
+    def aggregate(params, ctx):
+        calls.append(ctx)
+        total = sum(
+            sum(p.holdings_at(ctx.as_of).weights.values()) for p in ctx.portfolios
+        )
+        return CalculationResult(pl.DataFrame({"total": [total * params.scale]}))
 
-def test_one_failing_portfolio_does_not_stop_the_others():
-    rows, outcomes = TOTAL.calculate(
-        {}, AS_OF, [portfolio("broken", 1), portfolio("ok", 1)], no_data
-    )
-    assert rows["portfolio_id"].to_list() == ["ok"]
-    assert outcomes[0].status == "failed"
-    assert outcomes[0].error == "RuntimeError: boom"
-
-
-def test_invalid_params_and_wrong_portfolio_count_raise():
-    with pytest.raises(ValidationError):
-        TOTAL.calculate({"scale": "x"}, AS_OF, [portfolio("a", 1)], no_data)
-    with pytest.raises(CalculationError, match="needs at least one portfolio"):
-        TOTAL.calculate({}, AS_OF, [], no_data)
-
-    no_portfolio = CalculationType(
-        name="constant",
-        description="",
-        params=Params,
-        output={"value": pl.Int64},
-        run=lambda params, ctx: pl.DataFrame({"value": [1]}),
-    )
-    with pytest.raises(CalculationError, match="doesn't take a portfolio"):
-        no_portfolio.calculate({}, AS_OF, [portfolio("a", 1)], no_data)
-    rows, _ = no_portfolio.calculate({}, AS_OF, [], no_data)
-    assert rows.to_dicts() == [{"as_of": AS_OF, "portfolio_id": None, "value": 1}]
-
-
-@pytest.mark.parametrize(
-    "result, error",
-    [
-        (pl.DataFrame({"other": [1.0]}), "ValueError: run returned columns"),
-        (pl.DataFrame({"total": ["text"]}), "InvalidOperationError"),
-        ({"total": 1.0}, "TypeError: run returned dict"),
-    ],
-)
-def test_output_must_match_the_declared_columns(result, error):
-    bad = CalculationType(
-        name="bad",
+    calc = CalculationType(
+        name="aggregate",
         description="",
         params=Params,
         output={"total": pl.Float64},
-        run=lambda params, ctx: result,
+        run=aggregate,
         takes_portfolio=True,
     )
-    _, outcomes = bad.calculate({}, AS_OF, [portfolio("a", 1)], no_data)
-    assert outcomes[0].status == "failed"
-    assert outcomes[0].error.startswith(error)
+    monkeypatch.setattr(runtime, "get_type", lambda name: calc)
+    request = CalculateRequest(
+        type="aggregate",
+        params={"scale": 2},
+        as_of=AS_OF,
+        portfolios=[portfolio("a", 1, 2), portfolio("b", 0.5)],
+    )
+    rows = runtime.calculate(request)
+    assert len(calls) == 1
+    assert len(calls[0].portfolios) == 2
+    assert calls[0].mode == "batch"
+    assert rows.to_dicts() == [{"as_of": AS_OF, "total": 7.0}]
+    # No R2 configuration is present: this calculation did not ask for data.
+    assert "portfolio_id" not in rows.columns
+    assert "portfolio_index" not in rows.columns
+    with pytest.raises(ValidationError):
+        calc.calculate({"scale": "x"}, Context(AS_OF))
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "result, error_type, message",
+    [
+        (
+            CalculationResult(pl.DataFrame({"other": [1.0]})),
+            ValueError,
+            "omitted output columns",
+        ),
+        (
+            CalculationResult(pl.DataFrame({"value": ["text"]})),
+            pl.exceptions.InvalidOperationError,
+            "conversion",
+        ),
+        ({"value": 1.0}, TypeError, "not a CalculationResult"),
+        (CalculationResult({"value": 1.0}), TypeError, "must be a DataFrame"),
+    ],
+)
+def test_invalid_results_are_rejected(result, error_type, message):
+    calc = CalculationType(
+        name="bad",
+        description="",
+        params=Params,
+        output={"value": pl.Float64},
+        run=lambda params, ctx: result,
+    )
+    with pytest.raises(error_type, match=message):
+        calc.calculate({}, Context(AS_OF))
 
 
 def test_type_definitions_are_checked():
-    common = {"description": "", "params": Params, "run": total_weight}
+    common = {"description": "", "params": Params, "run": lambda params, ctx: None}
     with pytest.raises(ValueError, match="snake_case"):
         CalculationType(name="Ex Ante", output={"x": pl.Int64}, **common)
     with pytest.raises(ValueError, match="as_of"):
@@ -128,31 +112,43 @@ def test_type_definitions_are_checked():
         CalculationType(name="x", output={}, **common)
 
 
-def test_context_load_never_returns_rows_after_as_of():
-    dfs = {
-        "A": prices_df([1, 2, 3, 4], end=date(2026, 10, 16)),
-        "B": prices_df([5, 6], end=date(2026, 10, 16)),
-    }
-    loaded = []
-
-    def load(dataset, symbol):
-        loaded.append((dataset, symbol))
-        return dfs[symbol]
-
-    ctx = Context(date(2026, 10, 15), None, load)
-    df = ctx.load("prices_eod", ["B", "A", "B"], start=date(2026, 10, 13))
-    assert df.columns[0] == "symbol"
-    assert df.select("symbol", "date", "close").rows() == [
-        ("A", date(2026, 10, 13), 1.0),
-        ("A", date(2026, 10, 14), 2.0),
-        ("A", date(2026, 10, 15), 3.0),
-        ("B", date(2026, 10, 15), 5.0),
-    ]
-    assert loaded == [("prices_eod", "B"), ("prices_eod", "A")]
-    # An explicit end after as_of is clamped too.
-    assert ctx.load("prices_eod", ["A"], end=date(2027, 1, 1))["date"].max() == (
-        date(2026, 10, 15)
+@pytest.mark.parametrize("status", ["partial", "failed"])
+def test_synchronous_dispatch_refuses_incomplete_results_without_portfolio_outcomes(
+    monkeypatch, status
+):
+    calc = CalculationType(
+        name="incomplete",
+        description="",
+        params=Params,
+        output={"value": pl.Float64},
+        run=lambda params, ctx: CalculationResult(
+            pl.DataFrame({"value": [1.0]}), status=status, error="Missing inputs"
+        ),
     )
+    monkeypatch.setattr(runtime, "get_type", lambda name: calc)
+    request = CalculateRequest(type=calc.name, params={}, as_of=AS_OF)
+    with pytest.raises(CalculationFailed, match="Missing inputs"):
+        runtime.calculate(request)
+
+    if status == "failed":
+
+        def unexpected_settings():
+            raise AssertionError("A failed result must not open storage")
+
+        monkeypatch.setattr(storage, "load_settings", unexpected_settings)
+        saved = runtime.run(
+            RunRequest(
+                run_id="failed",
+                type=calc.name,
+                params={},
+                as_of=AS_OF,
+                output_key="calculation=failed/data.parquet",
+            )
+        )
+        assert saved.status == "failed"
+        assert saved.error == "Missing inputs"
+        assert saved.portfolios == ()
+        assert saved.output_etag is None
 
 
 def test_discovers_types_and_rejects_bad_modules(tmp_path, monkeypatch):
