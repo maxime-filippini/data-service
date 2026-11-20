@@ -3,7 +3,7 @@ import { Effect, type Layer, Result, Schema } from "effect";
 import { AssetSymbolSchema } from "$/assets/contracts";
 import { Assets } from "$/assets/store";
 import { CalculationIdSchema } from "$/calculations/contracts";
-import { DatasetPublications } from "$/datasets/store";
+import { DatasetPublicationStore } from "$/datasets/store";
 import { isCronError, nextSlot, parseCron } from "$/calculations/cron";
 import { Calculations } from "$/calculations/store";
 import type { Calculation } from "$/calculations/views";
@@ -191,7 +191,7 @@ export const pageData = (
           ),
         ),
         datasets(
-          DatasetPublications.use((p) =>
+          DatasetPublicationStore.use((p) =>
             p.list({ subject: { kind: "asset", id: symbol } }),
           ),
         ),

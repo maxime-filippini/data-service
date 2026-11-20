@@ -1,8 +1,8 @@
 import { Effect, Layer } from "effect";
 
 import { D1AssetsLive } from "$/assets/d1";
-import { D1DatasetPublicationsLive } from "$/datasets/d1";
-import type { PublishedDatasets } from "$/datasets/store";
+import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
+import type { DatasetObjectStore } from "$/datasets/store";
 import type { Dependencies } from "$/dependencies";
 import { MarketDataSourcesLayer, type SourceFor } from "$/market-data/sources";
 import { OperationError, PythonOperations } from "$/operations/client";
@@ -18,7 +18,7 @@ import {
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 
 import { type LocalPlatformOptions, localRunPlatform } from "./platform";
-import { memoryPublishedDatasets } from "./published";
+import { memoryDatasetObjectStore } from "./published";
 
 /** What a local composition of the workflow service runs against. */
 export interface LocalServiceOptions {
@@ -33,7 +33,7 @@ export interface LocalServiceOptions {
    */
   readonly python?: Layer.Layer<PythonOperations>;
   /** Where published datasets go: files or memory (default). */
-  readonly published?: Layer.Layer<PublishedDatasets>;
+  readonly published?: Layer.Layer<DatasetObjectStore>;
   /** Step types besides the built-in ones (test-only types). */
   readonly extraStepTypes?: readonly StepType[];
   readonly platform?: LocalPlatformOptions;
@@ -84,9 +84,9 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     ...builtInStepTypes,
     ...(options.extraStepTypes ?? []),
   ]);
-  const published = options.published ?? memoryPublishedDatasets().layer;
+  const published = options.published ?? memoryDatasetObjectStore().layer;
   const datasets = Layer.merge(
-    D1DatasetPublicationsLive(options.db),
+    D1DatasetPublicationStoreLive(options.db),
     published,
   );
   const executorLayer = Layer.mergeAll(

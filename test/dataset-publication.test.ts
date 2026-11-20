@@ -23,12 +23,12 @@ import { promisify } from "node:util";
 import type { Layer } from "effect";
 
 import type { PublicationView } from "$/datasets/contracts";
-import type { PublishedDatasets } from "$/datasets/store";
+import type { DatasetObjectStore } from "$/datasets/store";
 import { FileRunArtifactsLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import {
-  FilePublishedDatasetsLive,
-  memoryPublishedDatasets,
+  FileDatasetObjectStoreLive,
+  memoryDatasetObjectStore,
 } from "$/local/published";
 import {
   type LocalPythonService,
@@ -122,7 +122,7 @@ describe(
     let counter = 0;
 
     const setup = (
-      options: { readonly published?: Layer.Layer<PublishedDatasets> } = {},
+      options: { readonly published?: Layer.Layer<DatasetObjectStore> } = {},
     ) => {
       // Each test gets its own processed-bucket directory and database; run
       // artifacts share the Python service's directory (run IDs are unique).
@@ -175,7 +175,7 @@ describe(
         artifacts: FileRunArtifactsLive(join(root, "raw")),
         sourceFor: fixtureSourceFor(fixtures, (url) => provider.respond(url)),
         python: HttpPythonOperationsLive(fetcher, python.url),
-        published: options.published ?? FilePublishedDatasetsLive(processed),
+        published: options.published ?? FileDatasetObjectStoreLive(processed),
         platform: { steps: { delayScale: 0 } },
       });
       const routes = createRoutes(service.dependencies, {
@@ -522,7 +522,7 @@ describe(
     });
 
     test("publication metadata is recorded only after the object write succeeds", async () => {
-      const storage = memoryPublishedDatasets();
+      const storage = memoryDatasetObjectStore();
       const { configure, runFor, publication } = setup({
         published: storage.layer,
       });

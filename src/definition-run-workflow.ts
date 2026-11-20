@@ -7,8 +7,8 @@ import { NonRetryableError } from "cloudflare:workflows";
 import { Effect, Layer } from "effect";
 
 import { D1AssetsLive } from "$/assets/d1";
-import { D1DatasetPublicationsLive } from "$/datasets/d1";
-import { R2PublishedDatasetsLive } from "$/datasets/r2";
+import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
+import { R2DatasetObjectStoreLive } from "$/datasets/r2";
 import { MarketDataSourcesLayer, liveSourceFor } from "$/market-data/sources";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { R2RunArtifactsLive } from "$/workflows/artifacts";
@@ -46,8 +46,8 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
         this.env.CALCULATION_ENGINE.getByName("engine"),
         "http://engine",
       ),
-      D1DatasetPublicationsLive(db),
-      R2PublishedDatasetsLive(this.env.PROCESSED_MARKET_DATA_BUCKET),
+      D1DatasetPublicationStoreLive(db),
+      R2DatasetObjectStoreLive(this.env.PROCESSED_MARKET_DATA_BUCKET),
     );
     return executeWorkflowRun(
       event.payload,

@@ -33,7 +33,7 @@ import { Command, Flag } from "effect/cli";
 import { publishedDatasetKey } from "$/datasets/contracts";
 import { FileRunArtifactsLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
-import { FilePublishedDatasetsLive } from "$/local/published";
+import { FileDatasetObjectStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
@@ -94,7 +94,7 @@ const command = Command.make(
           loadEodhdFixtures(path.resolve(options.fixtures)),
         ),
         python: HttpPythonOperationsLive({ fetch }, python.url),
-        published: FilePublishedDatasetsLive(processedBucket),
+        published: FileDatasetObjectStoreLive(processedBucket),
         platform: { steps: { delayScale: 0 } },
       });
       const routes = createRoutes(service.dependencies, {

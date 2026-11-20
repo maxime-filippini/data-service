@@ -8,7 +8,7 @@ import {
   type PublishedDataset,
   publishedDatasetKey,
 } from "./contracts";
-import { DatasetPublications, PublishedDatasets } from "./store";
+import { DatasetPublicationStore, DatasetObjectStore } from "./store";
 
 const PARQUET = "application/vnd.apache.parquet";
 
@@ -58,14 +58,14 @@ export const publishDataset = Effect.fn("Datasets.publish")(function* (
         message: "Could not read the run artifact",
       }),
   });
-  const stored = yield* PublishedDatasets.use((datasets) =>
+  const stored = yield* DatasetObjectStore.use((datasets) =>
     datasets.put(
       publishedDatasetKey(request.dataset, request.subject),
       new Uint8Array(body),
       PARQUET,
     ),
   );
-  yield* DatasetPublications.use((publications) =>
+  yield* DatasetPublicationStore.use((publications) =>
     publications.record({
       dataset: request.dataset,
       subject: request.subject,
@@ -90,7 +90,7 @@ export const currentDatasetData = Effect.fn("Datasets.currentData")(function* (
   dataset: PublishedDataset,
   subject: Subject,
 ) {
-  const object = yield* PublishedDatasets.use((datasets) =>
+  const object = yield* DatasetObjectStore.use((datasets) =>
     datasets.get(publishedDatasetKey(dataset, subject)),
   );
   if (object === null)

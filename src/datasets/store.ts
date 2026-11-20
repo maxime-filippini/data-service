@@ -35,8 +35,8 @@ export interface PublicationFilter {
  * replaced by each publication. Recording is an upsert, so repeating it
  * after an uncertain failure is safe.
  */
-export class DatasetPublications extends Context.Service<
-  DatasetPublications,
+export class DatasetPublicationStore extends Context.Service<
+  DatasetPublicationStore,
   {
     readonly record: (
       publication: PublicationRecord,
@@ -50,7 +50,7 @@ export class DatasetPublications extends Context.Service<
       subject: Subject,
     ) => Effect.Effect<PublicationView, DatasetError>;
   }
->()("data-service/DatasetPublications") {}
+>()("data-service/DatasetPublicationStore") {}
 
 /** A stored dataset object. */
 export interface DatasetObject {
@@ -64,8 +64,8 @@ export interface DatasetObject {
  * Injectable storage for published dataset objects: the processed R2 bucket
  * in the Worker, files locally. Keys come only from `publishedDatasetKey`.
  */
-export class PublishedDatasets extends Context.Service<
-  PublishedDatasets,
+export class DatasetObjectStore extends Context.Service<
+  DatasetObjectStore,
   {
     /** Write (or replace) an object; returns its ETag and size. */
     readonly put: (
@@ -81,4 +81,4 @@ export class PublishedDatasets extends Context.Service<
       key: string,
     ) => Effect.Effect<DatasetObject | null, DatasetError>;
   }
->()("data-service/PublishedDatasets") {}
+>()("data-service/DatasetObjectStore") {}

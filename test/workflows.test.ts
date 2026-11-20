@@ -8,9 +8,9 @@ import type { Dependencies } from "$/dependencies";
 import { pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
-import { D1DatasetPublicationsLive } from "$/datasets/d1";
+import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { memoryRunArtifacts } from "$/local/artifacts";
-import { memoryPublishedDatasets } from "$/local/published";
+import { memoryDatasetObjectStore } from "$/local/published";
 import { D1WorkflowsLive } from "$/workflows/d1";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import {
@@ -71,8 +71,8 @@ const setup = (extraStepTypes: readonly StepType[] = []) => {
       Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
     datasetsFor: () =>
       Layer.merge(
-        D1DatasetPublicationsLive(db),
-        memoryPublishedDatasets().layer,
+        D1DatasetPublicationStoreLive(db),
+        memoryDatasetObjectStore().layer,
       ),
   } as unknown as Dependencies;
   const routes = createRoutes(dependencies, {

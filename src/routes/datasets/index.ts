@@ -7,13 +7,16 @@ import {
   PublicationsQuerySchema,
 } from "$/datasets/contracts";
 import { currentDatasetData } from "$/datasets/operations";
-import { DatasetPublications, type PublishedDatasets } from "$/datasets/store";
+import {
+  DatasetPublicationStore,
+  type DatasetObjectStore,
+} from "$/datasets/store";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
 import { type Subject, SubjectSchema } from "$/workflows/contracts";
 
 /** The services dataset routes need. */
-export type DatasetServices = DatasetPublications | PublishedDatasets;
+export type DatasetServices = DatasetPublicationStore | DatasetObjectStore;
 
 /** What dataset routes select from request bindings. */
 export interface DatasetDependencies {
@@ -67,7 +70,7 @@ export const createDatasetRoutes = (
       const query = c.req.valid("query");
       const publications = await run(
         c.env,
-        DatasetPublications.use((store) =>
+        DatasetPublicationStore.use((store) =>
           store.list({
             ...(query.subjectKind === undefined
               ? {}
@@ -97,7 +100,9 @@ export const createDatasetRoutes = (
           c.env,
           subjectOf(subjectKind, subjectId).pipe(
             Effect.flatMap((subject) =>
-              DatasetPublications.use((store) => store.get(dataset, subject)),
+              DatasetPublicationStore.use((store) =>
+                store.get(dataset, subject),
+              ),
             ),
           ),
         ),
