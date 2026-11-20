@@ -1,6 +1,6 @@
 /**
  * Effect Schema helpers shared across features: reusable checks, collecting
- * every issue of a value at a path, and JSON Schema export.
+ * and describing every issue of a value at a path, and JSON Schema export.
  */
 
 import { Result, Schema, SchemaIssue } from "effect";
@@ -40,6 +40,29 @@ export const validateValue = <A>(
         message: issue.message,
       })),
   );
+
+/**
+ * Issues as one diagnostic: `path: message` for each issue at a path, the
+ * bare message otherwise, separated by semicolons.
+ */
+export const describeIssues = (issues: readonly ValueIssue[]): string =>
+  issues
+    .map((issue) =>
+      issue.path.length === 0
+        ? issue.message
+        : `${issue.path.join(".")}: ${issue.message}`,
+    )
+    .join("; ");
+
+/**
+ * Validate `value` against `schema` like `validateValue`, failing with one
+ * diagnostic that describes every issue.
+ */
+export const validateValueDescribed = <A>(
+  schema: Schema.Codec<A, unknown>,
+  value: unknown,
+): Result.Result<A, string> =>
+  Result.mapError(validateValue(schema, value), describeIssues);
 
 /**
  * A schema as one JSON Schema (draft 2020-12) object, with any shared

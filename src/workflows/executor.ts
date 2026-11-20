@@ -1,9 +1,11 @@
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { Effect, Result } from "effect";
 
+import { validateValueDescribed } from "$/schema";
 import type { StepSpec } from "$/workflows/contracts";
 import { outputReference, parseReference } from "$/workflows/references";
 import {
-  DEFAULT_STEP_POLICY,
+  asTransient,
+  defectsAsTransient,
   type RunContext,
   runContextFields,
   type StepFailure,
@@ -11,11 +13,15 @@ import {
   type StepServices,
   type StepType,
   terminal,
-  transient,
 } from "$/workflows/registry";
 import type { WorkflowRunParams } from "$/workflows/runs/contracts";
 import { type CapturedRun, WorkflowRuns } from "$/workflows/runs/store";
-import { NonRetryableStepError, type WorkflowSteps } from "$/workflows/steps";
+import {
+  DEFAULT_STEP_POLICY,
+  NonRetryableStepError,
+  type StepPolicy,
+  type WorkflowSteps,
+} from "$/workflows/steps";
 
 /**
  * Largest serialized outputs one step may return. Outputs are checkpointed
@@ -52,29 +58,6 @@ export type ExecutionResult =
   { readonly status: "completed" } | { readonly status: "inactive" };
 
 const now = () => new Date().toISOString();
-
-const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
-
-/** Decode a value with a schema, or describe every issue. */
-const decode = <A>(
-  schema: Schema.Codec<A, unknown>,
-  value: unknown,
-): Result.Result<A, string> => {
-  const result = Schema.decodeUnknownResult(schema, {
-    errors: "all",
-    onExcessProperty: "error",
-  })(value);
-  if (Result.isSuccess(result)) return Result.succeed(result.success);
-  return Result.fail(
-    formatIssue(result.failure.issue)
-      .issues.map((issue) =>
-        issue.path === undefined || issue.path.length === 0
-          ? issue.message
-          : `${issue.path.map(String).join(".")}: ${issue.message}`,
-      )
-      .join("; "),
-  );
-};
 
 /**
  * Resolve one input binding: a literal as given, a run-context field, or a
@@ -115,7 +98,7 @@ const resolveInputs = (
   Effect.forEach(Object.entries(stepType.inputs), ([name, port]) => {
     const value = resolveBinding(spec, name, context, prior);
     if (Result.isFailure(value)) return Effect.fail(terminal(value.failure));
-    const decoded = decode(port.contract.schema, value.success);
+    const decoded = validateValueDescribed(port.contract.schema, value.success);
     return Result.isFailure(decoded)
       ? Effect.fail(
           terminal(
@@ -134,7 +117,10 @@ const validateOutputs = (stepType: StepType, produced: unknown) =>
     const values = (produced ?? {}) as Record<string, unknown>;
     const outputs: Record<string, Json> = {};
     for (const [name, port] of Object.entries(stepType.outputs)) {
-      const decoded = decode(port.contract.schema, values[name]);
+      const decoded = validateValueDescribed(
+        port.contract.schema,
+        values[name],
+      );
       if (Result.isFailure(decoded))
         return yield* terminal(
           `Output "${name}" does not satisfy contract "${port.contract.id}": ${decoded.failure}`,
@@ -156,7 +142,7 @@ const resolveRequest = Effect.fn("Workflows.resolveStepRequest")(function* (
   prior: ReadonlyMap<string, StepOutputs>,
   stepType: StepType,
 ) {
-  const params = decode(stepType.params, spec.params);
+  const params = validateValueDescribed(stepType.params, spec.params);
   if (Result.isFailure(params))
     return yield* terminal(`Invalid params: ${params.failure}`);
   const inputs = yield* resolveInputs(spec, stepType, run.context, prior);
@@ -172,16 +158,6 @@ const resolveRequest = Effect.fn("Workflows.resolveStepRequest")(function* (
   };
 });
 
-/** An unexpected exception may be an outage as much as a bug. */
-const retryDefects = <A, R>(program: Effect.Effect<A, StepFailure, R>) =>
-  program.pipe(
-    Effect.catchDefect((defect) =>
-      Effect.fail(
-        transient(defect instanceof Error ? defect.message : String(defect)),
-      ),
-    ),
-  );
-
 /** Decode params, resolve inputs and run the step type's implementation. */
 const runImplementation = Effect.fn("Workflows.runImplementation")(function* (
   run: CapturedRun,
@@ -194,13 +170,9 @@ const runImplementation = Effect.fn("Workflows.runImplementation")(function* (
   if (stepType.implementation === undefined)
     return yield* terminal(`Step type "${spec.type}" cannot be executed yet`);
   const request = yield* resolveRequest(run, spec, prior, stepType);
-  const produced = yield* retryDefects(stepType.implementation(request));
+  const produced = yield* defectsAsTransient(stepType.implementation(request));
   return yield* validateOutputs(stepType, produced);
 });
-
-const recording = <A, E extends { readonly message: string }, R>(
-  program: Effect.Effect<A, E, R>,
-) => Effect.mapError(program, (error) => transient(error.message));
 
 /**
  * One attempt of one step: record its start, run it, and record its outputs
@@ -216,7 +188,7 @@ const attemptStep = Effect.fn("Workflows.attemptStep")(function* (
   const spec = run.steps[index]!;
   const runs = yield* WorkflowRuns;
   const ids = { runId: run.runId, stepId: spec.id };
-  yield* recording(
+  yield* asTransient(
     runs.stepStarted({
       ...ids,
       position: index + 1,
@@ -236,11 +208,15 @@ const attemptStep = Effect.fn("Workflows.attemptStep")(function* (
         .pipe(Effect.ignore),
     ),
   );
-  yield* recording(runs.stepCompleted({ ...ids, outputs, now: now() }));
+  yield* asTransient(runs.stepCompleted({ ...ids, outputs, now: now() }));
   return outputs;
 });
 
-/** The checks and absolute wake times are checkpointed so replay cannot reset the wait. */
+/**
+ * A wait step: resolve its deadline once, then check until it is ready or
+ * the deadline passes, sleeping durably between checks. The checks and
+ * absolute wake times are checkpointed so replay cannot reset the wait.
+ */
 const waitForStep = async (
   run: CapturedRun,
   index: number,
@@ -250,77 +226,70 @@ const waitForStep = async (
   steps: WorkflowSteps,
   body: RunStepBody,
   clock: () => number,
+  policy: StepPolicy,
 ): Promise<StepOutputs> => {
   const spec = run.steps[index]!;
   const ids = { runId: run.runId, stepId: spec.id };
-  const policy = stepType.policy ?? DEFAULT_STEP_POLICY;
-  const deadline = await steps.do(
-    `start wait ${spec.id}`,
-    () =>
-      body(
-        Effect.gen(function* () {
-          yield* recording(
-            WorkflowRuns.use((runs) =>
-              runs.stepStarted({
-                ...ids,
-                position: index + 1,
-                type: spec.type,
-                now: now(),
-              }),
-            ),
-          );
-          const request = yield* resolveRequest(run, spec, prior, stepType);
-          return new Date(
-            clock() + wait.timeoutMs(request.params),
-          ).toISOString();
+
+  const startWait = Effect.gen(function* () {
+    yield* asTransient(
+      WorkflowRuns.use((runs) =>
+        runs.stepStarted({
+          ...ids,
+          position: index + 1,
+          type: spec.type,
+          now: now(),
         }),
       ),
+    );
+    const request = yield* resolveRequest(run, spec, prior, stepType);
+    return new Date(clock() + wait.timeoutMs(request.params)).toISOString();
+  });
+  const deadline = await steps.do(
+    `start wait ${spec.id}`,
+    () => body(startWait),
     policy,
   );
   const deadlineMs = Date.parse(deadline);
+
+  const checkOnce = Effect.gen(function* () {
+    const request = yield* resolveRequest(run, spec, prior, stepType);
+    const runs = yield* WorkflowRuns;
+    const result = yield* defectsAsTransient(wait.check(request, deadline));
+    if (result.ready) {
+      const outputs = yield* validateOutputs(stepType, result.outputs);
+      yield* asTransient(
+        runs.stepCompleted({
+          ...ids,
+          outputs,
+          now: now(),
+          resumesRun: true,
+        }),
+      );
+      return { ready: true as const, outputs };
+    }
+    yield* asTransient(
+      runs.stepWaiting({
+        ...ids,
+        waiting: { deadline, missing: result.missing },
+      }),
+    );
+    const observedAt = clock();
+    if (observedAt >= deadlineMs) {
+      const symbols = result.missing.map(({ symbol }) => symbol);
+      return yield* terminal(
+        `Timed out waiting for asset publications: ${symbols.join(", ")}`,
+      );
+    }
+    return {
+      ready: false as const,
+      wakeAt: Math.min(deadlineMs, observedAt + DEPENDENCY_CHECK_INTERVAL_MS),
+    };
+  });
   for (let check = 1; ; check += 1) {
     const result = await steps.do(
       `check ${spec.id} ${check}`,
-      () =>
-        body(
-          Effect.gen(function* () {
-            const request = yield* resolveRequest(run, spec, prior, stepType);
-            const runs = yield* WorkflowRuns;
-            const result = yield* retryDefects(wait.check(request, deadline));
-            if (result.ready) {
-              const outputs = yield* validateOutputs(stepType, result.outputs);
-              yield* recording(
-                runs.stepCompleted({
-                  ...ids,
-                  outputs,
-                  now: now(),
-                  resumesRun: true,
-                }),
-              );
-              return { ready: true as const, outputs };
-            }
-            yield* recording(
-              runs.stepWaiting({
-                ...ids,
-                waiting: { deadline, missing: result.missing },
-              }),
-            );
-            const observedAt = clock();
-            if (observedAt >= deadlineMs) {
-              const symbols = result.missing.map(({ symbol }) => symbol);
-              return yield* terminal(
-                `Timed out waiting for asset publications: ${symbols.join(", ")}`,
-              );
-            }
-            return {
-              ready: false as const,
-              wakeAt: Math.min(
-                deadlineMs,
-                observedAt + DEPENDENCY_CHECK_INTERVAL_MS,
-              ),
-            };
-          }),
-        ),
+      () => body(checkOnce),
       policy,
     );
     if (result.ready) return result.outputs;
@@ -338,20 +307,31 @@ const errorMessage = (cause: unknown) =>
     "",
   );
 
+/** How an execution environment runs the executor. */
+export interface ExecuteOptions {
+  /** The clock wait deadlines are measured against. */
+  readonly clock?: () => number;
+  /**
+   * Retries and timeout for each step's attempts; `DEFAULT_STEP_POLICY`
+   * when omitted. The Steps adapter applies it as its runtime can.
+   */
+  readonly stepPolicy?: StepPolicy;
+}
+
 /**
  * A run's Workflow body: the one interpreter of a captured definition. It
  * loads the run (capturing its steps in the first checkpoint), executes the
- * steps in their saved order, each through the durable Steps adapter with its
- * registry-owned retry policy, and records the outcome. On replay, completed
- * steps return their checkpointed outputs without executing again. A
- * terminal failure, or a transient one that outlasts its retries, stops the
- * run with a diagnostic.
+ * steps in their saved order, each through the durable Steps adapter with
+ * the environment's step policy, and records the outcome. On replay,
+ * completed steps return their checkpointed outputs without executing again.
+ * A terminal failure, or a transient one that outlasts its retries, stops
+ * the run with a diagnostic.
  */
 export const executeWorkflowRun = async (
   params: WorkflowRunParams,
   steps: WorkflowSteps,
   run: Runner,
-  clock = Date.now,
+  { clock = Date.now, stepPolicy = DEFAULT_STEP_POLICY }: ExecuteOptions = {},
 ): Promise<ExecutionResult> => {
   /** Run a step body; a failure becomes the error its retry needs. */
   const body = async <A>(
@@ -364,13 +344,10 @@ export const executeWorkflowRun = async (
       : new NonRetryableStepError(result.failure.message);
   };
 
-  const captured = await steps.do("start run", () =>
-    body(
-      recording(
-        WorkflowRuns.use((runs) => runs.start(params.runId, now())),
-      ) as Effect.Effect<Json, StepFailure, ExecutorServices>,
-    ),
-  );
+  const startRun = asTransient(
+    WorkflowRuns.use((runs) => runs.start(params.runId, now())),
+  ) as Effect.Effect<Json, StepFailure, ExecutorServices>;
+  const captured = await steps.do("start run", () => body(startRun));
   if (captured === null) return { status: "inactive" };
   const execution = captured as unknown as CapturedRun;
 
@@ -387,54 +364,52 @@ export const executeWorkflowRun = async (
     for (const [index, spec] of execution.steps.entries()) {
       current = spec;
       const stepType = types[index];
-      const produced =
-        stepType?.wait === undefined
-          ? await steps.do(
-              `step ${spec.id}`,
-              () => body(attemptStep(execution, index, outputs, stepType)),
-              stepType?.policy ?? DEFAULT_STEP_POLICY,
-            )
-          : await waitForStep(
-              execution,
-              index,
-              outputs,
-              stepType,
-              stepType.wait,
-              steps,
-              body,
-              clock,
-            );
+      let produced: StepOutputs;
+      if (stepType?.wait === undefined) {
+        const attempt = attemptStep(execution, index, outputs, stepType);
+        produced = await steps.do(
+          `step ${spec.id}`,
+          () => body(attempt),
+          stepPolicy,
+        );
+      } else {
+        produced = await waitForStep(
+          execution,
+          index,
+          outputs,
+          stepType,
+          stepType.wait,
+          steps,
+          body,
+          clock,
+          stepPolicy,
+        );
+      }
       outputs.set(spec.id, produced);
     }
     current = undefined;
-    await steps.do("complete run", () =>
-      body(
-        recording(
-          WorkflowRuns.use((runs) => runs.complete(params.runId, now())),
-        ),
-      ),
+    const completeRun = asTransient(
+      WorkflowRuns.use((runs) => runs.complete(params.runId, now())),
     );
+    await steps.do("complete run", () => body(completeRun));
     return { status: "completed" };
   } catch (cause) {
     const message = errorMessage(cause);
     const failed = current;
-    await steps.do("record failure", () =>
-      body(
-        recording(
-          WorkflowRuns.use((runs) =>
-            runs.fail({
-              runId: params.runId,
-              error:
-                failed === undefined
-                  ? message
-                  : `Step "${failed.id}" failed: ${message}`,
-              ...(failed === undefined ? {} : { stepId: failed.id }),
-              now: now(),
-            }),
-          ),
-        ),
+    const recordFailure = asTransient(
+      WorkflowRuns.use((runs) =>
+        runs.fail({
+          runId: params.runId,
+          error:
+            failed === undefined
+              ? message
+              : `Step "${failed.id}" failed: ${message}`,
+          ...(failed === undefined ? {} : { stepId: failed.id }),
+          now: now(),
+        }),
       ),
     );
+    await steps.do("record failure", () => body(recordFailure));
     throw cause;
   }
 };

@@ -12,7 +12,7 @@ import {
   RunsQuerySchema,
   StartRunSchema,
 } from "$/workflows/runs/contracts";
-import { rerun, runArtifact, startRun } from "$/workflows/runs/operations";
+import { getRunArtifact, rerun, startRun } from "$/workflows/runs/operations";
 import { WorkflowRuns } from "$/workflows/runs/store";
 
 /** The services run routes need. */
@@ -147,7 +147,7 @@ export const createRunRoutes = (
       const { runId, stepId, output } = c.req.valid("param");
       const { reference, content } = await run(
         c.env,
-        runArtifact(runId, stepId, output),
+        getRunArtifact(runId, stepId, output),
       );
       return new Response(content.body, {
         headers: {

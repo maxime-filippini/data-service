@@ -23,6 +23,7 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
+import type { StepPolicy } from "$/workflows/steps";
 
 import { makeTestDatabase } from "./support/d1";
 
@@ -90,6 +91,7 @@ const setup = (
   options: {
     readonly extraStepTypes?: readonly StepType[];
     readonly platform?: LocalPlatformOptions;
+    readonly stepPolicy?: StepPolicy;
   } = {},
 ) => {
   const { sqlite, db } = makeTestDatabase();
@@ -112,6 +114,9 @@ const setup = (
       ...(options.extraStepTypes ?? []),
     ],
     platform: { steps: { delayScale: 0 }, ...options.platform },
+    ...(options.stepPolicy === undefined
+      ? {}
+      : { stepPolicy: options.stepPolicy }),
   });
   const platform = service.platform;
 
@@ -524,6 +529,23 @@ test("transient provider failures are retried three times with backoff before th
     'Step "download" failed: The EODHD request failed',
   );
   assert.equal(failed.steps[0]!.error, "The EODHD request failed");
+});
+
+test("the execution environment's step policy replaces the default", async () => {
+  const { configure, start, started, detail, platform, provider, requests } =
+    setup({ stepPolicy: { retries: { limit: 1, delay: 0 } } });
+  const workflowId = await configure();
+  provider.respond = () => new Response("unavailable", { status: 503 });
+
+  const run = await started(
+    start(workflowId, { processingDate: "2024-01-10" }),
+  );
+  await platform.idle();
+  const failed = await detail(run.id);
+  assert.equal(failed.status, "failed");
+  // One attempt and the one retry the injected policy allows.
+  assert.equal(failed.steps[0]!.attempts, 2);
+  assert.equal(requests.length, 2);
 });
 
 test("invalid provider data fails the run at once without storing it", async () => {

@@ -16,6 +16,7 @@ import {
   type StepType,
 } from "$/workflows/registry";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import type { StepPolicy } from "$/workflows/steps";
 
 import { type LocalPlatformOptions, localRunPlatform } from "./platform";
 import { memoryDatasetObjectStore } from "./published";
@@ -39,6 +40,8 @@ export interface LocalServiceOptions {
   readonly platform?: LocalPlatformOptions;
   /** Wall clock for tests that advance durable waits without real delays. */
   readonly now?: () => number;
+  /** The step policy this environment runs steps with; the executor's default otherwise. */
+  readonly stepPolicy?: StepPolicy;
 }
 
 /** No Python service: every call fails terminally, saying so. */
@@ -88,7 +91,12 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
         steps,
         (program) =>
           program.pipe(Effect.provide(executorLayer), Effect.runPromise),
-        options.now,
+        {
+          ...(options.now === undefined ? {} : { clock: options.now }),
+          ...(options.stepPolicy === undefined
+            ? {}
+            : { stepPolicy: options.stepPolicy }),
+        },
       ),
     options.platform,
   );
