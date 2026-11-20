@@ -39,12 +39,34 @@ const pascal = (name: string) =>
     .join("");
 
 /**
+ * Patterns for the string formats Pydantic emits for `date` and `datetime`
+ * fields. Effect only records `format` as an annotation, so without these the
+ * generated schemas would accept any string. Pydantic still parses the value.
+ */
+const FORMAT_PATTERNS: Readonly<Record<string, string>> = {
+  date: "^\\d{4}-\\d{2}-\\d{2}$",
+  "date-time":
+    "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})?$",
+};
+
+/**
  * Pydantic's titles repeat the field or class name ("Runid"), so they are
- * dropped. RegExp sources are normalized as JavaScript prints them (`/`
- * escaped), which Effect's pattern reviver requires.
+ * dropped. `date` and `date-time` formats become patterns; any other format
+ * is refused rather than silently left unchecked. RegExp sources are
+ * normalized as JavaScript prints them (`/` escaped), which Effect's pattern
+ * reviver requires.
  */
 const clean = (schema: JsonSchema.JsonSchema): JsonSchema.JsonSchema => {
   const { title: _title, ...rest } = schema as Json;
+  const format = rest["format"];
+  if (typeof format === "string") {
+    const pattern = FORMAT_PATTERNS[format];
+    if (pattern === undefined)
+      throw new Error(
+        `The "${format}" string format is not supported by the operation contract generator; add a pattern for it in scripts/operation-contracts.ts`,
+      );
+    if (rest["pattern"] === undefined) rest["pattern"] = pattern;
+  }
   return typeof rest["pattern"] === "string"
     ? { ...rest, pattern: new RegExp(rest["pattern"], "u").source }
     : rest;

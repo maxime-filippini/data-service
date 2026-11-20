@@ -14,3 +14,7 @@ worker-configuration.d.ts
 
 # Exported by the Python service (`pnpm operations:generate`).
 src/operations/schemas.json
+
+# Exported by Pydantic for the contract generator tests
+# (containers/engine/tests/contract_shapes.py).
+fixtures/operation-contracts/shapes.json
