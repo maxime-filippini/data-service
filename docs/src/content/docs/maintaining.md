@@ -170,7 +170,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
    `inputs` and `outputs` with explicit contract identities, optional retry
    policy, and `implementation`.
 3. Use existing `Context.Service` interfaces (`Assets`, `Portfolios`,
-   `DatasetPublications`, `RunArtifacts`, `MarketDataSources`) and map errors to
+   `DatasetPublicationStore`, `RunArtifacts`, `MarketDataSources`) and map errors to
    `terminalStepError` or `transientStepError`.
 4. Register it in `builtInStepTypes` in `src/workflows/registry/index.ts` and
    cover validation and execution through the `/api/workflows` and `/api/runs`

@@ -5,10 +5,10 @@ import { Effect } from "effect";
 import { Hono } from "hono";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 
-import { DatasetPublications, PublishedDatasets } from "$/datasets/store";
+import { DatasetPublicationStore, DatasetObjectStore } from "$/datasets/store";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor } from "$/local/eodhd-fixtures";
-import { memoryPublishedDatasets } from "$/local/published";
+import { memoryDatasetObjectStore } from "$/local/published";
 import { localWorkflowService } from "$/local/runs";
 import { createAppApiRoutes } from "$/routes/app-api";
 
@@ -50,7 +50,7 @@ const signToken = (
 
 const setup = (envOverrides: Record<string, unknown> = {}) => {
   const { sqlite, db } = makeTestDatabase();
-  const published = memoryPublishedDatasets();
+  const published = memoryDatasetObjectStore();
   const local = localWorkflowService({
     db,
     artifacts: memoryRunArtifacts().layer,
@@ -421,8 +421,8 @@ test("the app reads published dataset metadata and streams Parquet with ETag rev
   const workflowId = crypto.randomUUID();
   const runId = crypto.randomUUID();
   await Effect.gen(function* () {
-    const store = yield* PublishedDatasets;
-    const metadata = yield* DatasetPublications;
+    const store = yield* DatasetObjectStore;
+    const metadata = yield* DatasetPublicationStore;
     const assetWritten = yield* store.put(
       "dataset=prices_eod/symbol=AAPL.US/data.parquet",
       bytes,
