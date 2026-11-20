@@ -4,7 +4,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
 import { SubjectKindSchema, WorkflowIdSchema } from "$/workflows/contracts";
-import { Workflows } from "$/workflows/store";
+import { WorkflowStore } from "$/workflows/store";
 
 import type { WorkflowsFor } from "./index";
 
@@ -42,7 +42,7 @@ export const createWorkflowDefaultRoutes = (
     async (c) => {
       const { subjectKind } = c.req.valid("query");
       const defaults = await runHttp(
-        Workflows.use((store) => store.listDefaults(subjectKind)),
+        WorkflowStore.use((store) => store.listDefaults(subjectKind)),
         workflowsFor(c.env),
       );
       return c.json({ defaults });
@@ -56,7 +56,7 @@ export const createWorkflowDefaultRoutes = (
     async (c) => {
       const { kind } = c.req.valid("param");
       const added = await runHttp(
-        Workflows.use((store) =>
+        WorkflowStore.use((store) =>
           store.applyDefaults(kind, new Date().toISOString()),
         ),
         workflowsFor(c.env),
@@ -73,7 +73,7 @@ export const createWorkflowDefaultRoutes = (
       const { kind, workflowId } = c.req.valid("param");
       return c.json(
         await runHttp(
-          Workflows.use((store) =>
+          WorkflowStore.use((store) =>
             store.addDefault(kind, workflowId, new Date().toISOString()),
           ),
           workflowsFor(c.env),
@@ -88,7 +88,7 @@ export const createWorkflowDefaultRoutes = (
     async (c) => {
       const { kind, workflowId } = c.req.valid("param");
       await runHttp(
-        Workflows.use((store) => store.removeDefault(kind, workflowId)),
+        WorkflowStore.use((store) => store.removeDefault(kind, workflowId)),
         workflowsFor(c.env),
       );
       return c.body(null, 204);
@@ -135,7 +135,7 @@ export const createAssignmentRoutes = (
             ? { kind: "asset" as const, symbol: query.subjectId }
             : { kind: "portfolio" as const, id: query.subjectId };
       const assignments = await runHttp(
-        Workflows.use((store) =>
+        WorkflowStore.use((store) =>
           store.listAssignments({
             ...(query.workflowId === undefined
               ? {}

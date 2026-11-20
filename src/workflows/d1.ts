@@ -1,9 +1,9 @@
 import { Effect, Layer } from "effect";
 
+import { d1Query } from "$/d1";
 import {
   type StepSpec,
   type Subject,
-  subjectId,
   type SubjectKind,
   type WorkflowAssignment,
   type WorkflowDefault,
@@ -12,13 +12,14 @@ import {
   type WorkflowSpec,
   type WorkflowSummary,
 } from "$/workflows/contracts";
-import { Workflows } from "$/workflows/store";
+import { WorkflowStore } from "$/workflows/store";
+import { SUBJECT_KINDS, subjectId, subjectOf } from "$/workflows/subjects";
 
 /** Private `workflow_definitions` row; `steps_json` holds the ordered steps. */
 interface DefinitionRow {
   readonly workflow_id: string;
   readonly name: string;
-  readonly scope: "asset" | "portfolio";
+  readonly scope: SubjectKind;
   readonly enabled: number;
   readonly schedule_hour_utc: number;
   readonly steps_json: string;
@@ -38,7 +39,7 @@ interface AssignmentRow {
   readonly workflow_name: string;
   readonly workflow_enabled: number;
   readonly schedule_hour_utc: number;
-  readonly subject_kind: "asset" | "portfolio";
+  readonly subject_kind: SubjectKind;
   readonly subject_id: string;
   readonly enabled: number;
   readonly created_at: string;
@@ -71,7 +72,7 @@ const toSummary = (row: SummaryRow): WorkflowSummary => ({
 
 /** Private `workflow_defaults` row joined with its definition. */
 interface DefaultRow {
-  readonly subject_kind: "asset" | "portfolio";
+  readonly subject_kind: SubjectKind;
   readonly workflow_id: string;
   readonly workflow_name: string;
   readonly workflow_enabled: number;
@@ -84,10 +85,7 @@ const toAssignment = (row: AssignmentRow): WorkflowAssignment => ({
   workflowName: row.workflow_name,
   workflowEnabled: row.workflow_enabled === 1,
   schedule: { hourUtc: row.schedule_hour_utc },
-  subject:
-    row.subject_kind === "asset"
-      ? { kind: "asset", symbol: row.subject_id }
-      : { kind: "portfolio", id: row.subject_id },
+  subject: subjectOf(row.subject_kind, row.subject_id),
   enabled: row.enabled === 1,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -102,15 +100,13 @@ const toDefault = (row: DefaultRow): WorkflowDefault => ({
   createdAt: row.created_at,
 });
 
-const query = <A>(operation: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: operation,
-    catch: () =>
-      new WorkflowError({
-        kind: "database",
-        message: "Could not access workflow definitions",
-      }),
-  });
+const query = d1Query(
+  () =>
+    new WorkflowError({
+      kind: "database",
+      message: "Could not access workflow definitions",
+    }),
+);
 
 const fail = (kind: WorkflowError["kind"], message: string) =>
   Effect.fail(new WorkflowError({ kind, message }));
@@ -118,22 +114,29 @@ const fail = (kind: WorkflowError["kind"], message: string) =>
 const definitionNotFound = () =>
   fail("not_found", "The workflow definition does not exist");
 
-const describe = (subject: Subject) =>
-  subject.kind === "asset"
-    ? `asset ${subject.symbol}`
-    : `portfolio ${subject.id}`;
+const describe = (subject: Subject) => `${subject.kind} ${subjectId(subject)}`;
 
 const notAssigned = (subject: Subject) =>
   fail("not_found", `The workflow is not assigned to ${describe(subject)}`);
+
+/** The table holding each subject kind, and its identifier column. */
+const subjectTables = {
+  asset: { table: "assets", id: "symbol" },
+  portfolio: { table: "portfolios", id: "portfolio_id" },
+} as const satisfies Record<
+  SubjectKind,
+  { readonly table: string; readonly id: string }
+>;
 
 /**
  * Whether a subject exists, as an SQL expression over the given kind and ID
  * parameters (such as `?2` and `?3`).
  */
-const subjectExists = (kind: string, id: string) => `(
-  (${kind} = 'asset' AND EXISTS (SELECT 1 FROM assets WHERE symbol = ${id}))
-  OR (${kind} = 'portfolio' AND EXISTS (SELECT 1 FROM portfolios WHERE portfolio_id = ${id}))
-)`;
+const subjectExists = (kind: string, id: string) =>
+  `(${SUBJECT_KINDS.map(
+    (k) =>
+      `(${kind} = '${k}' AND EXISTS (SELECT 1 FROM ${subjectTables[k].table} WHERE ${subjectTables[k].id} = ${id}))`,
+  ).join(" OR ")})`;
 
 const ASSIGNMENT_SELECT = `SELECT a.*, d.name AS workflow_name,
     d.enabled AS workflow_enabled, d.schedule_hour_utc
@@ -146,10 +149,10 @@ const DEFAULT_SELECT = `SELECT f.subject_kind, f.workflow_id, f.created_at,
   JOIN workflow_definitions d USING (workflow_id)`;
 
 /** Every subject of the kind ?1, as `subjects(id)`. */
-const SUBJECTS_OF_KIND = `subjects (id) AS (
-  SELECT symbol FROM assets WHERE ?1 = 'asset'
-  UNION ALL
-  SELECT portfolio_id FROM portfolios WHERE ?1 = 'portfolio')`;
+const SUBJECTS_OF_KIND = `subjects (id) AS (${SUBJECT_KINDS.map(
+  (k) =>
+    `SELECT ${subjectTables[k].id} FROM ${subjectTables[k].table} WHERE ?1 = '${k}'`,
+).join(" UNION ALL ")})`;
 
 /**
  * The statement that gives a subject its kind's default assignments, enabled,
@@ -187,7 +190,9 @@ const ACTIVE_RUN = `SELECT 1 ${ACTIVE_RUN_FROM}`;
 /** The run (`r`) is of the assignment over ?1 (workflow), ?2 (kind), ?3 (ID). */
 const SAME_ASSIGNMENT = `r.workflow_id = ?1 AND r.subject_kind = ?2 AND r.subject_id = ?3`;
 
-export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
+export const D1WorkflowStoreLive = (
+  db: D1Database,
+): Layer.Layer<WorkflowStore> => {
   const selectAssignment = (workflowId: string, subject: Subject) =>
     db
       .prepare(
@@ -207,8 +212,8 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
   };
 
   return Layer.succeed(
-    Workflows,
-    Workflows.of({
+    WorkflowStore,
+    WorkflowStore.of({
       list: () =>
         query(() =>
           db

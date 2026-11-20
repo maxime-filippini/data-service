@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 
+import { d1Query } from "$/d1";
 import {
   type Holding,
   type NewSnapshot,
@@ -78,8 +79,7 @@ const referenced = () =>
 const symbolsOf = (snapshot: NewSnapshot) =>
   snapshot.holdings.map((holding) => holding.symbol);
 
-const query = <A>(operation: () => Promise<A>) =>
-  Effect.tryPromise({ try: operation, catch: databaseError });
+const query = d1Query(databaseError);
 
 /** Groups holding rows, sorted by date, into snapshots. */
 const toSnapshots = (rows: readonly HoldingRow[]): Snapshot[] => {

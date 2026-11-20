@@ -6,10 +6,10 @@ import { WorkflowIdSchema } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
 
 import {
-  portfolioHoldings,
+  portfolioHoldingsContract,
   PortfolioHoldingsArtifactSchema,
-  date,
-  publishedAssetPrices,
+  dateContract,
+  publishedAssetPricesContract,
   PublishedAssetPricesArtifactSchema,
 } from "./contract";
 import {
@@ -41,17 +41,17 @@ export const waitForAssetPublications = defineStepType({
   }),
   inputs: {
     holdings: {
-      contract: portfolioHoldings,
+      contract: portfolioHoldingsContract,
       description: "The resolved holdings artifact whose assets must be ready",
     },
     processingDate: {
-      contract: date,
+      contract: dateContract,
       description: "The required upstream processing date",
     },
   },
   outputs: {
     publications: {
-      contract: publishedAssetPrices,
+      contract: publishedAssetPricesContract,
       description: "The matching current price publications",
     },
   },

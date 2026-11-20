@@ -5,6 +5,7 @@ import type {
   PortfolioSummary,
   Snapshot,
 } from "../../../src/portfolios/views";
+import { subjectId } from "../../../src/workflows/subjects";
 import type { SubjectView } from "../../../src/workflows/views";
 
 export type { Asset } from "../../../src/assets/views";
@@ -30,11 +31,11 @@ export type {
 
 export type {
   InputSource,
-  InspectedStep,
+  StepDetail,
   SubjectView,
   WorkflowAssignment,
   WorkflowDefault,
-  WorkflowInspection,
+  WorkflowDetail,
   WorkflowSummary,
 } from "../../../src/workflows/views";
 
@@ -131,7 +132,7 @@ const get = async <T>(
 export const publicationDataUrl = (dataset: string, subject: SubjectView) =>
   apiUrl(
     `/publications/${encodeURIComponent(dataset)}/${subject.kind}/${encodeURIComponent(
-      subject.kind === "asset" ? subject.symbol : subject.id,
+      subjectId(subject),
     )}/data`,
   );
 

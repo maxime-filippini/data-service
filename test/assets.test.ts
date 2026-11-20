@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { requireManagementToken } from "$/auth";
-import { D1AssetsLive } from "$/assets/d1";
+import { D1AssetStoreLive } from "$/assets/d1";
 import { createAssetRoutes } from "$/routes/assets";
 
 import { makeTestDatabase } from "./support/d1";
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
-  const app = createAssetRoutes(() => D1AssetsLive(db), requireManagementToken);
+  const app = createAssetRoutes(
+    () => D1AssetStoreLive(db),
+    requireManagementToken,
+  );
   const env = { MANAGEMENT_API_TOKEN: "management" } as CloudflareBindings;
   const request = (
     path: string,

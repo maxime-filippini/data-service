@@ -12,7 +12,7 @@ import type {
 import type {
   WorkflowAssignment,
   WorkflowDefault,
-  WorkflowInspection,
+  WorkflowDetail,
   WorkflowSummary,
 } from "../workflows/views";
 
@@ -86,7 +86,7 @@ export interface PageData {
    * by default, and its latest runs, newest first. 404 for an unknown ID.
    */
   readonly workflow: (id: string) => Promise<{
-    readonly inspection: WorkflowInspection;
+    readonly detail: WorkflowDetail;
     readonly assignments: readonly WorkflowAssignment[];
     readonly isDefault: boolean;
     readonly runs: readonly WorkflowRunSummary[];

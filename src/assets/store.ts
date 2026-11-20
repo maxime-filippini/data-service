@@ -3,12 +3,12 @@ import { Context, type Effect } from "effect";
 import type { Asset, AssetError, CreateAsset, UpdateAsset } from "./contracts";
 
 /**
- * Injectable asset persistence. `D1AssetsLive` stores assets by symbol;
+ * Injectable asset persistence. `D1AssetStoreLive` stores assets by symbol;
  * removing an asset also removes its workflow assignments in the same batch.
  * Run history and published data are not touched by these operations.
  */
-export class Assets extends Context.Service<
-  Assets,
+export class AssetStore extends Context.Service<
+  AssetStore,
   {
     /** Every asset, by symbol. */
     readonly list: () => Effect.Effect<readonly Asset[], AssetError>;
@@ -29,4 +29,4 @@ export class Assets extends Context.Service<
     /** Delete the asset and its workflow assignments. */
     readonly remove: (symbol: string) => Effect.Effect<void, AssetError>;
   }
->()("data-service/Assets") {}
+>()("data-service/AssetStore") {}

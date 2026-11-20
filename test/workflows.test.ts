@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { Layer, Schema } from "effect";
 
-import { D1AssetsLive } from "$/assets/d1";
+import { D1AssetStoreLive } from "$/assets/d1";
 import type { Dependencies } from "$/dependencies";
 import { pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
@@ -11,13 +11,13 @@ import { createRoutes } from "$/routes";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { memoryDatasetObjectStore } from "$/local/published";
-import { D1WorkflowsLive } from "$/workflows/d1";
+import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import {
   builtInStepTypes,
   defineStepType,
-  portfolioSubject,
-  rawPricesEod,
+  portfolioSubjectContract,
+  rawPricesEodContract,
   StepRegistryLayer,
   type StepType,
 } from "$/workflows/registry";
@@ -34,7 +34,9 @@ const summarizeRaw = defineStepType({
   description: "Test step reading a raw download",
   scopes: ["asset"],
   params: Schema.Struct({}),
-  inputs: { raw: { contract: rawPricesEod, description: "Raw prices" } },
+  inputs: {
+    raw: { contract: rawPricesEodContract, description: "Raw prices" },
+  },
   outputs: {},
 });
 
@@ -45,7 +47,10 @@ const notePortfolio = defineStepType({
   scopes: ["portfolio"],
   params: Schema.Struct({}),
   inputs: {
-    portfolio: { contract: portfolioSubject, description: "The portfolio" },
+    portfolio: {
+      contract: portfolioSubjectContract,
+      description: "The portfolio",
+    },
   },
   outputs: {},
 });
@@ -60,11 +65,11 @@ const setup = (extraStepTypes: readonly StepType[] = []) => {
     scheduleFor: unused,
     calculationsFor: unused,
     engineFor: unused,
-    assetsFor: () => D1AssetsLive(db),
+    assetsFor: () => D1AssetStoreLive(db),
     portfoliosFor: () => D1PortfoliosLive(db),
     workflowsFor: () =>
       Layer.merge(
-        D1WorkflowsLive(db),
+        D1WorkflowStoreLive(db),
         StepRegistryLayer([...builtInStepTypes, ...extraStepTypes]),
       ),
     workflowRunsFor: () =>
@@ -466,6 +471,7 @@ test("malformed specifications are rejected before registry validation", async (
     { ...assetPrices, steps: [] },
     { ...assetPrices, scope: "fund" },
     { ...assetPrices, steps: [{ ...download, id: "has.dot" }] },
+    { ...assetPrices, steps: [{ ...download, id: "a".repeat(65) }] },
     {
       ...assetPrices,
       steps: [{ ...download, inputs: { asset: { value: 1, ref: "x" } } }],
@@ -707,6 +713,14 @@ const invalidCases: [string, unknown, { path: string[]; message: RegExp }[]][] =
               throughDate: { ref: "steps.download.outputs.raw.date" },
             },
           },
+          {
+            ...download,
+            id: "again",
+            inputs: {
+              asset: { ref: `steps.${"a".repeat(65)}.outputs.raw` },
+              throughDate: { ref: "steps.1st.outputs.raw" },
+            },
+          },
         ],
       },
       [
@@ -716,6 +730,14 @@ const invalidCases: [string, unknown, { path: string[]; message: RegExp }[]][] =
         },
         {
           path: ["steps", "0", "inputs", "throughDate", "ref"],
+          message: /Invalid reference/u,
+        },
+        {
+          path: ["steps", "1", "inputs", "asset", "ref"],
+          message: /Invalid reference/u,
+        },
+        {
+          path: ["steps", "1", "inputs", "throughDate", "ref"],
           message: /Invalid reference/u,
         },
       ],
@@ -989,10 +1011,10 @@ test("the app's pages read assets, definitions, assignments and step connections
     [["Daily asset prices", 2, 1]],
   );
 
-  const { inspection, assignments } = await pages.workflow(id);
+  const { detail, assignments } = await pages.workflow(id);
   assert.equal(assignments.length, 1);
-  assert.deepEqual(inspection.workflow, await json(api(`/workflows/${id}`)));
-  assert.deepEqual(inspection.steps, [
+  assert.deepEqual(detail.workflow, await json(api(`/workflows/${id}`)));
+  assert.deepEqual(detail.steps, [
     {
       position: 1,
       id: "download",

@@ -19,10 +19,11 @@ import {
   replaceWorkflow,
 } from "$/workflows/operations";
 import type { StepRegistry } from "$/workflows/registry";
-import { Workflows } from "$/workflows/store";
+import { WorkflowStore } from "$/workflows/store";
+import { subjectOf } from "$/workflows/subjects";
 
 /** The services workflow routes need. */
-export type WorkflowServices = Workflows | StepRegistry;
+export type WorkflowServices = WorkflowStore | StepRegistry;
 
 /** Selects the workflow store and step registry from request bindings. */
 export type WorkflowsFor = (
@@ -46,10 +47,8 @@ const AssignmentParamSchema = Schema.Union([
   }),
 ]);
 
-const subjectOf = (param: typeof AssignmentParamSchema.Type): Subject =>
-  param.kind === "asset"
-    ? { kind: "asset", symbol: param.subjectId }
-    : { kind: "portfolio", id: param.subjectId };
+const paramSubject = (param: typeof AssignmentParamSchema.Type): Subject =>
+  subjectOf(param.kind, param.subjectId);
 
 const runner =
   (workflowsFor: WorkflowsFor) =>
@@ -75,7 +74,7 @@ export const createWorkflowRoutes = (
   app.get("/", async (c) => {
     const workflows = await run(
       c.env,
-      Workflows.use((store) => store.list()),
+      WorkflowStore.use((store) => store.list()),
     );
     return c.json({ workflows });
   });
@@ -99,7 +98,7 @@ export const createWorkflowRoutes = (
     return c.json(
       await run(
         c.env,
-        Workflows.use((store) => store.get(id)),
+        WorkflowStore.use((store) => store.get(id)),
       ),
     );
   });
@@ -122,7 +121,7 @@ export const createWorkflowRoutes = (
     const { id } = c.req.valid("param");
     await run(
       c.env,
-      Workflows.use((store) => store.remove(id)),
+      WorkflowStore.use((store) => store.remove(id)),
     );
     return c.body(null, 204);
   });
@@ -135,7 +134,7 @@ export const createWorkflowRoutes = (
       const assignments = await run(
         c.env,
         // 404 for an unknown definition rather than an empty list.
-        Workflows.use((store) =>
+        WorkflowStore.use((store) =>
           Effect.andThen(
             store.get(id),
             store.listAssignments({ workflowId: id }),
@@ -155,7 +154,7 @@ export const createWorkflowRoutes = (
       const { subject, enabled } = c.req.valid("json");
       const assignment = await run(
         c.env,
-        Workflows.use((store) =>
+        WorkflowStore.use((store) =>
           store.assign(id, subject, enabled ?? true, new Date().toISOString()),
         ),
       );
@@ -176,10 +175,10 @@ export const createWorkflowRoutes = (
       return c.json(
         await run(
           c.env,
-          Workflows.use((store) =>
+          WorkflowStore.use((store) =>
             store.setAssignmentEnabled(
               param.id,
-              subjectOf(param),
+              paramSubject(param),
               enabled,
               new Date().toISOString(),
             ),
@@ -196,7 +195,9 @@ export const createWorkflowRoutes = (
       const param = c.req.valid("param");
       await run(
         c.env,
-        Workflows.use((store) => store.unassign(param.id, subjectOf(param))),
+        WorkflowStore.use((store) =>
+          store.unassign(param.id, paramSubject(param)),
+        ),
       );
       return c.body(null, 204);
     },
