@@ -3,12 +3,15 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
+import { Effect } from "effect";
 
+import { WorkerLoggerLive } from "$/logging";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import {
   scheduledWorkflowTick,
   type WorkflowDispatchParams,
 } from "$/workflows/runs/dispatch";
+import { reportDispatch } from "$/workflows/runs/report";
 import { workflowSteps } from "$/workflows/steps";
 
 export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
@@ -28,25 +31,9 @@ export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
       new Date(event.payload.scheduledTime),
       workflowSteps(step),
     );
-    if (report.status === "disabled") return report;
-    for (const run of report.runs)
-      console.log(JSON.stringify({ event: "workflow_dispatched", ...run }));
-    for (const failure of report.failures)
-      console.error(
-        JSON.stringify({ event: "workflow_dispatch_failed", ...failure }),
-      );
-    if (report.reconciled.failed > 0)
-      console.log(
-        JSON.stringify({
-          event: "workflow_runs_failed_as_stopped",
-          count: report.reconciled.failed,
-        }),
-      );
-    return {
-      status: report.status,
-      reconciled: report.reconciled,
-      dispatched: report.runs.length,
-      failed: report.failures.length,
-    };
+    return reportDispatch(report).pipe(
+      Effect.provide(WorkerLoggerLive),
+      Effect.runPromise,
+    );
   }
 }

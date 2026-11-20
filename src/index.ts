@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import { D1CalculationsLive } from "$/calculations/d1";
 import { failStoppedRuns } from "$/calculations/runs";
 import { triggerScheduledCalculations } from "$/calculations/schedule";
+import { WorkerLoggerLive } from "$/logging";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import {
   type IngestionMessage,
@@ -35,10 +36,10 @@ const app = createRoutes(dependencies, sveltekit);
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
 const PROCESSING_SWEEP_HOUR = 2;
 
-const ingest = async (
+const ingest = Effect.fn("Worker.ingest")(function* (
   batch: MessageBatch<IngestionMessage>,
   env: CloudflareBindings,
-) => {
+) {
   const layer = Layer.mergeAll(
     D1SymbolRegistryLive(env.MARKET_DATA_DB),
     D1MarketDataControlPlaneLive(env.MARKET_DATA_DB),
@@ -51,15 +52,13 @@ const ingest = async (
 
   for (const message of batch.messages) {
     const { dataset, symbol } = message.body;
-    const result = await runIngestion(message.body, dependencies).pipe(
+    const result = yield* runIngestion(message.body, dependencies).pipe(
       Effect.provide(layer),
       Effect.result,
-      Effect.runPromise,
     );
     if (result._tag === "Success") {
-      console.log(
-        JSON.stringify({
-          event: "ingestion",
+      yield* Effect.logInfo("ingestion").pipe(
+        Effect.annotateLogs({
           dataset,
           symbol,
           ...result.success,
@@ -68,9 +67,8 @@ const ingest = async (
       message.ack();
     } else {
       const retry = isRetryable(result.failure);
-      console.error(
-        JSON.stringify({
-          event: "ingestion_failed",
+      yield* Effect.logError("ingestion_failed").pipe(
+        Effect.annotateLogs({
           dataset,
           symbol,
           error: result.failure._tag,
@@ -82,169 +80,158 @@ const ingest = async (
       else message.ack();
     }
   }
-};
+});
 
 export default {
   fetch: app.fetch,
 
   async scheduled(controller, env) {
-    const now = new Date(controller.scheduledTime);
+    return Effect.gen(function* () {
+      const now = new Date(controller.scheduledTime);
 
-    const trigger = await triggerScheduledRun(
-      now,
-      env.SCHEDULED_DOWNLOADS,
-    ).pipe(
-      Effect.provide(D1ScheduleStoreLive(env.MARKET_DATA_DB)),
-      Effect.result,
-      Effect.runPromise,
-    );
-    if (trigger._tag === "Success") {
-      if (trigger.success.status === "started") {
-        console.log(
-          JSON.stringify({
-            event: "schedule_run_started",
-            runId: trigger.success.runId,
+      const trigger = yield* triggerScheduledRun(
+        now,
+        env.SCHEDULED_DOWNLOADS,
+      ).pipe(
+        Effect.provide(D1ScheduleStoreLive(env.MARKET_DATA_DB)),
+        Effect.result,
+      );
+      if (trigger._tag === "Success") {
+        if (trigger.success.status === "started") {
+          yield* Effect.logInfo("schedule_run_started").pipe(
+            Effect.annotateLogs({
+              runId: trigger.success.runId,
+            }),
+          );
+        }
+      } else {
+        // The run is forgotten, so the next hourly tick tries again.
+        yield* Effect.logError("schedule_run_failed").pipe(
+          Effect.annotateLogs({
+            message: trigger.failure.message,
           }),
         );
       }
-    } else {
-      // The run is forgotten, so the next hourly tick tries again.
-      console.error(
-        JSON.stringify({
-          event: "schedule_run_failed",
-          message: trigger.failure.message,
-        }),
-      );
-    }
 
-    // Fail calculation runs whose Workflow stopped without reporting back.
-    const sweep = await failStoppedRuns(env.CALCULATION_RUNS, now).pipe(
-      Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
-      Effect.result,
-      Effect.runPromise,
-    );
-    if (sweep._tag === "Success" && sweep.success > 0) {
-      console.log(
-        JSON.stringify({
-          event: "calculation_runs_failed_as_stopped",
-          count: sweep.success,
-        }),
+      // Fail calculation runs whose Workflow stopped without reporting back.
+      const sweep = yield* failStoppedRuns(env.CALCULATION_RUNS, now).pipe(
+        Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
+        Effect.result,
       );
-    } else if (sweep._tag === "Failure") {
-      console.error(
-        JSON.stringify({
-          event: "calculation_run_sweep_failed",
-          message: sweep.failure.message,
-        }),
-      );
-    }
-
-    // Start calculations whose cron has fired since their last scheduled run.
-    const calculations = await triggerScheduledCalculations(
-      now,
-      env.CALCULATION_RUNS,
-    ).pipe(
-      Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
-      Effect.result,
-      Effect.runPromise,
-    );
-    if (calculations._tag === "Success") {
-      for (const run of calculations.success) {
-        if ("error" in run)
-          console.error(
-            JSON.stringify({ event: "calculation_schedule_failed", ...run }),
-          );
-        else
-          console.log(
-            JSON.stringify({ event: "calculation_run_scheduled", ...run }),
-          );
-      }
-    } else {
-      console.error(
-        JSON.stringify({
-          event: "calculation_schedule_failed",
-          message: calculations.failure.message,
-        }),
-      );
-    }
-
-    // Dispatch workflow assignments at their definitions' daily hour. Off
-    // (WORKFLOW_DISPATCH "off") until the download cutover: the legacy
-    // scheduled download above still owns automatic downloads.
-    try {
-      const tick = await startScheduledWorkflowTick(
-        env,
-        now,
-        env.WORKFLOW_DISPATCHES,
-      );
-      if (tick.status === "started")
-        console.log(
-          JSON.stringify({ event: "workflow_dispatch_started", id: tick.id }),
+      if (sweep._tag === "Success" && sweep.success > 0) {
+        yield* Effect.logInfo("calculation_runs_failed_as_stopped").pipe(
+          Effect.annotateLogs({
+            count: sweep.success,
+          }),
         );
-    } catch (error) {
-      // Nothing claimed is lost: the next tick dispatches what is still due.
-      console.error(
-        JSON.stringify({
-          event: "workflow_dispatch_failed",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
+      } else if (sweep._tag === "Failure") {
+        yield* Effect.logError("calculation_run_sweep_failed").pipe(
+          Effect.annotateLogs({
+            message: sweep.failure.message,
+          }),
+        );
+      }
 
-    if (now.getUTCHours() === PROCESSING_SWEEP_HOUR) {
-      await scheduleProcessing(env.PROCESSING_QUEUE, now).pipe(
-        Effect.provide(D1MarketDataControlPlaneLive(env.MARKET_DATA_DB)),
-        Effect.runPromise,
+      // Start calculations whose cron has fired since their last scheduled run.
+      const calculations = yield* triggerScheduledCalculations(
+        now,
+        env.CALCULATION_RUNS,
+      ).pipe(
+        Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
+        Effect.result,
       );
-    }
+      if (calculations._tag === "Success") {
+        for (const run of calculations.success) {
+          if ("error" in run)
+            yield* Effect.logError("calculation_schedule_failed").pipe(
+              Effect.annotateLogs({ ...run }),
+            );
+          else
+            yield* Effect.logInfo("calculation_run_scheduled").pipe(
+              Effect.annotateLogs({ ...run }),
+            );
+        }
+      } else {
+        yield* Effect.logError("calculation_schedule_failed").pipe(
+          Effect.annotateLogs({
+            message: calculations.failure.message,
+          }),
+        );
+      }
+
+      // Dispatch workflow assignments at their definitions' daily hour. Off
+      // (WORKFLOW_DISPATCH "off") until the download cutover: the legacy
+      // scheduled download above still owns automatic downloads.
+      const dispatch = yield* Effect.tryPromise(() =>
+        startScheduledWorkflowTick(env, now, env.WORKFLOW_DISPATCHES),
+      ).pipe(Effect.result);
+      if (dispatch._tag === "Success") {
+        if (dispatch.success.status === "started")
+          yield* Effect.logInfo("workflow_dispatch_started").pipe(
+            Effect.annotateLogs({ id: dispatch.success.id }),
+          );
+      } else {
+        // Nothing claimed is lost: the next tick dispatches what is still due.
+        const error = dispatch.failure.cause;
+        yield* Effect.logError("workflow_dispatch_failed").pipe(
+          Effect.annotateLogs({
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+
+      if (now.getUTCHours() === PROCESSING_SWEEP_HOUR) {
+        yield* scheduleProcessing(env.PROCESSING_QUEUE, now).pipe(
+          Effect.provide(D1MarketDataControlPlaneLive(env.MARKET_DATA_DB)),
+        );
+      }
+    }).pipe(Effect.provide(WorkerLoggerLive), Effect.runPromise);
   },
 
   async queue(batch, env) {
-    if (batch.queue === env.INGESTION_QUEUE_NAME) {
-      await ingest(batch as MessageBatch<IngestionMessage>, env);
-      return;
-    }
-
-    const controlPlane = D1MarketDataControlPlaneLive(env.MARKET_DATA_DB);
-    const processor = env.MARKET_DATA_PROCESSOR.getByName("processor");
-
-    for (const message of batch.messages) {
-      const body = message.body as { jobId?: unknown };
-      if (typeof body?.jobId !== "string") {
-        console.error(
-          JSON.stringify({
-            event: "invalid_processing_message",
-            messageId: message.id,
-          }),
-        );
-        message.ack();
-        continue;
+    return Effect.gen(function* () {
+      if (batch.queue === env.INGESTION_QUEUE_NAME) {
+        yield* ingest(batch as MessageBatch<IngestionMessage>, env);
+        return;
       }
 
-      const result = await processJob(body.jobId, processor).pipe(
-        Effect.provide(controlPlane),
-        Effect.result,
-        Effect.runPromise,
-      );
-      if (result._tag === "Success") {
-        console.log(
-          JSON.stringify({
-            event: "processing_job",
-            jobId: body.jobId,
-            outcome: result.success,
-          }),
+      const controlPlane = D1MarketDataControlPlaneLive(env.MARKET_DATA_DB);
+      const processor = env.MARKET_DATA_PROCESSOR.getByName("processor");
+
+      for (const message of batch.messages) {
+        const body = message.body as { jobId?: unknown };
+        if (typeof body?.jobId !== "string") {
+          yield* Effect.logError("invalid_processing_message").pipe(
+            Effect.annotateLogs({
+              messageId: message.id,
+            }),
+          );
+          message.ack();
+          continue;
+        }
+
+        const result = yield* processJob(body.jobId, processor).pipe(
+          Effect.provide(controlPlane),
+          Effect.result,
         );
-        message.ack();
-      } else {
-        console.error(
-          JSON.stringify({
-            event: "processing_retry",
-            jobId: body.jobId,
-            error: result.failure._tag,
-          }),
-        );
-        message.retry();
+        if (result._tag === "Success") {
+          yield* Effect.logInfo("processing_job").pipe(
+            Effect.annotateLogs({
+              jobId: body.jobId,
+              outcome: result.success,
+            }),
+          );
+          message.ack();
+        } else {
+          yield* Effect.logError("processing_retry").pipe(
+            Effect.annotateLogs({
+              jobId: body.jobId,
+              error: result.failure._tag,
+            }),
+          );
+          message.retry();
+        }
       }
-    }
+    }).pipe(Effect.provide(WorkerLoggerLive), Effect.runPromise);
   },
 } satisfies ExportedHandler<CloudflareBindings>;
