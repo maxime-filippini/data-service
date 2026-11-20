@@ -44,8 +44,8 @@ import { makeSqliteD1 } from "$/local/sqlite-d1";
 import { localSteps } from "$/local/steps";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { createRoutes } from "$/routes";
-import type { WorkflowRunDetail } from "$/workflows/runs/contracts";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 import { runScript, ScriptError } from "./cli";
 

@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type {
-  WorkflowAssignment,
-  WorkflowDefault,
-} from "$/workflows/contracts";
+import type { WorkflowAssignment, WorkflowDefault } from "$/workflows/views";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 import { localSteps } from "$/local/steps";
 

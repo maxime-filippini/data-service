@@ -42,7 +42,7 @@ import { createRoutes } from "$/routes";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
-} from "$/workflows/runs/contracts";
+} from "$/workflows/runs/views";
 
 import { makeTestDatabase } from "./support/d1";
 

@@ -6,7 +6,7 @@ import { localSteps } from "$/local/steps";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
-} from "$/workflows/runs/contracts";
+} from "$/workflows/runs/views";
 import {
   DISPATCH_BATCH_SIZE,
   scheduledWorkflowTick,

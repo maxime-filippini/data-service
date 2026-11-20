@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 
 import type { PublicationView } from "$/datasets/contracts";
 import { uvAvailable } from "$/local/python";
-import type { WorkflowRunDetail } from "$/workflows/runs/contracts";
+import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 const run = promisify(execFile);
 

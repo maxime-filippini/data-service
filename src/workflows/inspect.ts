@@ -1,9 +1,9 @@
+import type { WorkflowDefinition } from "$/workflows/contracts";
 import { parseReference } from "$/workflows/references";
 import type { StepTypes } from "$/workflows/registry";
 import type {
   InputSource,
   InspectedStep,
-  WorkflowDefinition,
   WorkflowInspection,
 } from "$/workflows/views";
 
