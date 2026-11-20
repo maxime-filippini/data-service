@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { Layer } from "effect";
+
+import { D1AssetsLive } from "$/assets/d1";
 import { D1CalculationsLive } from "$/calculations/d1";
 import type { Dependencies } from "$/dependencies";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
@@ -8,6 +11,8 @@ import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { PageDataError, pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
+import { D1WorkflowsLive } from "$/workflows/d1";
+import { StepRegistryLive } from "$/workflows/registry";
 
 import { makeTestDatabase } from "./support/d1";
 import { makeFakeEngine } from "./support/engine";
@@ -35,6 +40,8 @@ const setup = () => {
     engineFor: () => makeFakeEngine().layer,
     calculationsFor: () => D1CalculationsLive(db),
     runWorkflowFor: () => workflow,
+    assetsFor: () => D1AssetsLive(db),
+    workflowsFor: () => Layer.merge(D1WorkflowsLive(db), StepRegistryLive),
   } as unknown as Dependencies;
   return { sqlite, pages: pageData({} as CloudflareBindings, dependencies) };
 };

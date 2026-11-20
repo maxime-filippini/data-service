@@ -31,6 +31,17 @@ export type {
   PortfolioOutcome,
 } from "../../../src/calculations/views";
 
+export type { Asset } from "../../../src/assets/views";
+
+export type {
+  InputSource,
+  InspectedStep,
+  SubjectView,
+  WorkflowAssignment,
+  WorkflowInspection,
+  WorkflowSummary,
+} from "../../../src/workflows/views";
+
 export type {
   HoldingView,
   Portfolio,

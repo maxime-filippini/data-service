@@ -119,6 +119,39 @@ calculation cascades to its portfolio links and runs. The foreign keys from
 `portfolios` don't cascade, so a held symbol or a used portfolio can't be
 deleted.
 
+## Assets and workflow definitions
+
+```mermaid
+erDiagram
+  assets {
+    text symbol PK
+    text provider
+    text backfill_start_date
+    int enabled
+  }
+  workflow_definitions {
+    text workflow_id PK
+    text name
+    text scope "asset | portfolio"
+    int enabled
+    int schedule_hour_utc "0-23"
+    text steps_json "ordered steps"
+  }
+  workflow_assignments {
+    text workflow_id PK, FK
+    text subject_kind PK "asset | portfolio"
+    text subject_id PK "symbol or portfolio ID"
+    int enabled
+  }
+  workflow_definitions ||--o{ workflow_assignments : "assigned by"
+```
+
+Steps, with their params and bindings, are JSON in `steps_json`; identity,
+scope and schedule are ordinary columns. Deleting a definition, an asset or
+(later) a portfolio removes its assignments in the same batch. The scope
+update is conditional on there being no assignments, so a racing assignment
+can't end up with the wrong kind of subject.
+
 ## Concurrency rules
 
 Partial unique indexes enforce the service's "one at a time" rules in the

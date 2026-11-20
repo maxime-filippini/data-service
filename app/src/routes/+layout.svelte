@@ -7,7 +7,9 @@
   const SECTIONS = [
     { path: "/runs", label: "Ingestion runs" },
     { path: "/symbols", label: "Symbols" },
+    { path: "/assets", label: "Assets" },
     { path: "/portfolios", label: "Portfolios" },
+    { path: "/workflows", label: "Workflows" },
     { path: "/calculations", label: "Calculations" },
     { path: "/explore", label: "Explore data" },
   ];

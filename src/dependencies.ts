@@ -1,3 +1,6 @@
+import { Layer } from "effect";
+
+import { D1AssetsLive } from "$/assets/d1";
 import { D1CalculationsLive } from "$/calculations/d1";
 import { EngineLive } from "$/calculations/engine";
 import type { RunWorkflow } from "$/calculations/runs";
@@ -6,6 +9,8 @@ import type { ScheduleWorkflow } from "$/market-data/schedule/operations";
 import { D1PipelineStatusLive } from "$/market-data/status/d1";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
+import { D1WorkflowsLive } from "$/workflows/d1";
+import { StepRegistryLive } from "$/workflows/registry";
 
 /**
  * Select real adapters using the current request's Cloudflare bindings.
@@ -30,6 +35,10 @@ export const dependencies = {
     D1CalculationsLive(env.MARKET_DATA_DB),
   runWorkflowFor: (env: CloudflareBindings): RunWorkflow =>
     env.CALCULATION_RUNS,
+  assetsFor: (env: CloudflareBindings) => D1AssetsLive(env.MARKET_DATA_DB),
+  // Definitions are validated and inspected against the code-owned registry.
+  workflowsFor: (env: CloudflareBindings) =>
+    Layer.merge(D1WorkflowsLive(env.MARKET_DATA_DB), StepRegistryLive),
 };
 
 /**

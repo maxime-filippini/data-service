@@ -36,6 +36,10 @@ export default defineConfig({
           ],
         },
         {
+          label: "Workflows",
+          items: ["workflows/definitions"],
+        },
+        {
           label: "Calculations",
           items: [
             "calculations/portfolios",

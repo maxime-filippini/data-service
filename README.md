@@ -319,6 +319,9 @@ there:
 - **`/portfolios`** creates, renames and deletes portfolios, and adds or deletes
   their snapshots. Single-asset portfolios are labelled, read-only, and can
   be hidden from the list.
+- **`/assets`** and **`/workflows`** show assets and workflow definitions
+  read-only: each definition's schedule, assignments and ordered steps with
+  their parameters and input/output connections.
 - **`/calculations`** creates and edits calculations, pauses or enables them,
   runs them for any as-of date and shows their runs.
 - **`/explore`** browses each symbol's Parquet data and each calculation's

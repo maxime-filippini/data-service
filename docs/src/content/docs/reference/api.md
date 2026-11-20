@@ -17,34 +17,49 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 
 ## Routes
 
-| Method   | Path                                          | Does                                                  |
-| -------- | --------------------------------------------- | ----------------------------------------------------- |
-| `POST`   | `/api/symbols`                                | Register or update a tracked symbol                   |
-| `GET`    | `/api/symbols`                                | List tracked symbols (`?dataset=`, `?enabled=`)       |
-| `POST`   | `/api/symbols/:dataset/:symbol/enable`        | Put a symbol on the daily schedule                    |
-| `POST`   | `/api/symbols/:dataset/:symbol/disable`       | Take a symbol off the daily schedule                  |
-| `POST`   | `/api/ingestions`                             | Download symbols now                                  |
-| `GET`    | `/api/schedule`                               | The daily schedule, with its next run time            |
-| `PATCH`  | `/api/schedule`                               | Change the hour or pause / resume                     |
-| `GET`    | `/api/schedule/runs`                          | Recent schedule runs (`?limit=`, up to 100)           |
-| `POST`   | `/api/schedule/runs`                          | Run the schedule now                                  |
-| `GET`    | `/api/portfolios`                             | List portfolios                                       |
-| `POST`   | `/api/portfolios`                             | Create a portfolio, optionally with a snapshot        |
-| `GET`    | `/api/portfolios/:id`                         | One portfolio with its snapshots                      |
-| `PATCH`  | `/api/portfolios/:id`                         | Rename                                                |
-| `DELETE` | `/api/portfolios/:id`                         | Delete (`409` if a calculation uses it)               |
-| `POST`   | `/api/portfolios/:id/snapshots`               | Add a snapshot                                        |
-| `DELETE` | `/api/portfolios/:id/snapshots/:holdingsDate` | Delete a snapshot                                     |
-| `GET`    | `/api/calculation-types`                      | The engine's types, params schemas and output columns |
-| `GET`    | `/api/calculations`                           | List calculations with their latest run               |
-| `POST`   | `/api/calculations`                           | Create a calculation                                  |
-| `GET`    | `/api/calculations/:id`                       | One calculation                                       |
-| `PATCH`  | `/api/calculations/:id`                       | Change name, params, portfolios, cron or enabled      |
-| `DELETE` | `/api/calculations/:id`                       | Delete it and its runs (results stay in R2)           |
-| `POST`   | `/api/calculations/:id/runs`                  | Run now (`asOf` optional)                             |
-| `GET`    | `/api/calculations/:id/runs`                  | Its runs, newest first (`?limit=`, up to 100)         |
-| `GET`    | `/api/calculations/:id/runs/:runId`           | One run                                               |
-| `POST`   | `/api/calculate`                              | Ad hoc calculation; nothing saved                     |
+| Method   | Path                                            | Does                                                  |
+| -------- | ----------------------------------------------- | ----------------------------------------------------- |
+| `POST`   | `/api/symbols`                                  | Register or update a tracked symbol                   |
+| `GET`    | `/api/symbols`                                  | List tracked symbols (`?dataset=`, `?enabled=`)       |
+| `POST`   | `/api/symbols/:dataset/:symbol/enable`          | Put a symbol on the daily schedule                    |
+| `POST`   | `/api/symbols/:dataset/:symbol/disable`         | Take a symbol off the daily schedule                  |
+| `POST`   | `/api/ingestions`                               | Download symbols now                                  |
+| `GET`    | `/api/schedule`                                 | The daily schedule, with its next run time            |
+| `PATCH`  | `/api/schedule`                                 | Change the hour or pause / resume                     |
+| `GET`    | `/api/schedule/runs`                            | Recent schedule runs (`?limit=`, up to 100)           |
+| `POST`   | `/api/schedule/runs`                            | Run the schedule now                                  |
+| `GET`    | `/api/portfolios`                               | List portfolios                                       |
+| `POST`   | `/api/portfolios`                               | Create a portfolio, optionally with a snapshot        |
+| `GET`    | `/api/portfolios/:id`                           | One portfolio with its snapshots                      |
+| `PATCH`  | `/api/portfolios/:id`                           | Rename                                                |
+| `DELETE` | `/api/portfolios/:id`                           | Delete (`409` if a calculation uses it)               |
+| `POST`   | `/api/portfolios/:id/snapshots`                 | Add a snapshot                                        |
+| `DELETE` | `/api/portfolios/:id/snapshots/:holdingsDate`   | Delete a snapshot                                     |
+| `GET`    | `/api/calculation-types`                        | The engine's types, params schemas and output columns |
+| `GET`    | `/api/calculations`                             | List calculations with their latest run               |
+| `POST`   | `/api/calculations`                             | Create a calculation                                  |
+| `GET`    | `/api/calculations/:id`                         | One calculation                                       |
+| `PATCH`  | `/api/calculations/:id`                         | Change name, params, portfolios, cron or enabled      |
+| `DELETE` | `/api/calculations/:id`                         | Delete it and its runs (results stay in R2)           |
+| `POST`   | `/api/calculations/:id/runs`                    | Run now (`asOf` optional)                             |
+| `GET`    | `/api/calculations/:id/runs`                    | Its runs, newest first (`?limit=`, up to 100)         |
+| `GET`    | `/api/calculations/:id/runs/:runId`             | One run                                               |
+| `POST`   | `/api/calculate`                                | Ad hoc calculation; nothing saved                     |
+| `GET`    | `/api/assets`                                   | List assets                                           |
+| `POST`   | `/api/assets`                                   | Create an asset (`409` if the symbol exists)          |
+| `GET`    | `/api/assets/:symbol`                           | One asset                                             |
+| `PATCH`  | `/api/assets/:symbol`                           | Change provider, backfill start or enabled            |
+| `DELETE` | `/api/assets/:symbol`                           | Delete it and its workflow assignments                |
+| `GET`    | `/api/step-types`                               | The step catalog: step types, contracts, run context  |
+| `GET`    | `/api/workflows`                                | List workflow definitions                             |
+| `POST`   | `/api/workflows`                                | Create a definition from a complete specification     |
+| `GET`    | `/api/workflows/:id`                            | One definition                                        |
+| `PUT`    | `/api/workflows/:id`                            | Replace the whole specification                       |
+| `DELETE` | `/api/workflows/:id`                            | Delete it and its assignments                         |
+| `GET`    | `/api/workflows/:id/assignments`                | Its assignments                                       |
+| `POST`   | `/api/workflows/:id/assignments`                | Assign it to an asset or portfolio                    |
+| `PATCH`  | `/api/workflows/:id/assignments/:kind/:subject` | Enable or disable one assignment                      |
+| `DELETE` | `/api/workflows/:id/assignments/:kind/:subject` | Remove one assignment                                 |
 
 ## Symbols
 
@@ -126,6 +141,56 @@ for the same date, or a change to a single-asset portfolio, returns `409`.
 Deleting a portfolio a calculation uses returns `409` with those calculations
 in `calculations`. See
 [Portfolios](/docs/calculations/portfolios/).
+
+## Assets
+
+```sh
+curl -X POST "$URL/api/assets" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"AAPL.US","provider":"eodhd","backfillStartDate":"2016-01-01"}'
+
+curl "$URL/api/assets" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X PATCH "$URL/api/assets/AAPL.US" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"enabled":false}'
+curl -X DELETE "$URL/api/assets/AAPL.US" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+`enabled` defaults to `true`. Assets are identified by symbol only and are
+separate from the `/api/symbols` registry; creating one creates no portfolio.
+
+## Workflows
+
+```sh
+curl "$URL/api/step-types" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+
+curl -X POST "$URL/api/workflows" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Daily asset prices","scope":"asset","enabled":true,"schedule":{"hourUtc":2},
+       "steps":[{"id":"download","type":"download-prices",
+                 "inputs":{"asset":{"ref":"context.subject"},"throughDate":{"ref":"context.processingDate"}}}]}'
+
+curl -X PUT "$URL/api/workflows/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d @definition.json
+
+curl -X POST "$URL/api/workflows/$ID/assignments" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"subject":{"kind":"asset","symbol":"AAPL.US"}}'
+curl -X PATCH "$URL/api/workflows/$ID/assignments/asset/AAPL.US" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"enabled":false}'
+curl -X DELETE "$URL/api/workflows/$ID/assignments/asset/AAPL.US" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+A specification that does not fit the step registry returns `422` with every
+problem in `issues`; a rejected `PUT` changes nothing. Assigning to a missing
+subject or one of the other kind returns `422`, assigning twice `409`, and a
+`PUT` that changes the scope while assignments exist `409`. Portfolio
+assignments use `{"kind":"portfolio","id":"<uuid>"}` and
+`/assignments/portfolio/<uuid>`. See
+[Assets and workflow definitions](/docs/workflows/definitions/).
 
 ## Calculations
 

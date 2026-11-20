@@ -8,6 +8,7 @@ import {
 import type { Dependencies } from "$/dependencies";
 import { type AppHandler, createAppRoutes } from "$/routes/app";
 import { createAppApiRoutes } from "$/routes/app-api";
+import { createAssetRoutes } from "$/routes/assets";
 import {
   createCalculateRoutes,
   createCalculationTypeRoutes,
@@ -18,6 +19,7 @@ import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
+import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
 
 /**
  * Every route on the hostname:
@@ -63,6 +65,18 @@ export const createRoutes = (
   api.route(
     "/calculations",
     createCalculationRoutes(dependencies, requireManagementToken),
+  );
+  api.route(
+    "/assets",
+    createAssetRoutes(dependencies.assetsFor, requireManagementToken),
+  );
+  api.route(
+    "/workflows",
+    createWorkflowRoutes(dependencies.workflowsFor, requireManagementToken),
+  );
+  api.route(
+    "/step-types",
+    createStepTypeRoutes(dependencies.workflowsFor, requireManagementToken),
   );
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
