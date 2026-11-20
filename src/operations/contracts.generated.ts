@@ -159,7 +159,11 @@ export type PortfolioVolatilitySummary = {
   readonly windowStart: string;
 };
 export const PortfolioVolatilitySummary = Schema.Struct({
-  holdingsDate: Schema.String.annotate({ format: "date" }),
+  holdingsDate: Schema.String.annotate({ format: "date" }).check(
+    Schema.isPattern(new RegExp("^\\d{4}-\\d{2}-\\d{2}$", "u")).annotate({
+      expected: "a string matching the RegExp ^\\d{4}-\\d{2}-\\d{2}$",
+    }),
+  ),
   observations: Schema.Number.check(
     Schema.isInt().annotate({ expected: "an integer" }),
   ).check(
@@ -170,8 +174,16 @@ export const PortfolioVolatilitySummary = Schema.Struct({
   volatility: Schema.Number.check(
     Schema.isFinite().annotate({ expected: "a finite number" }),
   ),
-  windowEnd: Schema.String.annotate({ format: "date" }),
-  windowStart: Schema.String.annotate({ format: "date" }),
+  windowEnd: Schema.String.annotate({ format: "date" }).check(
+    Schema.isPattern(new RegExp("^\\d{4}-\\d{2}-\\d{2}$", "u")).annotate({
+      expected: "a string matching the RegExp ^\\d{4}-\\d{2}-\\d{2}$",
+    }),
+  ),
+  windowStart: Schema.String.annotate({ format: "date" }).check(
+    Schema.isPattern(new RegExp("^\\d{4}-\\d{2}-\\d{2}$", "u")).annotate({
+      expected: "a string matching the RegExp ^\\d{4}-\\d{2}-\\d{2}$",
+    }),
+  ),
 }).annotate({ identifier: "PortfolioVolatilitySummary" });
 export type RawPricesEodReference = {
   readonly format: "json";
@@ -252,7 +264,11 @@ export type PublishedAssetPrice = {
 };
 export const PublishedAssetPrice = Schema.Struct({
   dataset: Schema.Literal("prices_eod"),
-  processingDate: Schema.String.annotate({ format: "date" }),
+  processingDate: Schema.String.annotate({ format: "date" }).check(
+    Schema.isPattern(new RegExp("^\\d{4}-\\d{2}-\\d{2}$", "u")).annotate({
+      expected: "a string matching the RegExp ^\\d{4}-\\d{2}-\\d{2}$",
+    }),
+  ),
   runId: Schema.String.check(
     Schema.isPattern(
       new RegExp(
@@ -298,7 +314,11 @@ export const PortfolioVolatilityInputs = Schema.Struct({
       expected: "a value with a length of at least 1",
     }),
   ),
-  holdingsDate: Schema.String.annotate({ format: "date" }),
+  holdingsDate: Schema.String.annotate({ format: "date" }).check(
+    Schema.isPattern(new RegExp("^\\d{4}-\\d{2}-\\d{2}$", "u")).annotate({
+      expected: "a string matching the RegExp ^\\d{4}-\\d{2}-\\d{2}$",
+    }),
+  ),
   portfolioId: Schema.String.check(
     Schema.isPattern(
       new RegExp(
@@ -310,7 +330,11 @@ export const PortfolioVolatilityInputs = Schema.Struct({
         "a string matching the RegExp ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     }),
   ),
-  processingDate: Schema.String.annotate({ format: "date" }),
+  processingDate: Schema.String.annotate({ format: "date" }).check(
+    Schema.isPattern(new RegExp("^\\d{4}-\\d{2}-\\d{2}$", "u")).annotate({
+      expected: "a string matching the RegExp ^\\d{4}-\\d{2}-\\d{2}$",
+    }),
+  ),
   publications: Schema.Array(PublishedAssetPrice).check(
     Schema.isMinLength(1).annotate({
       expected: "a value with a length of at least 1",
