@@ -76,6 +76,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
     {
       workflowRunsFor: local.dependencies.workflowRunsFor,
       runPlatformFor: local.dependencies.runPlatformFor,
+      datasetsFor: local.dependencies.datasetsFor,
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
       scheduleFor: () => D1ScheduleStoreLive(db),
@@ -726,7 +727,7 @@ test("the app serves assets, workflow definitions and the step catalog behind Ac
   };
   assert.deepEqual(
     stepTypes.map((stepType) => stepType.type),
-    ["download-prices"],
+    ["download-prices", "normalize-prices", "publish-dataset"],
   );
 
   const asset = {
@@ -851,5 +852,27 @@ test("the app starts and lists workflow runs behind Access", async () => {
   assert.equal(
     (await request(`/app-api/workflow-runs/${run.id}`, token)).status,
     200,
+  );
+});
+
+test("the app reads dataset publications behind Access, beside the explorer's dataset files", async () => {
+  const { request } = setup();
+  const token = await signToken();
+  assert.equal((await request("/app-api/publications")).status, 401);
+
+  const listed = await request(
+    "/app-api/publications?subjectKind=asset&subjectId=AAPL.US",
+    token,
+  );
+  assert.equal(listed.status, 200);
+  assert.deepEqual(await listed.json(), { publications: [] });
+  assert.equal(
+    (await request("/app-api/publications/prices_eod/asset/AAPL.US", token))
+      .status,
+    404,
+  );
+  assert.equal(
+    (await request("/app-api/publications/nope/asset/AAPL.US", token)).status,
+    400,
   );
 });

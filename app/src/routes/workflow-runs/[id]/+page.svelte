@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { apiUrl, type StepOutcome } from "#lib/api.ts";
+  import {
+    apiUrl,
+    publicationDataUrl,
+    type StepOutcome,
+    type SubjectView,
+  } from "#lib/api.ts";
   import { formatDateTime, formatDuration } from "#lib/format.ts";
   import { href } from "#lib/router.svelte.ts";
   import StatusBadge from "#lib/StatusBadge.svelte";
@@ -19,6 +24,26 @@
     "id" in value &&
     "format" in value &&
     "schema" in value;
+
+  /** An output naming a published dataset (a publish step's output). */
+  const isPublication = (
+    value: unknown,
+  ): value is {
+    dataset: string;
+    subject: SubjectView;
+    processingDate: string;
+  } =>
+    typeof value === "object" &&
+    value !== null &&
+    "dataset" in value &&
+    "subject" in value &&
+    "processingDate" in value;
+
+  /** Where the app shows a subject's published datasets. */
+  const datasetsHref = (subject: SubjectView) =>
+    subject.kind === "asset"
+      ? `${href("assets", { id: subject.symbol })}#datasets`
+      : href("portfolios", { id: subject.id });
 
   const outputs = (step: StepOutcome) => Object.entries(step.outputs ?? {});
 </script>
@@ -95,6 +120,18 @@
                   )}>{value.schema} ({value.format})</a
                 >
                 <span class="mono muted">{value.id}</span>
+              {:else if isPublication(value)}
+                Published
+                <a href={datasetsHref(value.subject)}
+                  ><span class="mono">{value.dataset}</span> for {subjectLabel(
+                    value.subject,
+                  )}</a
+                >
+                (processing date
+                <span class="mono">{value.processingDate}</span>) ·
+                <a href={publicationDataUrl(value.dataset, value.subject)}
+                  >current data</a
+                >
               {:else}
                 <code>{JSON.stringify(value)}</code>
               {/if}

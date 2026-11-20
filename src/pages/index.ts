@@ -3,6 +3,7 @@ import { Effect, type Layer, Result, Schema } from "effect";
 import { AssetSymbolSchema } from "$/assets/contracts";
 import { Assets } from "$/assets/store";
 import { CalculationIdSchema } from "$/calculations/contracts";
+import { DatasetPublicationStore } from "$/datasets/store";
 import { isCronError, nextSlot, parseCron } from "$/calculations/cron";
 import { Calculations } from "$/calculations/store";
 import type { Calculation } from "$/calculations/views";
@@ -129,6 +130,7 @@ export const pageData = (
   const assets = runWith(dependencies.assetsFor(env));
   const workflows = runWith(dependencies.workflowsFor(env));
   const workflowRuns = runWith(dependencies.workflowRunsFor(env));
+  const datasets = runWith(dependencies.datasetsFor(env));
 
   const listSymbols = () =>
     status(PipelineStatus.use((s) => s.listSymbols({})));
@@ -177,7 +179,7 @@ export const pageData = (
     asset: async (symbol) => {
       if (!Schema.is(AssetSymbolSchema)(symbol))
         throw new PageDataError(404, "Asset not found");
-      const [asset, assignments, runs] = await Promise.all([
+      const [asset, assignments, runs, publications] = await Promise.all([
         assets(Assets.use((a) => a.get(symbol))),
         workflows(subjectAssignments({ kind: "asset", symbol })),
         workflowRuns(
@@ -188,8 +190,13 @@ export const pageData = (
             }),
           ),
         ),
+        datasets(
+          DatasetPublicationStore.use((p) =>
+            p.list({ subject: { kind: "asset", id: symbol } }),
+          ),
+        ),
       ]);
-      return { asset, assignments, runs };
+      return { asset, assignments, runs, publications };
     },
 
     workflows: () => workflows(Workflows.use((w) => w.list())),

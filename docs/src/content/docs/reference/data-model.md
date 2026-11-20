@@ -183,6 +183,13 @@ conditional on there being no active run. Step rows record each reached
 step's attempts, error and small outputs; Cloudflare Workflows keeps the
 checkpoints. Large step data lives in R2 under `runs/<runId>/`.
 
+`dataset_publications` holds the current publication of each dataset per
+subject (primary key `dataset, subject_kind, subject_id`): its processing
+date, the producing `workflow_id`, `run_id` and `step_id`, the copied run
+artifact, the format and schema, and the published object's ETag and size.
+It is written after the object and replaced by the next publication. Like
+runs it has no foreign keys, so deleting configuration keeps it.
+
 ## Concurrency rules
 
 Partial unique indexes enforce the service's "one at a time" rules in the

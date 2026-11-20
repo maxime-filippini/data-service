@@ -4,6 +4,8 @@ import io
 import logging
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from . import runtime
@@ -16,6 +18,8 @@ from .framework import (
     registry,
 )
 from .models import CalculateRequest, RunRequest, ValidateRequest
+from .operations import runtime as operations_runtime
+from .operations.registry import dispatch, operations
 
 logger = logging.getLogger(__name__)
 app = FastAPI()
@@ -89,3 +93,21 @@ def calculate(request: CalculateRequest, http_request: Request):
         return Response(output.getvalue(), media_type=ARROW_STREAM)
     # Polars writes NaN and infinity as null, which plain JSON can't hold.
     return Response('{"rows":' + rows.write_json() + "}", media_type="application/json")
+
+
+@app.get("/operations")
+def list_operations():
+    """Each workflow operation's name, description and JSON Schemas."""
+    return [operation.describe() for operation in operations().values()]
+
+
+@app.post("/operations/{name}")
+async def invoke_operation(name: str, request: Request):
+    """Run one workflow operation: `{execution, inputs, params}` in, small
+    JSON out. Failures are never a 200: the body is `{error: {kind, message,
+    issues}}`, `kind` telling the caller whether a retry may help."""
+    body = await request.body()
+    outcome = await run_in_threadpool(
+        dispatch, name, body, operations_runtime.artifact_store
+    )
+    return JSONResponse(outcome.body, status_code=outcome.status)

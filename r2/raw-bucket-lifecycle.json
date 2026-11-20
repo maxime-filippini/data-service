@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "id": "expire-temporary-run-artifacts",
+      "enabled": true,
+      "conditions": { "prefix": "runs/" },
+      "deleteObjectsTransition": {
+        "condition": { "type": "Age", "maxAge": 2592000 }
+      }
+    }
+  ]
+}

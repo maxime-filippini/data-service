@@ -47,9 +47,11 @@ on 8787, so run both. It always signs you in as `local@localhost`.
 pnpm workflow:fixture
 ```
 
-Runs the asset download workflow through the API, executor and step
-implementations without credentials, network or wrangler, and writes the
-database, raw artifact and run record to `.local/workflow-fixture/`. See
+Runs the asset prices workflow (download, normalize in Python, publish)
+through the API, executor, step implementations and the real Python service
+(started with uv) without credentials, network or wrangler. It writes the
+database, run artifacts, published dataset, run record and publication
+metadata to `.local/workflow-fixture/`. See
 [Workflow runs](/docs/workflows/runs/#running-locally-against-fixtures).
 
 ## Limits of `pnpm dev`

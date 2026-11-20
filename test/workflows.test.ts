@@ -8,7 +8,9 @@ import type { Dependencies } from "$/dependencies";
 import { pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
+import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { memoryRunArtifacts } from "$/local/artifacts";
+import { memoryDatasetObjectStore } from "$/local/published";
 import { D1WorkflowsLive } from "$/workflows/d1";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import {
@@ -67,6 +69,11 @@ const setup = (extraStepTypes: readonly StepType[] = []) => {
       ),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
+    datasetsFor: () =>
+      Layer.merge(
+        D1DatasetPublicationStoreLive(db),
+        memoryDatasetObjectStore().layer,
+      ),
   } as unknown as Dependencies;
   const routes = createRoutes(dependencies, {
     fetch: () => new Response("app"),
@@ -178,7 +185,7 @@ test("workflow, assignment and catalog routes require the management token", asy
   }
 });
 
-test("the step catalog exposes the registered download step contract", async () => {
+test("the step catalog exposes the registered step contracts", async () => {
   const { api, json } = setup();
   const catalog = await json<{
     stepTypes: Record<string, unknown>[];
@@ -213,10 +220,50 @@ test("the step catalog exposes the registered download step contract", async () 
   assert.equal(params.type, "object");
   assert.deepEqual(Object.keys(params.properties), ["startDate"]);
 
+  const ports = (type: string) => {
+    const stepType = catalog.stepTypes.find((entry) => entry.type === type)!;
+    const names = (list: unknown) =>
+      (list as { name: string; contract: string }[]).map(
+        ({ name, contract }) => `${name}:${contract}`,
+      );
+    return {
+      inputs: names(stepType.inputs),
+      outputs: names(stepType.outputs),
+    };
+  };
+  assert.deepEqual(ports("normalize-prices"), {
+    inputs: ["raw:raw-prices-eod"],
+    outputs: ["prices:prices-eod"],
+  });
+  assert.deepEqual(ports("publish-dataset"), {
+    inputs: ["data:prices-eod"],
+    outputs: ["publication:dataset-publication"],
+  });
+
   assert.deepEqual(
     catalog.contracts.map((contract) => contract.id),
-    ["asset-subject", "date", "portfolio-subject", "raw-prices-eod"],
+    [
+      "asset-subject",
+      "dataset-publication",
+      "date",
+      "portfolio-subject",
+      "prices-eod",
+      "raw-prices-eod",
+    ],
   );
+  // Contracts generated from the Python service's Pydantic models keep
+  // their constraints in the catalog.
+  const pricesEod = catalog.contracts.find(
+    (contract) => contract.id === "prices-eod",
+  )!.schema as {
+    $defs: Record<
+      string,
+      { properties: Record<string, Record<string, unknown>> }
+    >;
+  };
+  const reference = pricesEod.$defs["PricesEodReference"]!.properties;
+  assert.deepEqual(reference["format"]!["enum"], ["parquet"]);
+  assert.match(String(reference["id"]!["pattern"]), /^\^runs/u);
   assert.deepEqual(catalog.context, [
     {
       field: "subject",

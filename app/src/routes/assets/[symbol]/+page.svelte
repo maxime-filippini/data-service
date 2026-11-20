@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { formatDateTime } from "#lib/format.ts";
+  import { publicationDataUrl } from "#lib/api.ts";
+  import { formatBytes, formatDateTime } from "#lib/format.ts";
   import { href } from "#lib/router.svelte.ts";
   import WorkflowRunsTable from "#lib/WorkflowRunsTable.svelte";
 
@@ -55,6 +56,60 @@
   </table>
   {#if data.assignments.length === 0}
     <p class="notice">No workflows are assigned to this asset.</p>
+  {/if}
+</div>
+
+<h2 id="datasets">Published datasets</h2>
+<div class="card">
+  <table class="stack">
+    <thead>
+      <tr>
+        <th>Dataset</th>
+        <th>Processing date</th>
+        <th>Published by</th>
+        <th>Published</th>
+        <th>Data</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each data.publications as publication (publication.dataset)}
+        <tr>
+          <td class="mono">{publication.dataset}</td>
+          <td data-label="Processing date" class="mono"
+            >{publication.processingDate}</td
+          >
+          <td data-label="Published by"
+            ><a href={href("workflow-runs", { id: publication.producer.runId })}
+              >{publication.producer.workflowName ?? "Run"}</a
+            ></td
+          >
+          <td data-label="Published"
+            >{formatDateTime(publication.publishedAt)}</td
+          >
+          <td data-label="Data">
+            <a
+              href={href("explore", {
+                dataset: publication.dataset,
+                symbol: asset.symbol,
+              })}>Explore</a
+            >
+            ·
+            <a
+              href={publicationDataUrl(
+                publication.dataset,
+                publication.subject,
+              )}>Parquet</a
+            >
+            <span class="muted">({formatBytes(publication.size)})</span>
+          </td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+  {#if data.publications.length === 0}
+    <p class="notice">
+      No workflow has published a dataset for this asset yet.
+    </p>
   {/if}
 </div>
 

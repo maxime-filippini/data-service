@@ -1,9 +1,15 @@
 import { Schema } from "effect";
 
+import { PublishedDatasetSchema } from "$/datasets/contracts";
 import { MarketDateSchema } from "$/market-data/schemas";
+import {
+  PricesEodReference,
+  RawPricesEodReference,
+} from "$/operations/contracts.generated";
 import {
   AssetSubjectSchema,
   PortfolioSubjectSchema,
+  SubjectSchema,
 } from "$/workflows/contracts";
 
 /**
@@ -56,14 +62,33 @@ export const date = defineContract({
   schema: MarketDateSchema,
 });
 
-/** Raw provider end-of-day prices, as written by the download step. */
+/**
+ * Raw provider end-of-day prices, as written by the download step. The
+ * schema is generated from the Python service's Pydantic contract.
+ */
 export const rawPricesEod = defineContract({
   id: "raw-prices-eod",
   description:
     "An artifact reference to one provider's raw end-of-day price response (JSON)",
+  schema: RawPricesEodReference,
+});
+
+/** Normalized end-of-day prices, as the Python normalization writes them. */
+export const pricesEod = defineContract({
+  id: "prices-eod",
+  description:
+    "An artifact reference to normalized end-of-day prices (Parquet, prices_eod columns)",
+  schema: PricesEodReference,
+});
+
+/** What a publish step published: look it up by dataset and subject. */
+export const datasetPublication = defineContract({
+  id: "dataset-publication",
+  description:
+    "A published dataset: its name, subject and processing date (retrieve it through the dataset API)",
   schema: Schema.Struct({
-    id: Schema.NonEmptyString,
-    format: Schema.Literal("json"),
-    schema: Schema.Literal("raw-prices-eod/v1"),
+    dataset: PublishedDatasetSchema,
+    subject: SubjectSchema,
+    processingDate: MarketDateSchema,
   }),
 });

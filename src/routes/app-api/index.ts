@@ -35,6 +35,7 @@ import {
 } from "$/routes/calculate";
 import { createAssetRoutes } from "$/routes/assets";
 import { createCalculationRoutes } from "$/routes/calculations";
+import { createDatasetRoutes } from "$/routes/datasets";
 import { createIngestionRoutes } from "$/routes/ingestions";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 import { createRunRoutes } from "$/routes/runs";
@@ -291,6 +292,9 @@ export const createAppApiRoutes = (
   // `/runs` here is the legacy ingestion history, so workflow runs live at
   // `/workflow-runs` (the management API serves them at `/api/runs`).
   app.route("/workflow-runs", createRunRoutes(dependencies, accessChecked));
+  // `/datasets` here streams Parquet for the explorer, so publications live
+  // at `/publications` (the management API serves them at `/api/datasets`).
+  app.route("/publications", createDatasetRoutes(dependencies, accessChecked));
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));
 

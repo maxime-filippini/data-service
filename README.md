@@ -115,11 +115,15 @@ run `pnpm exec wrangler dev --enable-containers=false`; pages that need the
 engine (calculation types, saving params, runs) show its error.
 
 To follow the new workflow path locally without credentials, run
-`pnpm workflow:fixture`: it creates an asset, a download definition and an
-assignment through the API, runs it against fixture data with the same
-executor, and leaves the database, raw artifact and run record in
-`.local/workflow-fixture/` (see the
-[workflow runs docs](docs/src/content/docs/workflows/runs.md)).
+`pnpm workflow:fixture` (it needs uv): it starts the Python service, creates
+an asset, a download-normalize-publish definition and an assignment through
+the API, runs it against fixture data with the same executor and Python
+operations, and leaves the database, run artifacts, published Parquet file
+and run record in `.local/workflow-fixture/` (see the
+[workflow runs docs](docs/src/content/docs/workflows/runs.md)). After
+changing a Python operation's Pydantic models, run
+`pnpm operations:generate` to regenerate the TypeScript contracts
+([docs](docs/src/content/docs/workflows/datasets.md)).
 
 ## Managing symbols
 

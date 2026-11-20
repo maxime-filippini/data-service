@@ -1,0 +1,213 @@
+{
+  "error": {
+    "$defs": {
+      "Issue": {
+        "additionalProperties": false,
+        "description": "One problem with a request, at a path such as `inputs.raw.id`.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "title": "Issue",
+        "type": "object"
+      },
+      "OperationFailure": {
+        "additionalProperties": false,
+        "description": "Why an operation failed. The caller retries `transient` failures and\nstops the run on `terminal` ones.",
+        "properties": {
+          "issues": {
+            "items": {
+              "$ref": "#/$defs/Issue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "transient",
+              "terminal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "message"
+        ],
+        "title": "OperationFailure",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "The body of every non-2xx operation response.",
+    "properties": {
+      "error": {
+        "$ref": "#/$defs/OperationFailure"
+      }
+    },
+    "required": [
+      "error"
+    ],
+    "title": "ErrorResponse",
+    "type": "object"
+  },
+  "operations": {
+    "normalize-prices-eod": {
+      "description": "Validate a raw end-of-day price download and write it as a date-sorted prices_eod Parquet artifact; later rows win on duplicate dates",
+      "request": {
+        "$defs": {
+          "Execution": {
+            "additionalProperties": false,
+            "description": "Which run and step asks for the work. Outputs are written to locations\nderived from it, so a repeated call replaces the same objects.",
+            "properties": {
+              "runId": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "title": "Runid",
+                "type": "string"
+              },
+              "stepId": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "title": "Stepid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "runId",
+              "stepId"
+            ],
+            "title": "Execution",
+            "type": "object"
+          },
+          "NormalizePricesInputs": {
+            "additionalProperties": false,
+            "properties": {
+              "raw": {
+                "$ref": "#/$defs/RawPricesEodReference"
+              }
+            },
+            "required": [
+              "raw"
+            ],
+            "title": "NormalizePricesInputs",
+            "type": "object"
+          },
+          "NormalizePricesParams": {
+            "additionalProperties": false,
+            "description": "No parameters yet.",
+            "properties": {},
+            "title": "NormalizePricesParams",
+            "type": "object"
+          },
+          "RawPricesEodReference": {
+            "additionalProperties": false,
+            "description": "A run artifact holding one provider's raw end-of-day price response.",
+            "properties": {
+              "format": {
+                "const": "json",
+                "title": "Format",
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^runs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z][A-Za-z0-9_-]{0,63}/[A-Za-z][A-Za-z0-9_-]{0,63}\\.(json|parquet)$",
+                "title": "Id",
+                "type": "string"
+              },
+              "schema": {
+                "const": "raw-prices-eod/v1",
+                "title": "Schema",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "format",
+              "schema"
+            ],
+            "title": "RawPricesEodReference",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "execution": {
+            "$ref": "#/$defs/Execution"
+          },
+          "inputs": {
+            "$ref": "#/$defs/NormalizePricesInputs"
+          },
+          "params": {
+            "$ref": "#/$defs/NormalizePricesParams"
+          }
+        },
+        "required": [
+          "execution",
+          "inputs",
+          "params"
+        ],
+        "title": "NormalizePricesRequest",
+        "type": "object"
+      },
+      "response": {
+        "$defs": {
+          "PricesEodReference": {
+            "additionalProperties": false,
+            "description": "A run artifact holding normalized end-of-day prices as Parquet.",
+            "properties": {
+              "format": {
+                "const": "parquet",
+                "title": "Format",
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^runs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z][A-Za-z0-9_-]{0,63}/[A-Za-z][A-Za-z0-9_-]{0,63}\\.(json|parquet)$",
+                "title": "Id",
+                "type": "string"
+              },
+              "schema": {
+                "const": "prices-eod/v1",
+                "title": "Schema",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "format",
+              "schema"
+            ],
+            "title": "PricesEodReference",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "prices": {
+            "$ref": "#/$defs/PricesEodReference"
+          }
+        },
+        "required": [
+          "prices"
+        ],
+        "title": "NormalizePricesOutputs",
+        "type": "object"
+      }
+    }
+  }
+}

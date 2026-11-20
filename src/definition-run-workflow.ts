@@ -7,7 +7,10 @@ import { NonRetryableError } from "cloudflare:workflows";
 import { Effect, Layer } from "effect";
 
 import { D1AssetsLive } from "$/assets/d1";
+import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
+import { R2DatasetObjectStoreLive } from "$/datasets/r2";
 import { MarketDataSourcesLayer, liveSourceFor } from "$/market-data/sources";
+import { HttpPythonOperationsLive } from "$/operations/client";
 import { R2RunArtifactsLive } from "$/workflows/artifacts";
 import { executeWorkflowRun } from "$/workflows/executor";
 import { StepRegistryLive } from "$/workflows/registry";
@@ -19,7 +22,9 @@ import { workflowSteps } from "$/workflows/steps";
  * One run of a workflow definition for one subject. The instance ID is the
  * run ID. The logic lives in `executeWorkflowRun`; this class only wires the
  * Worker's adapters: D1 records, the step registry, live provider
- * integrations and R2 run artifacts (in the raw bucket, under `runs/`).
+ * integrations, R2 run artifacts (in the raw bucket, under `runs/`), the
+ * Python operations in the engine container, and published datasets (in the
+ * processed bucket, with their metadata in D1).
  */
 export class DefinitionRunWorkflow extends WorkflowEntrypoint<
   CloudflareBindings,
@@ -36,6 +41,13 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
       D1AssetsLive(db),
       MarketDataSourcesLayer(liveSourceFor(this.env)),
       R2RunArtifactsLive(this.env.MARKET_DATA_BUCKET),
+      // One engine instance, as for calculations.
+      HttpPythonOperationsLive(
+        this.env.CALCULATION_ENGINE.getByName("engine"),
+        "http://engine",
+      ),
+      D1DatasetPublicationStoreLive(db),
+      R2DatasetObjectStoreLive(this.env.PROCESSED_MARKET_DATA_BUCKET),
     );
     return executeWorkflowRun(
       event.payload,

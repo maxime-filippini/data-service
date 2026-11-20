@@ -5,6 +5,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AssetError } from "$/assets/contracts";
 import type { CalculationError } from "$/calculations/contracts";
 import type { EngineError } from "$/calculations/engine";
+import type { DatasetError } from "$/datasets/contracts";
 import type { ScheduleError } from "$/market-data/schedule/contracts";
 import type { PipelineStatusError } from "$/market-data/status";
 import type { SymbolRegistryError } from "$/market-data/symbol-registry";
@@ -47,9 +48,16 @@ const workflowStatus = {
   database: 500,
 } as const satisfies Record<WorkflowError["kind"], ContentfulStatusCode>;
 
+const datasetStatus = {
+  not_found: 404,
+  database: 500,
+  storage: 503,
+} as const satisfies Record<DatasetError["kind"], ContentfulStatusCode>;
+
 /** Expected failures exposed by the Worker's JSON routes. */
 type RequestError =
   | AssetError
+  | DatasetError
   | WorkflowError
   | CalculationError
   | EngineError
@@ -65,6 +73,9 @@ const httpException = (error: RequestError): HTTPException => {
   switch (error._tag) {
     case "AssetError":
       status = assetStatus[error.kind];
+      break;
+    case "DatasetError":
+      status = datasetStatus[error.kind];
       break;
     case "WorkflowError":
       status = workflowStatus[error.kind];

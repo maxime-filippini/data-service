@@ -1,12 +1,11 @@
 import logging
 from contextlib import contextmanager
 
-import boto3
 import polars as pl
-from botocore.config import Config
 
 from .framework import describe_error, get_type
 from .models import CalculateRequest, RunRequest, RunResult
+from .r2 import r2_client
 from .settings import EngineSettings
 from .storage import SymbolReader, write_results
 
@@ -24,20 +23,12 @@ def load_settings() -> EngineSettings:
 @contextmanager
 def s3_client(settings: EngineSettings | None = None):
     settings = settings if settings is not None else load_settings()
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=str(settings.r2_endpoint_url),
-        region_name="auto",
-        aws_access_key_id=settings.r2_access_key_id.get_secret_value(),
-        aws_secret_access_key=settings.r2_secret_access_key.get_secret_value(),
-        config=Config(
-            connect_timeout=10, read_timeout=120, retries={"max_attempts": 2}
-        ),
-    )
-    try:
+    with r2_client(
+        settings.r2_endpoint_url,
+        settings.r2_access_key_id,
+        settings.r2_secret_access_key,
+    ) as s3:
         yield s3
-    finally:
-        s3.close()
 
 
 def run(request: RunRequest) -> RunResult:
