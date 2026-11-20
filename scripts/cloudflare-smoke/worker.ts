@@ -11,9 +11,9 @@ import { createLocalJWKSet, type JWK } from "jose";
 import { D1AssetsLive } from "$/assets/d1";
 import { requireManagementToken } from "$/auth";
 import { DatasetError } from "$/datasets/contracts";
-import { D1DatasetPublicationsLive } from "$/datasets/d1";
-import { R2PublishedDatasetsLive } from "$/datasets/r2";
-import { DatasetPublications } from "$/datasets/store";
+import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
+import { R2DatasetObjectStoreLive } from "$/datasets/r2";
+import { DatasetPublicationStore } from "$/datasets/store";
 import { dependencies } from "$/dependencies";
 import { fixtureSourceFor } from "$/local/eodhd-fixtures";
 import { MarketDataSourcesLayer } from "$/market-data/sources";
@@ -100,10 +100,10 @@ function platform(env: SmokeBindings, fault: LaunchFault): RunPlatform {
 
 function publicationsWithFault(db: D1Database) {
   return Layer.effect(
-    DatasetPublications,
+    DatasetPublicationStore,
     Effect.gen(function* () {
-      const store = yield* DatasetPublications;
-      return DatasetPublications.of({
+      const store = yield* DatasetPublicationStore;
+      return DatasetPublicationStore.of({
         ...store,
         record: (publication) =>
           Effect.gen(function* () {
@@ -125,7 +125,7 @@ function publicationsWithFault(db: D1Database) {
           }),
       });
     }),
-  ).pipe(Layer.provide(D1DatasetPublicationsLive(db)));
+  ).pipe(Layer.provide(D1DatasetPublicationStoreLive(db)));
 }
 
 /** Only this Worker wraps the production adapters with injected faults. */
@@ -162,7 +162,7 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
       R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
       HttpPythonOperationsLive(fetcher, "http://engine"),
       publicationsWithFault(db),
-      R2PublishedDatasetsLive(env.PROCESSED_MARKET_DATA_BUCKET),
+      R2DatasetObjectStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
     );
     return executeWorkflowRun(
       event.payload,
