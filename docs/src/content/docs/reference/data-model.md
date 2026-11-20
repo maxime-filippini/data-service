@@ -112,9 +112,16 @@ Key persistence rules:
   configuration is blocked while an active run exists, and allowed deletion
   retains complete run history and current publication metadata.
 - **Holdings references.** `portfolio_asset_holdings` references `assets(symbol)`
-  without cascade delete, and `D1AssetsLive.remove` checks both
+  without cascade delete, and `D1AssetStoreLive.remove` checks both
   `portfolio_asset_holdings` and historical `portfolio_holdings` before
   allowing asset deletion.
+
+The subject kinds are listed once, in `SUBJECT_KINDS`
+(`src/workflows/subjects.ts`). `CHECK` constraints repeat them on
+`workflow_definitions.scope` and on `subject_kind` in `workflow_assignments`,
+`workflow_defaults`, `workflow_runs` and `dataset_publications`. Adding or
+removing a kind therefore needs a migration that rebuilds those tables,
+because SQLite can't alter a `CHECK` constraint.
 
 ## Concurrency rules
 
@@ -132,7 +139,7 @@ Migrations `0001`–`0008` are preserved untouched so existing D1 databases neve
 lose stored history:
 
 - `portfolio_holdings`: read alongside `portfolio_asset_holdings` via
-  `UNION ALL` in `D1PortfoliosLive` and checked by `D1AssetsLive` so migrated
+  `UNION ALL` in `D1PortfoliosLive` and checked by `D1AssetStoreLive` so migrated
   portfolios continue working without duplicating rows. All new snapshots are
   written to `portfolio_asset_holdings`.
 - `tracked_symbols`, `download_schedule`, `schedule_runs`, `ingestion_runs`,

@@ -16,6 +16,7 @@ import {
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
 import { type Subject, SubjectSchema } from "$/workflows/contracts";
+import type { SubjectKind } from "$/workflows/subjects";
 
 /** The services dataset routes need. */
 export type DatasetServices = DatasetPublicationStore | DatasetObjectStore;
@@ -30,7 +31,7 @@ export interface DatasetDependencies {
 /** The subject a path names, or a 404 for one that cannot exist. */
 const subjectOf = (
   dataset: PublishedDataset,
-  kind: "asset" | "portfolio",
+  kind: SubjectKind,
   id: string,
 ): Effect.Effect<Subject, DatasetError> => {
   const subject =

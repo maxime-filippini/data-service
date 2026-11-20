@@ -1,43 +1,17 @@
-import { Result, Schema, SchemaIssue } from "effect";
+import { Result } from "effect";
 
+import { validateValue, type ValueIssue } from "$/schema";
 import type { WorkflowSpec } from "$/workflows/contracts";
 import { parseReference } from "$/workflows/references";
 import {
   type Contract,
+  isRunContextField,
   runContextFields,
-  type StepTypes,
+  type StepTypeRegistry,
 } from "$/workflows/registry";
 
 /** One reason a specification cannot be saved, at a path into its JSON. */
-export interface WorkflowIssue {
-  readonly path: readonly string[];
-  readonly message: string;
-}
-
-const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
-const decodeOptions = { errors: "all", onExcessProperty: "error" } as const;
-
-const prefixedIssues = (failure: Schema.SchemaError, path: readonly string[]) =>
-  formatIssue(failure.issue).issues.map((issue) => ({
-    path: [...path, ...(issue.path ?? []).map(String)],
-    message: issue.message,
-  }));
-
-/** Every schema issue of decoding `value`, prefixed with `path`. */
-const schemaIssues = (
-  schema: Schema.Codec<unknown, unknown>,
-  value: unknown,
-  path: readonly string[],
-): WorkflowIssue[] => {
-  const result = Schema.decodeUnknownResult(schema, decodeOptions)(value);
-  if (Result.isSuccess(result)) return [];
-  return prefixedIssues(result.failure, path);
-};
-
-const isContextField = (
-  field: string,
-): field is keyof typeof runContextFields =>
-  Object.hasOwn(runContextFields, field);
+export type WorkflowIssue = ValueIssue;
 
 /**
  * Check a decoded specification against the step registry before it is
@@ -50,7 +24,7 @@ const isContextField = (
  */
 export const validateWorkflowSpec = (
   spec: WorkflowSpec,
-  registry: StepTypes,
+  registry: StepTypeRegistry,
 ): readonly WorkflowIssue[] => {
   const issues: WorkflowIssue[] = [];
   const allIds = new Set(spec.steps.map((step) => step.id));
@@ -78,12 +52,9 @@ export const validateWorkflowSpec = (
           at("type"),
           `Step type "${step.type}" cannot be used in ${spec.scope} workflows (it supports: ${stepType.scopes.join(", ")})`,
         );
-      const params = Schema.decodeUnknownResult(
-        stepType.params,
-        decodeOptions,
-      )(step.params);
+      const params = validateValue(stepType.params, step.params, at("params"));
       if (Result.isFailure(params)) {
-        issues.push(...prefixedIssues(params.failure, at("params")));
+        issues.push(...params.failure);
       } else {
         const configurationIssues =
           stepType.validateConfiguration?.(
@@ -113,16 +84,19 @@ export const validateWorkflowSpec = (
           : undefined;
 
       if ("value" in binding) {
-        if (port !== undefined)
-          issues.push(
-            ...schemaIssues(port.contract.schema, binding.value, [
-              ...path,
-              "value",
-            ]).map((found) => ({
-              ...found,
-              message: `Literal for contract "${port.contract.id}": ${found.message}`,
-            })),
-          );
+        if (port !== undefined) {
+          const literal = validateValue(port.contract.schema, binding.value, [
+            ...path,
+            "value",
+          ]);
+          if (Result.isFailure(literal))
+            issues.push(
+              ...literal.failure.map((found) => ({
+                ...found,
+                message: `Literal for contract "${port.contract.id}": ${found.message}`,
+              })),
+            );
+        }
         continue;
       }
 
@@ -135,7 +109,7 @@ export const validateWorkflowSpec = (
           `Invalid reference "${binding.ref}": expected context.<field> or steps.<id>.outputs.<name>`,
         );
       } else if (reference.kind === "context") {
-        if (isContextField(reference.field))
+        if (isRunContextField(reference.field))
           provided = runContextFields[reference.field].contract(spec.scope);
         else
           issue(

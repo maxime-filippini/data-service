@@ -4,11 +4,11 @@ import { PythonOperations } from "$/operations/client";
 import { PortfolioVolatilityParams } from "$/operations/contracts.generated";
 
 import {
-  date,
-  portfolioHoldings,
-  portfolioVolatilityData,
-  portfolioVolatilitySummary,
-  publishedAssetPrices,
+  dateContract,
+  portfolioHoldingsContract,
+  portfolioVolatilityDataContract,
+  portfolioVolatilitySummaryContract,
+  publishedAssetPricesContract,
 } from "./contract";
 import { defineStepType, StepFailure, terminal } from "./step-type";
 
@@ -20,31 +20,31 @@ export const calculatePortfolioVolatility = defineStepType({
   params: PortfolioVolatilityParams,
   inputs: {
     holdings: {
-      contract: portfolioHoldings,
+      contract: portfolioHoldingsContract,
       description:
         "The effective holdings snapshot's asset symbols and weights",
     },
     holdingsDate: {
-      contract: date,
+      contract: dateContract,
       description: "The effective date of the holdings snapshot",
     },
     publications: {
-      contract: publishedAssetPrices,
+      contract: publishedAssetPricesContract,
       description:
         "The current asset price publications for the processing date",
     },
     processingDate: {
-      contract: date,
+      contract: dateContract,
       description: "The last date of prices the calculation may use",
     },
   },
   outputs: {
     data: {
-      contract: portfolioVolatilityData,
+      contract: portfolioVolatilityDataContract,
       description: "The volatility result as a Parquet run artifact",
     },
     summary: {
-      contract: portfolioVolatilitySummary,
+      contract: portfolioVolatilitySummaryContract,
       description: "The volatility value, return window and holdings date",
     },
   },

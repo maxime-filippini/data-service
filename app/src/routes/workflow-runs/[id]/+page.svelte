@@ -73,9 +73,7 @@
 
   /** Where the app shows a subject's published datasets. */
   const datasetsHref = (subject: SubjectView) =>
-    subject.kind === "asset"
-      ? `${href("assets", { id: subject.symbol })}#datasets`
-      : `${href("portfolios", { id: subject.id })}#datasets`;
+    `${subjectHref(subject)}#datasets`;
 
   const outputs = (step: StepOutcome) => Object.entries(step.outputs ?? {});
 </script>

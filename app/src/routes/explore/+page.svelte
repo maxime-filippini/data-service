@@ -31,7 +31,15 @@
     type Row,
   } from "#lib/parquet.ts";
   import { replace, route } from "#lib/router.svelte.ts";
-  import { subjectHref, subjectLabel } from "#lib/subjects.ts";
+  import {
+    isSubjectKind,
+    SUBJECT_KINDS,
+    subjectHref,
+    subjectKindLabels,
+    subjectLabel,
+    subjectOf,
+    type SubjectKind,
+  } from "#lib/subjects.ts";
 
   import type { PageProps } from "./$types";
 
@@ -51,20 +59,12 @@
   const rawKind = $derived(route.params.get("kind") ?? "");
   const legacySymbol = $derived(route.params.get("symbol") ?? "");
   const subjectId = $derived(route.params.get("subject") ?? legacySymbol);
-  const subjectKind = $derived<"asset" | "portfolio" | "">(
-    rawKind === "asset" || rawKind === "portfolio"
-      ? rawKind
-      : legacySymbol
-        ? "asset"
-        : "",
+  const subjectKind = $derived<SubjectKind | "">(
+    isSubjectKind(rawKind) ? rawKind : legacySymbol ? "asset" : "",
   );
 
   const selectedSubject = $derived<SubjectView | null>(
-    subjectKind === "asset" && subjectId
-      ? { kind: "asset", symbol: subjectId }
-      : subjectKind === "portfolio" && subjectId
-        ? { kind: "portfolio", id: subjectId }
-        : null,
+    subjectKind && subjectId ? subjectOf(subjectKind, subjectId) : null,
   );
 
   const publications = $derived(data.publications);
@@ -72,7 +72,7 @@
     new Map(data.portfolios.map((portfolio) => [portfolio.id, portfolio.name])),
   );
 
-  const optionValue = (name: string, kind: "asset" | "portfolio", id: string) =>
+  const optionValue = (name: string, kind: SubjectKind, id: string) =>
     `${name}/${kind}/${id}`;
 
   const publicationValue = (publication: PublicationView) =>
@@ -88,11 +88,12 @@
     return name ? `${name} (${subject.id.slice(0, 8)})` : subject.id;
   };
 
-  const assetPublications = $derived(
-    publications.filter((p) => p.subject.kind === "asset"),
-  );
-  const portfolioPublications = $derived(
-    publications.filter((p) => p.subject.kind === "portfolio"),
+  /** Publications grouped by subject kind, in `SUBJECT_KINDS` order. */
+  const publicationGroups = $derived(
+    SUBJECT_KINDS.map((kind) => ({
+      kind,
+      publications: publications.filter((p) => p.subject.kind === kind),
+    })).filter((group) => group.publications.length > 0),
   );
 
   const chosen = $derived(
@@ -235,24 +236,15 @@
         >{displaySubject(selectedSubject)} · {dataset}</option
       >
     {/if}
-    {#if assetPublications.length > 0}
-      <optgroup label="Asset datasets">
-        {#each assetPublications as publication (publicationValue(publication))}
+    {#each publicationGroups as group (group.kind)}
+      <optgroup label={`${subjectKindLabels[group.kind]} datasets`}>
+        {#each group.publications as publication (publicationValue(publication))}
           <option value={publicationValue(publication)}
             >{displaySubject(publication.subject)} · {publication.dataset}</option
           >
         {/each}
       </optgroup>
-    {/if}
-    {#if portfolioPublications.length > 0}
-      <optgroup label="Portfolio datasets">
-        {#each portfolioPublications as publication (publicationValue(publication))}
-          <option value={publicationValue(publication)}
-            >{displaySubject(publication.subject)} · {publication.dataset}</option
-          >
-        {/each}
-      </optgroup>
-    {/if}
+    {/each}
   </select>
   {#if dateColumn !== undefined}
     <label class="muted date">
@@ -278,7 +270,7 @@
   <span class="spacer"></span>
   {#if file && selectedSubject}
     <a href={subjectHref(selectedSubject)}
-      >{selectedSubject.kind === "asset" ? "Asset" : "Portfolio"}</a
+      >{subjectKindLabels[selectedSubject.kind]}</a
     >
     <a
       href={publicationDataUrl(dataset, selectedSubject)}

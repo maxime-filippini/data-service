@@ -1,22 +1,24 @@
 import type { WorkflowDefinition } from "$/workflows/contracts";
 import { parseReference } from "$/workflows/references";
-import type { StepTypes } from "$/workflows/registry";
+import type { StepTypeRegistry } from "$/workflows/registry";
 import type {
   InputSource,
-  InspectedStep,
-  WorkflowInspection,
+  StepDetail,
+  WorkflowDetail,
 } from "$/workflows/views";
 
 /**
- * Prepare a saved definition for reading: its steps in execution order, each
- * input's contract and source (literal, run context or an earlier step's
- * output), and each output's later consumers. Uses the current registry, so
- * a step type removed since saving shows without description or contracts.
+ * Build a saved definition's detail for reading. The definition stores only
+ * what was submitted; the detail adds what the current step registry knows:
+ * its steps in execution order, each input's contract and source (literal,
+ * run context or an earlier step's output), and each output's later
+ * consumers. A step type removed since saving shows without description or
+ * contracts.
  */
-export const inspectWorkflow = (
+export const buildWorkflowDetail = (
   workflow: WorkflowDefinition,
-  registry: StepTypes,
-): WorkflowInspection => {
+  registry: StepTypeRegistry,
+): WorkflowDetail => {
   /** Later inputs using each `step/output`. */
   const usedBy = new Map<string, { step: string; input: string }[]>();
   const sources = workflow.steps.map((step) =>
@@ -53,7 +55,7 @@ export const inspectWorkflow = (
     ),
   );
 
-  const steps = workflow.steps.map((step, index): InspectedStep => {
+  const steps = workflow.steps.map((step, index): StepDetail => {
     const stepType = registry.get(step.type);
     return {
       position: index + 1,

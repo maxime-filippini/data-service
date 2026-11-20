@@ -1,7 +1,8 @@
 import { Effect, Layer } from "effect";
 
+import { d1Query } from "$/d1";
 import { type Asset, AssetError } from "$/assets/contracts";
-import { Assets } from "$/assets/store";
+import { AssetStore } from "$/assets/store";
 import { assignDefaultsOnCreate } from "$/workflows/d1";
 
 /** Private `assets` row, converted to the `Asset` view by `fromRow`. */
@@ -23,12 +24,10 @@ const fromRow = (row: AssetRow): Asset => ({
   updatedAt: row.updated_at,
 });
 
-const query = <A>(operation: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: operation,
-    catch: () =>
-      new AssetError({ kind: "database", message: "Could not access assets" }),
-  });
+const query = d1Query(
+  () =>
+    new AssetError({ kind: "database", message: "Could not access assets" }),
+);
 
 const notFound = (symbol: string) =>
   new AssetError({
@@ -48,10 +47,10 @@ const HOLDINGS_FOR_ASSET = `SELECT 1 FROM portfolio_asset_holdings WHERE symbol 
   UNION ALL
   SELECT 1 FROM portfolio_holdings WHERE dataset = 'prices_eod' AND symbol = ?1`;
 
-export const D1AssetsLive = (db: D1Database): Layer.Layer<Assets> =>
+export const D1AssetStoreLive = (db: D1Database): Layer.Layer<AssetStore> =>
   Layer.succeed(
-    Assets,
-    Assets.of({
+    AssetStore,
+    AssetStore.of({
       list: () =>
         query(() =>
           db.prepare(`SELECT * FROM assets ORDER BY symbol`).all<AssetRow>(),

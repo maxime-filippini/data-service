@@ -3,10 +3,10 @@ import { Effect, Schema } from "effect";
 import { Portfolios } from "$/portfolios/store";
 
 import {
-  assetSubjects,
-  date,
-  portfolioHoldings,
-  portfolioSubject,
+  assetSubjectsContract,
+  dateContract,
+  portfolioHoldingsContract,
+  portfolioSubjectContract,
 } from "./contract";
 import { defineStepType, terminal, transient } from "./step-type";
 
@@ -17,25 +17,25 @@ export const loadPortfolioHoldings = defineStepType({
   params: Schema.Struct({}),
   inputs: {
     portfolio: {
-      contract: portfolioSubject,
+      contract: portfolioSubjectContract,
       description: "The portfolio to read",
     },
     processingDate: {
-      contract: date,
+      contract: dateContract,
       description: "The date for which to resolve holdings",
     },
   },
   outputs: {
     holdingsDate: {
-      contract: date,
+      contract: dateContract,
       description: "The snapshot's effective date",
     },
     holdings: {
-      contract: portfolioHoldings,
+      contract: portfolioHoldingsContract,
       description: "Asset symbols and weights from the snapshot",
     },
     assets: {
-      contract: assetSubjects,
+      contract: assetSubjectsContract,
       description: "The assets whose prices are required",
     },
   },

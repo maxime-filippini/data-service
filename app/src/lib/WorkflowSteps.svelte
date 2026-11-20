@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { InputSource, InspectedStep } from "./api";
+  import type { InputSource, StepDetail } from "./api";
 
   /** A definition's steps in execution order, with their connections. */
-  let { steps }: { steps: readonly InspectedStep[] } = $props();
+  let { steps }: { steps: readonly StepDetail[] } = $props();
 
   const anchor = (stepId: string) => `step-${stepId}`;
   const json = (value: unknown) => JSON.stringify(value);

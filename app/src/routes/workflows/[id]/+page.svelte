@@ -8,7 +8,7 @@
   import type { PageProps } from "./$types";
 
   let { data }: PageProps = $props();
-  const workflow = $derived(data.inspection.workflow);
+  const workflow = $derived(data.detail.workflow);
 </script>
 
 <svelte:head>
@@ -38,7 +38,7 @@
 </dl>
 
 <h2>Steps, in execution order</h2>
-<WorkflowSteps steps={data.inspection.steps} />
+<WorkflowSteps steps={data.detail.steps} />
 
 <h2>Assignments</h2>
 <div class="card">

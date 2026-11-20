@@ -1,10 +1,10 @@
 // Workflow definitions, assignments and the step catalog as the API returns
-// them. This file has no imports so the app can import its types directly.
+// them. This file imports only the import-free `subjects.ts`, so the app can
+// import its types directly.
 
-/** The asset or portfolio a workflow runs for. */
-export type SubjectView =
-  | { readonly kind: "asset"; readonly symbol: string }
-  | { readonly kind: "portfolio"; readonly id: string };
+import type { SubjectKind, SubjectView } from "./subjects";
+
+export type { SubjectKind, SubjectView } from "./subjects";
 
 /** A literal value or a reference to run context or an earlier output. */
 export type BindingView =
@@ -25,7 +25,7 @@ export interface StepSpecView {
 export interface WorkflowDefinition {
   readonly id: string;
   readonly name: string;
-  readonly scope: "asset" | "portfolio";
+  readonly scope: SubjectKind;
   readonly enabled: boolean;
   readonly schedule: { readonly hourUtc: number };
   readonly steps: readonly StepSpecView[];
@@ -37,7 +37,7 @@ export interface WorkflowDefinition {
 export interface WorkflowSummary {
   readonly id: string;
   readonly name: string;
-  readonly scope: "asset" | "portfolio";
+  readonly scope: SubjectKind;
   readonly enabled: boolean;
   readonly schedule: { readonly hourUtc: number };
   readonly stepCount: number;
@@ -68,7 +68,7 @@ export interface WorkflowAssignment {
  * Existing subjects only get it when defaults are applied explicitly.
  */
 export interface WorkflowDefault {
-  readonly subjectKind: "asset" | "portfolio";
+  readonly subjectKind: SubjectKind;
   readonly workflowId: string;
   readonly workflowName: string;
   readonly workflowEnabled: boolean;
@@ -99,7 +99,7 @@ export interface StepTypeView {
   readonly type: string;
   readonly description: string;
   /** The definition scopes it can be used in. */
-  readonly scopes: readonly ("asset" | "portfolio")[];
+  readonly scopes: readonly SubjectKind[];
   readonly params: JsonSchemaView;
   readonly inputs: readonly PortView[];
   readonly outputs: readonly PortView[];
@@ -116,7 +116,7 @@ export interface StepCatalog {
     readonly field: string;
     readonly description: string;
     /** Contract identity by definition scope. */
-    readonly contracts: Readonly<Record<"asset" | "portfolio", string>>;
+    readonly contracts: Readonly<Record<SubjectKind, string>>;
   }[];
 }
 
@@ -132,7 +132,7 @@ export type InputSource =
     };
 
 /** One step input with its contract and source. */
-export interface InspectedInput {
+export interface StepInputDetail {
   readonly name: string;
   /** Null when the step type or input is not registered. */
   readonly contract: string | null;
@@ -140,7 +140,7 @@ export interface InspectedInput {
 }
 
 /** One step output with the later inputs that use it. */
-export interface InspectedOutput {
+export interface StepOutputDetail {
   readonly name: string;
   readonly contract: string;
   readonly description: string;
@@ -148,7 +148,7 @@ export interface InspectedOutput {
 }
 
 /** One step of a definition, in order, with its connections. */
-export interface InspectedStep {
+export interface StepDetail {
   /** 1-based position in the execution order. */
   readonly position: number;
   readonly id: string;
@@ -156,15 +156,16 @@ export interface InspectedStep {
   /** Null when the step type is no longer registered. */
   readonly description: string | null;
   readonly params: Readonly<Record<string, unknown>>;
-  readonly inputs: readonly InspectedInput[];
-  readonly outputs: readonly InspectedOutput[];
+  readonly inputs: readonly StepInputDetail[];
+  readonly outputs: readonly StepOutputDetail[];
 }
 
 /**
- * A definition prepared for the read-only app: its ordered steps with
- * parameters and the reference connections between them.
+ * A saved definition with what the step registry adds to it for reading:
+ * each step's description, each input's contract and source, and the later
+ * inputs that use each output. Built on request, never stored.
  */
-export interface WorkflowInspection {
+export interface WorkflowDetail {
   readonly workflow: WorkflowDefinition;
-  readonly steps: readonly InspectedStep[];
+  readonly steps: readonly StepDetail[];
 }

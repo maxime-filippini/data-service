@@ -1,7 +1,7 @@
 import type { WorkflowStepConfig } from "cloudflare:workers";
 import { type Effect, Schema } from "effect";
 
-import type { Assets } from "$/assets/store";
+import type { AssetStore } from "$/assets/store";
 import type {
   DatasetPublicationStore,
   DatasetObjectStore,
@@ -12,14 +12,13 @@ import type { Portfolios } from "$/portfolios/store";
 import type { RunArtifacts } from "$/workflows/artifacts";
 import type { StepSpec, Subject, SubjectKind } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
-import {
-  assetSubject,
-  type Contract,
-  date,
-  portfolioSubject,
-} from "./contract";
+import { type Contract, dateContract, subjectContracts } from "./contract";
 
-/** One named step input or output and the contract its values satisfy. */
+/**
+ * One step input or output and the contract its values satisfy. Its name is
+ * its key in the step type's `inputs` or `outputs`, so it is not repeated
+ * here; the catalog adds it to each port it returns.
+ */
 export interface Port {
   readonly contract: Contract<any>;
   readonly description: string;
@@ -48,12 +47,11 @@ export interface RunContext {
 export const runContextFields = {
   subject: {
     description: "The asset or portfolio the run is for",
-    contract: (scope: SubjectKind) =>
-      scope === "asset" ? assetSubject : portfolioSubject,
+    contract: (scope: SubjectKind) => subjectContracts[scope],
   },
   processingDate: {
     description: "The date the run performs work for (UTC calendar date)",
-    contract: (_scope: SubjectKind) => date,
+    contract: (_scope: SubjectKind) => dateContract,
   },
 } as const satisfies Record<
   keyof RunContext,
@@ -62,6 +60,12 @@ export const runContextFields = {
     readonly contract: (scope: SubjectKind) => Contract<any>;
   }
 >;
+
+/** Whether a `context.<field>` reference names a run-context field. */
+export const isRunContextField = (
+  field: string,
+): field is keyof typeof runContextFields =>
+  Object.hasOwn(runContextFields, field);
 
 /**
  * Which run and step an implementation executes, for retry-safe outputs,
@@ -97,7 +101,7 @@ export class StepFailure extends Schema.TaggedError<StepFailure>()(
 
 /** The services step implementations can use. */
 export type StepServices =
-  | Assets
+  | AssetStore
   | Portfolios
   | MarketDataSources
   | RunArtifacts
@@ -124,7 +128,7 @@ export type WaitCheck<O> =
  * A registered, version-controlled operation a workflow step can use: its
  * identity, the scopes it runs in, its parameter schema, and its named input
  * and output contracts. `implementation` is the executable slot the executor
- * calls; a type registered without one can be authored and inspected, but a
+ * calls; a type registered without one can be authored and shown, but a
  * run reaching it fails.
  */
 export interface StepType<
