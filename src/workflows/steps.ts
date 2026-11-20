@@ -1,5 +1,19 @@
 import type { WorkflowStep, WorkflowStepConfig } from "cloudflare:workers";
 
+/** Retries and a timeout for a durable step's attempts. */
+export type StepPolicy = WorkflowStepConfig;
+
+/**
+ * The executor's step policy unless its environment supplies another: three
+ * retries with exponential backoff (10 s, 20 s, 40 s) for transient
+ * failures, and a 10-minute timeout per attempt. Terminal failures are never
+ * retried, whatever the policy.
+ */
+export const DEFAULT_STEP_POLICY = {
+  retries: { limit: 3, delay: "10 seconds", backoff: "exponential" },
+  timeout: "10 minutes",
+} as const satisfies StepPolicy;
+
 /**
  * The seam between orchestration and Cloudflare's durable step runner.
  * Results must be serializable. Successful results are stored, while failed

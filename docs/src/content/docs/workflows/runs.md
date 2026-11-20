@@ -118,7 +118,9 @@ running again.
 
 ### Retries and failures
 
-Each step type owns its retry policy. The default is **3 retries with
+Step types decide which failures are transient and which are terminal; the
+executor applies one step policy to every step's attempts. Each execution
+environment can supply its own, and the default is **3 retries with
 exponential backoff** (`10 s`, `20 s`, `40 s`) and a 10-minute attempt timeout
 for transient failures (provider HTTP errors, R2/D1 errors, container network
 or 5xx failures).

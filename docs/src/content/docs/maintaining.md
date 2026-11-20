@@ -123,7 +123,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 
 | Mechanism                       | Behavior                                                                                                                                                                                                                                                                     |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bounded transient retries**   | Each step type declares its retry policy (default: 3 retries with exponential backoff — 10 s, 20 s, 40 s — and 10 min attempt timeout) for provider, R2, D1, and 5xx/network Python errors.                                                                                  |
+| **Bounded transient retries**   | The executor's step policy (default: 3 retries with exponential backoff — 10 s, 20 s, 40 s — and 10 min attempt timeout; an environment can inject another) for provider, R2, D1, and 5xx/network Python errors.                                                             |
 | **Terminal errors**             | Invalid params/inputs, unknown step types, schema mismatches, outputs over 32 KiB, and Python `422` domain errors throw `NonRetryableError` and stop the run immediately.                                                                                                    |
 | **Captured definition**         | A run captures its workflow's name and step list when claimed. Editing a workflow affects subsequent runs while active runs replay their original sequence safely.                                                                                                           |
 | **Atomic claims & overlap**     | Partial unique indexes (`workflow_runs_one_active`, `workflow_runs_one_per_occurrence`) allow one active run per assignment and one run per scheduled occurrence. Overlaps record `skipped`.                                                                                 |
@@ -167,8 +167,8 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 1. Create a file under `src/workflows/registry/` (use `portfolio-holdings.ts` or
    `download-prices.ts` as a template).
 2. Declare its `type`, `description`, `scopes`, `params` Effect Schema, named
-   `inputs` and `outputs` with explicit contract identities, optional retry
-   policy, and `implementation`.
+   `inputs` and `outputs` with explicit contract identities, and
+   `implementation`.
 3. Use existing `Context.Service` interfaces (`AssetStore`, `Portfolios`,
    `DatasetPublicationStore`, `RunArtifacts`, `MarketDataSources`) and map errors to
    `terminalStepError` or `transientStepError`.
@@ -183,7 +183,8 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 | Asset CRUD or deletion guards  | `src/assets/d1.ts`, `src/routes/assets/index.ts`, `test/assets.test.ts`                        |
 | Portfolio holdings rules       | `src/portfolios/contracts.ts`, `src/portfolios/d1.ts`, `test/portfolios.test.ts`               |
 | Workflow specification rules   | `src/workflows/validate.ts`, `src/workflows/contracts.ts`, `test/workflows.test.ts`            |
-| Step contracts & retry policy  | `src/workflows/registry/`, `test/workflow-runs.test.ts`                                        |
+| Step contracts                 | `src/workflows/registry/`, `test/workflow-runs.test.ts`                                        |
+| Step retry policy              | `src/workflows/steps.ts`, `src/workflows/executor.ts`, `test/workflow-runs.test.ts`            |
 | Scheduled dispatch / claims    | `src/workflows/runs/dispatch.ts`, `src/workflows/runs/d1.ts`, `test/workflow-dispatch.test.ts` |
 | Python operation logic/schemas | `containers/engine/src/data_service_engine/operations/`, then `pnpm operations:generate`       |
 | Dataset publication & lookup   | `src/datasets/`, `src/routes/datasets/index.ts`, `test/dataset-publication.test.ts`            |

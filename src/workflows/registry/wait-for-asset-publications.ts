@@ -10,7 +10,7 @@ import {
   dateContract,
   publishedAssetPricesContract,
 } from "./contract";
-import { defineStepType, transient } from "./step-type";
+import { asTransient, defineStepType } from "./step-type";
 
 const DEFAULT_TIMEOUT_SECONDS = 2 * 60 * 60;
 
@@ -95,6 +95,6 @@ export const waitForAssetPublications = defineStepType({
         return missing.length === 0
           ? { ready: true as const, outputs: { publications } }
           : { ready: false as const, missing };
-      }).pipe(Effect.mapError((error) => transient(error.message))),
+      }).pipe(asTransient),
   },
 });

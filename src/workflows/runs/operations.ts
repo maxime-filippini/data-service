@@ -160,10 +160,11 @@ const notFound = (message: string) =>
   new WorkflowError({ kind: "not_found", message });
 
 /**
- * The artifact a step output references, with its contents. Only references
- * recorded as a run's outputs are read, so callers never name storage paths.
+ * Read the artifact a run's step output references, with its contents. Only
+ * reads: nothing executes. Only references recorded as a run's outputs are
+ * read, so callers never name storage paths.
  */
-export const runArtifact = Effect.fn("WorkflowRuns.artifact")(function* (
+export const getRunArtifact = Effect.fn("WorkflowRuns.getArtifact")(function* (
   runId: string,
   stepId: string,
   output: string,
