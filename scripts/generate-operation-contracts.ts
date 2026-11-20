@@ -10,10 +10,10 @@
  * committed schemas.json (for machines without uv).
  */
 
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { parseArgs } from "node:util";
+import { Console, Effect, FileSystem } from "effect";
+import { Command, Flag } from "effect/cli";
 
+import { runProcess, runScript, ScriptError } from "./cli";
 import {
   type ExportedSchemas,
   GENERATED_PATH,
@@ -21,49 +21,68 @@ import {
   SCHEMAS_PATH,
 } from "./operation-contracts";
 
-const { values: options } = parseArgs({
-  options: {
-    check: { type: "boolean", default: false },
-    "skip-python": { type: "boolean", default: false },
-  },
-});
-
-const stale: string[] = [];
-
-const update = (path: string, expected: string) => {
-  const current = (() => {
-    try {
-      return readFileSync(path, "utf8");
-    } catch {
-      return undefined;
-    }
-  })();
-  if (current === expected) return;
-  if (options.check) stale.push(path);
-  else {
-    writeFileSync(path, expected);
-    console.log(`Wrote ${path}`);
-  }
-};
-
-if (!options["skip-python"])
-  update(
-    SCHEMAS_PATH,
-    execFileSync(
-      "uv",
-      ["run", "--directory", "containers/engine", "engine", "export-schemas"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+const command = Command.make(
+  "generate-operation-contracts",
+  {
+    check: Flag.Boolean("check").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription("Fail if a committed file is stale; write nothing"),
     ),
-  );
+    skipPython: Flag.Boolean("skip-python").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription("Reuse the committed schemas.json instead of uv"),
+    ),
+  },
+  ({ check, skipPython }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stale: string[] = [];
 
-const exported = JSON.parse(
-  readFileSync(SCHEMAS_PATH, "utf8"),
-) as ExportedSchemas;
-update(GENERATED_PATH, await generateOperationContracts(exported));
+      /** Write `expected` to `path`, or record it as stale under `--check`. */
+      const update = (path: string, expected: string) =>
+        Effect.gen(function* () {
+          const current = yield* fs
+            .readFileString(path)
+            .pipe(Effect.orElseSucceed(() => undefined));
+          if (current === expected) return;
+          if (check) stale.push(path);
+          else {
+            yield* fs.writeFileString(path, expected);
+            yield* Console.log(`Wrote ${path}`);
+          }
+        });
 
-if (stale.length > 0) {
-  console.error(
-    `Stale operation contracts: ${stale.join(", ")}. Run \`pnpm operations:generate\`.`,
-  );
-  process.exitCode = 1;
-}
+      if (!skipPython)
+        yield* update(
+          SCHEMAS_PATH,
+          yield* runProcess("uv", [
+            "run",
+            "--directory",
+            "containers/engine",
+            "engine",
+            "export-schemas",
+          ]),
+        );
+
+      const exported = JSON.parse(
+        yield* fs.readFileString(SCHEMAS_PATH),
+      ) as ExportedSchemas;
+      yield* update(
+        GENERATED_PATH,
+        yield* Effect.promise(() => generateOperationContracts(exported)),
+      );
+
+      if (stale.length > 0)
+        return yield* Effect.fail(
+          new ScriptError(
+            `Stale operation contracts: ${stale.join(", ")}. Run \`pnpm operations:generate\`.`,
+          ),
+        );
+    }),
+).pipe(
+  Command.withDescription(
+    "Export the Python operation schemas and generate the TypeScript contracts",
+  ),
+);
+
+runScript(command);
