@@ -11,11 +11,8 @@
  * apply it with `wrangler d1 execute <db> --remote --file <sql-file>`.
  */
 
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { parseArgs } from "node:util";
-
-import { Effect, Result } from "effect";
+import { Console, Effect, FileSystem, Option, Path } from "effect";
+import { Command, Flag } from "effect/cli";
 
 import { openSqliteD1 } from "$/local/sqlite-d1";
 import {
@@ -29,101 +26,110 @@ import {
   rollbackDownloads,
 } from "$/workflows/migration";
 
-const USAGE = `Usage:
-  node --import tsx scripts/migrate-workflows.ts --db <sqlite-path> [--dry-run | --apply | --cutover | --rollback] [--now <iso>]
-  node --import tsx scripts/migrate-workflows.ts --emit-sql <apply | cutover | rollback> [--now <iso>]
-`;
+import { runScript, ScriptError } from "./cli";
 
-const { values: options } = parseArgs({
-  options: {
-    db: { type: "string" },
-    "dry-run": { type: "boolean", default: false },
-    apply: { type: "boolean", default: false },
-    cutover: { type: "boolean", default: false },
-    rollback: { type: "boolean", default: false },
-    "emit-sql": { type: "string" },
-    now: { type: "string" },
-    help: { type: "boolean", default: false },
-  },
-});
-
-if (options.help) {
-  process.stdout.write(USAGE);
-  process.exit(0);
-}
-
-const now = options.now ?? new Date().toISOString();
-
-const selectedModes = [
-  options["dry-run"] ? "dry-run" : null,
-  options.apply ? "apply" : null,
-  options.cutover ? "cutover" : null,
-  options.rollback ? "rollback" : null,
-  options["emit-sql"] !== undefined ? "emit-sql" : null,
-].filter((mode): mode is string => mode !== null);
-
-if (selectedModes.length > 1) {
-  console.error(
-    `Choose only one mode flag (got: ${selectedModes.join(", ")}).\n${USAGE}`,
+const mode = (name: string, description: string) =>
+  Flag.Boolean(name).pipe(
+    Flag.withDefault(false),
+    Flag.withDescription(description),
   );
-  process.exit(1);
-}
 
-if (options["emit-sql"] !== undefined) {
-  const kind = options["emit-sql"];
-  if (kind === "apply") {
-    process.stdout.write(renderApplyMigrationSql(now));
-  } else if (kind === "cutover") {
-    process.stdout.write(renderCutoverSql(now));
-  } else if (kind === "rollback") {
-    process.stdout.write(renderRollbackSql(now));
-  } else {
-    console.error(
-      `Unknown --emit-sql target "${kind}"; expected apply, cutover, or rollback.\n${USAGE}`,
-    );
-    process.exit(1);
-  }
-  process.exit(0);
-}
+const renderSql = {
+  apply: renderApplyMigrationSql,
+  cutover: renderCutoverSql,
+  rollback: renderRollbackSql,
+} as const;
 
-if (options.db === undefined) {
-  console.error(`Missing required --db <sqlite-path> argument.\n${USAGE}`);
-  process.exit(1);
-}
+/** Write text to stdout as is (the SQL already ends with a newline). */
+const print = (text: string) =>
+  Console.log(text.endsWith("\n") ? text.slice(0, -1) : text);
 
-const dbPath = resolve(options.db);
-if (!existsSync(dbPath)) {
-  console.error(`SQLite database file not found: ${dbPath}`);
-  process.exit(1);
-}
+const command = Command.make(
+  "migrate-workflows",
+  {
+    db: Flag.String("db").pipe(
+      Flag.optional,
+      Flag.withDescription("The SQLite database to rehearse against"),
+    ),
+    dryRun: mode("dry-run", "Report the inventory without writing (default)"),
+    apply: mode("apply", "Create the assets, workflows and assignments"),
+    cutover: mode("cutover", "Pause legacy downloads for workflow dispatch"),
+    rollback: mode("rollback", "Resume legacy downloads"),
+    emitSql: Flag.Literals("emit-sql", ["apply", "cutover", "rollback"]).pipe(
+      Flag.optional,
+      Flag.withDescription("Print the SQL for remote D1 instead of running it"),
+    ),
+    now: Flag.String("now").pipe(
+      Flag.optional,
+      Flag.withDescription("The migration time, as an ISO timestamp"),
+    ),
+  },
+  (options) =>
+    Effect.gen(function* () {
+      const now = Option.getOrElse(options.now, () => new Date().toISOString());
+      const selectedModes = [
+        options.dryRun ? "dry-run" : null,
+        options.apply ? "apply" : null,
+        options.cutover ? "cutover" : null,
+        options.rollback ? "rollback" : null,
+        Option.isSome(options.emitSql) ? "emit-sql" : null,
+      ].filter((selected) => selected !== null);
+      if (selectedModes.length > 1)
+        return yield* Effect.fail(
+          new ScriptError(
+            `Choose only one mode flag (got: ${selectedModes.join(", ")}). See --help.`,
+          ),
+        );
 
-const { sqlite, db } = openSqliteD1(dbPath);
-try {
-  const program: Effect.Effect<unknown, MigrationError> = options.apply
-    ? applyMigration(db, { now })
-    : options.cutover
-      ? cutoverDownloads(db, { now })
-      : options.rollback
-        ? rollbackDownloads(db, { now })
-        : inventoryMigration(db, { now });
+      if (Option.isSome(options.emitSql))
+        return yield* print(renderSql[options.emitSql.value](now));
 
-  const outcome = await program.pipe(Effect.result, Effect.runPromise);
-  if (Result.isFailure(outcome)) {
-    console.error(
-      JSON.stringify(
-        {
-          error: outcome.failure._tag,
-          kind: outcome.failure.kind,
-          message: outcome.failure.message,
-        },
-        null,
-        2,
-      ),
-    );
-    process.exitCode = 1;
-  } else {
-    process.stdout.write(`${JSON.stringify(outcome.success, null, 2)}\n`);
-  }
-} finally {
-  sqlite.close();
-}
+      if (Option.isNone(options.db))
+        return yield* Effect.fail(
+          new ScriptError(
+            "Missing required --db <sqlite-path> argument. See --help.",
+          ),
+        );
+      const fs = yield* FileSystem.FileSystem;
+      const dbPath = (yield* Path.Path).resolve(options.db.value);
+      if (!(yield* fs.exists(dbPath)))
+        return yield* Effect.fail(
+          new ScriptError(`SQLite database file not found: ${dbPath}`),
+        );
+
+      const { db } = yield* Effect.acquireRelease(
+        Effect.sync(() => openSqliteD1(dbPath)),
+        ({ sqlite }) => Effect.sync(() => sqlite.close()),
+      );
+      const program: Effect.Effect<unknown, MigrationError> = options.apply
+        ? applyMigration(db, { now })
+        : options.cutover
+          ? cutoverDownloads(db, { now })
+          : options.rollback
+            ? rollbackDownloads(db, { now })
+            : inventoryMigration(db, { now });
+      const outcome = yield* program.pipe(
+        Effect.mapError(
+          (failure) =>
+            new ScriptError(
+              JSON.stringify(
+                {
+                  error: failure._tag,
+                  kind: failure.kind,
+                  message: failure.message,
+                },
+                null,
+                2,
+              ),
+            ),
+        ),
+      );
+      yield* print(`${JSON.stringify(outcome, null, 2)}\n`);
+    }).pipe(Effect.scoped),
+).pipe(
+  Command.withDescription(
+    "Migrate legacy download registrations to workflows, cut over or roll back",
+  ),
+);
+
+runScript(command);
