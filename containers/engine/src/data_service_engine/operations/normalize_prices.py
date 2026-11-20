@@ -138,7 +138,8 @@ def normalize_prices(
     """Validate the raw download, build the `prices_eod` table and write it as
     the step's `prices.parquet` artifact. The output ID is fixed by the run
     and step, so repeating the call replaces the same object."""
-    df = build_prices_df(_read_envelope(request, artifacts))
+    envelope = _read_envelope(request, artifacts)
+    df = build_prices_df(envelope)
     output = io.BytesIO()
     df.write_parquet(output)
     prices = PricesEodReference(
