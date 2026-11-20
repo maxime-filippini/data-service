@@ -18,7 +18,7 @@ import {
 import type { Dependencies } from "$/dependencies";
 import { FileRunArtifactsLive, memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
-import { FilePublishedDatasetsLive } from "$/local/published";
+import { FileDatasetObjectStoreLive } from "$/local/published";
 import {
   type LocalPythonService,
   startPythonService,
@@ -317,7 +317,7 @@ const makeFullService = (
     readonly autoStart?: boolean;
     readonly artifacts?: ReturnType<typeof memoryRunArtifacts>["layer"];
     readonly python?: ReturnType<typeof HttpPythonOperationsLive>;
-    readonly published?: ReturnType<typeof FilePublishedDatasetsLive>;
+    readonly published?: ReturnType<typeof FileDatasetObjectStoreLive>;
   } = {},
 ) => {
   const legacyStarts: ScheduledDownloadParams[] = [];
@@ -1131,7 +1131,7 @@ describe(
         dispatch: "on",
         artifacts: FileRunArtifactsLive(rawDir),
         python: HttpPythonOperationsLive({ fetch }, python.url),
-        published: FilePublishedDatasetsLive(processedDir),
+        published: FileDatasetObjectStoreLive(processedDir),
       });
 
       const outcome = await runScheduledHandlers(
