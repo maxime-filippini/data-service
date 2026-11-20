@@ -3,9 +3,7 @@ import { Effect, Layer } from "effect";
 import { D1CalculationsLive } from "$/calculations/d1";
 import { failStoppedRuns } from "$/calculations/runs";
 import { triggerScheduledCalculations } from "$/calculations/schedule";
-import { MarketDataError, MarketDataSource } from "$/market-data";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
-import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
 import {
   type IngestionMessage,
   isRetryable,
@@ -15,6 +13,7 @@ import { processJob, scheduleProcessing } from "$/market-data/processing";
 import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
 import { triggerScheduledRun } from "$/market-data/schedule/operations";
 import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
+import { liveSourceFor } from "$/market-data/sources";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createRoutes } from "$/routes";
 import { dependencies } from "$/dependencies";
@@ -24,6 +23,7 @@ import { dependencies } from "$/dependencies";
 import sveltekit from "../app/.svelte-kit/cloudflare/_worker.js";
 
 export { CalculationRunWorkflow } from "./calculation-run-workflow";
+export { DefinitionRunWorkflow } from "./definition-run-workflow";
 export { CalculationEngine } from "./engine-container";
 export { MarketDataProcessor } from "./processor-container";
 export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
@@ -32,20 +32,6 @@ const app = createRoutes(dependencies, sveltekit);
 
 /** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
 const PROCESSING_SWEEP_HOUR = 2;
-
-/** The download adapter for a tracked symbol's provider. */
-const sourceFor = (env: CloudflareBindings) => (provider: string) =>
-  provider === "eodhd"
-    ? EodhdMarketDataSourceLive(env.EODHD_API_TOKEN)
-    : Layer.effect(
-        MarketDataSource,
-        Effect.fail(
-          new MarketDataError({
-            kind: "configuration",
-            message: `Unknown provider ${provider}`,
-          }),
-        ),
-      );
 
 const ingest = async (
   batch: MessageBatch<IngestionMessage>,
@@ -57,7 +43,7 @@ const ingest = async (
     R2RawMarketDataStoreLive(env.MARKET_DATA_BUCKET),
   );
   const dependencies = {
-    sourceFor: sourceFor(env),
+    sourceFor: liveSourceFor(env),
     processingQueue: env.PROCESSING_QUEUE,
   };
 

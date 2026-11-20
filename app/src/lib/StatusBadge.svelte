@@ -4,6 +4,8 @@
     JobStatus,
     RunStatus,
     ScheduleRunStatus,
+    StepOutcomeStatus,
+    WorkflowRunStatus,
   } from "./api";
 
   let {
@@ -11,7 +13,13 @@
     title,
   }: {
     status:
-      RunStatus | JobStatus | ScheduleRunStatus | CalculationRunStatus | null;
+      | RunStatus
+      | JobStatus
+      | ScheduleRunStatus
+      | CalculationRunStatus
+      | WorkflowRunStatus
+      | StepOutcomeStatus
+      | null;
     title?: string | undefined;
   } = $props();
 </script>
@@ -42,12 +50,14 @@
     background: var(--bad-bg);
     color: var(--bad-fg);
   }
-  .partial {
+  .partial,
+  .waiting {
     background: var(--warn-bg);
     color: var(--warn-fg);
   }
   .fetching,
   .processing,
+  .queued,
   .running {
     background: var(--busy-bg);
     color: var(--busy-fg);

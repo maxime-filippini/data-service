@@ -18,11 +18,12 @@ export type View =
   | "assets"
   | "portfolios"
   | "workflows"
+  | "workflow-runs"
   | "calculations"
   | "explore";
 
 /**
- * A link to a page. `id` opens an asset, portfolio, workflow or calculation
+ * A link to a page. `id` opens an asset, portfolio, workflow, run or calculation
  * (`/portfolios/<id>`); other params go in the query string.
  */
 export const href = (

@@ -23,6 +23,7 @@ interface __BaseEnv_CloudflareBindings {
 	CALCULATION_ENGINE: DurableObjectNamespace<import("./src/index").CalculationEngine>;
 	SCHEDULED_DOWNLOADS: Workflow<Parameters<import("./src/index").ScheduledDownloadWorkflow['run']>[0]['payload']>;
 	CALCULATION_RUNS: Workflow<Parameters<import("./src/index").CalculationRunWorkflow['run']>[0]['payload']>;
+	WORKFLOW_RUNS: Workflow<Parameters<import("./src/index").DefinitionRunWorkflow['run']>[0]['payload']>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
@@ -51,6 +52,7 @@ declare namespace Cloudflare {
 		CALCULATION_ENGINE: DurableObjectNamespace<import("./src/index").CalculationEngine>;
 		SCHEDULED_DOWNLOADS: Workflow<Parameters<import("./src/index").ScheduledDownloadWorkflow['run']>[0]['payload']>;
 		CALCULATION_RUNS: Workflow<Parameters<import("./src/index").CalculationRunWorkflow['run']>[0]['payload']>;
+		WORKFLOW_RUNS: Workflow<Parameters<import("./src/index").DefinitionRunWorkflow['run']>[0]['payload']>;
 	}
 	interface Env extends __BaseEnv_CloudflareBindings {}
 }

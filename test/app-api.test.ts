@@ -14,6 +14,9 @@ import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { Layer } from "effect";
 
 import { D1AssetsLive } from "$/assets/d1";
+import { memoryRunArtifacts } from "$/local/artifacts";
+import { fixtureSourceFor } from "$/local/eodhd-fixtures";
+import { localWorkflowService } from "$/local/runs";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createAppApiRoutes } from "$/routes/app-api";
 import { D1WorkflowsLive } from "$/workflows/d1";
@@ -61,8 +64,18 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
   const workflowRuns: ScheduledDownloadParams[] = [];
   const queued: IngestionMessage[] = [];
   const engine = makeFakeEngine();
+  // Workflow runs execute in process; the provider has no fixtures, so
+  // downloads fail, which these Access tests do not depend on.
+  const local = localWorkflowService({
+    db,
+    artifacts: memoryRunArtifacts().layer,
+    sourceFor: fixtureSourceFor(new Map()),
+    platform: { autoStart: false },
+  });
   const api = createAppApiRoutes(
     {
+      workflowRunsFor: local.dependencies.workflowRunsFor,
+      runPlatformFor: local.dependencies.runPlatformFor,
       statusFor: () => D1PipelineStatusLive(db),
       registryFor: () => D1SymbolRegistryLive(db),
       scheduleFor: () => D1ScheduleStoreLive(db),
@@ -767,5 +780,76 @@ test("the app serves assets, workflow definitions and the step catalog behind Ac
   assert.deepEqual(
     assets.assets.map((a) => a.symbol),
     ["AAPL.US"],
+  );
+});
+
+test("the app starts and lists workflow runs behind Access", async () => {
+  const { request, send } = setup();
+  const token = await signToken();
+  assert.equal((await request("/app-api/workflow-runs")).status, 401);
+
+  await send("POST", "/app-api/assets", {
+    token,
+    body: {
+      symbol: "AAPL.US",
+      provider: "eodhd",
+      backfillStartDate: "2016-01-01",
+    },
+  });
+  const created = await send("POST", "/app-api/workflows", {
+    token,
+    body: {
+      name: "Daily asset prices",
+      scope: "asset",
+      enabled: true,
+      schedule: { hourUtc: 2 },
+      steps: [
+        {
+          id: "download",
+          type: "download-prices",
+          inputs: {
+            asset: { ref: "context.subject" },
+            throughDate: { ref: "context.processingDate" },
+          },
+        },
+      ],
+    },
+  });
+  const { id } = (await created.json()) as { id: string };
+  await send("POST", `/app-api/workflows/${id}/assignments`, {
+    token,
+    body: { subject: { kind: "asset", symbol: "AAPL.US" } },
+  });
+
+  const body = {
+    workflowId: id,
+    subject: { kind: "asset", symbol: "AAPL.US" },
+  };
+  assert.equal(
+    (
+      await send("POST", "/app-api/workflow-runs", {
+        token,
+        body,
+        headers: {},
+      })
+    ).status,
+    403,
+    "starting a run must come from the app's own pages",
+  );
+  const started = await send("POST", "/app-api/workflow-runs", { token, body });
+  assert.equal(started.status, 202);
+  const run = (await started.json()) as { id: string; status: string };
+  assert.equal(run.status, "queued");
+
+  const list = (await (
+    await request("/app-api/workflow-runs", token)
+  ).json()) as { runs: { id: string }[] };
+  assert.deepEqual(
+    list.runs.map((r) => r.id),
+    [run.id],
+  );
+  assert.equal(
+    (await request(`/app-api/workflow-runs/${run.id}`, token)).status,
+    200,
   );
 });

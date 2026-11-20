@@ -1,5 +1,9 @@
-import type { Effect, Schema } from "effect";
+import type { WorkflowStepConfig } from "cloudflare:workers";
+import { type Effect, Schema } from "effect";
 
+import type { Assets } from "$/assets/store";
+import type { MarketDataSources } from "$/market-data/sources";
+import type { RunArtifacts } from "$/workflows/artifacts";
 import type { Subject, SubjectKind } from "$/workflows/contracts";
 import {
   assetSubject,
@@ -52,19 +56,61 @@ export const runContextFields = {
   }
 >;
 
-/** What an implementation receives: decoded params, resolved inputs, context. */
+/** Which run and step an implementation executes, for retry-safe outputs. */
+export interface StepExecution {
+  readonly runId: string;
+  readonly stepId: string;
+}
+
+/**
+ * What an implementation receives: decoded params, resolved and validated
+ * inputs, the run context, and its execution identity.
+ */
 export interface StepRequest<P, I> {
   readonly params: P;
   readonly inputs: I;
   readonly context: RunContext;
+  readonly execution: StepExecution;
 }
+
+/**
+ * Why a step attempt failed. `retry` marks a transient failure (network,
+ * storage, service); the executor retries it within the step's policy.
+ * Otherwise it is terminal (invalid input, deterministic domain error) and
+ * stops the run at once.
+ */
+export class StepFailure extends Schema.TaggedError<StepFailure>()(
+  "StepFailure",
+  { retry: Schema.Boolean, message: Schema.String },
+) {}
+
+/** A transient step failure, retried within the step's policy. */
+export const transient = (message: string) =>
+  new StepFailure({ retry: true, message });
+
+/** A terminal step failure, which stops the run. */
+export const terminal = (message: string) =>
+  new StepFailure({ retry: false, message });
+
+/** The services step implementations can use. */
+export type StepServices = Assets | MarketDataSources | RunArtifacts;
+
+/**
+ * The registry-owned retry policy: three retries with exponential backoff
+ * for transient failures, and a timeout per attempt. A step type can declare
+ * its own.
+ */
+export const DEFAULT_STEP_POLICY = {
+  retries: { limit: 3, delay: "10 seconds", backoff: "exponential" },
+  timeout: "10 minutes",
+} as const satisfies WorkflowStepConfig;
 
 /**
  * A registered, version-controlled operation a workflow step can use: its
  * identity, the scopes it runs in, its parameter schema, and its named input
  * and output contracts. `implementation` is the executable slot the executor
- * calls; a type registered without one can be authored and inspected but not
- * yet executed.
+ * calls; a type registered without one can be authored and inspected, but a
+ * run reaching it fails.
  */
 export interface StepType<
   P = any,
@@ -77,10 +123,12 @@ export interface StepType<
   readonly params: Schema.Codec<P, unknown>;
   readonly inputs: I;
   readonly outputs: O;
+  /** Retries and timeout; `DEFAULT_STEP_POLICY` when omitted. */
+  readonly policy?: WorkflowStepConfig;
   /** Method syntax keeps registrations with specific types assignable. */
   implementation?(
     request: StepRequest<P, PortValues<I>>,
-  ): Effect.Effect<PortValues<O>, unknown>;
+  ): Effect.Effect<PortValues<O>, StepFailure, StepServices>;
 }
 
 /** Declare a step type, inferring its params, input and output types. */

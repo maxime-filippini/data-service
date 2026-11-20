@@ -38,6 +38,11 @@ const notFound = (symbol: string) =>
 const found = (symbol: string) => (row: AssetRow | null | undefined) =>
   row == null ? Effect.fail(notFound(symbol)) : Effect.succeed(fromRow(row));
 
+/** An active workflow run (alias `r`) for the asset ?1. */
+const ACTIVE_RUN_FOR_ASSET = `FROM workflow_runs r
+  WHERE r.subject_kind = 'asset' AND r.subject_id = ?1
+    AND r.status IN ('queued', 'running', 'waiting')`;
+
 export const D1AssetsLive = (db: D1Database): Layer.Layer<Assets> =>
   Layer.succeed(
     Assets,
@@ -110,25 +115,43 @@ export const D1AssetsLive = (db: D1Database): Layer.Layer<Assets> =>
         ).pipe(Effect.flatMap(found(symbol))),
 
       // Assignments go in the same batch, so none outlives its subject.
+      // Blocked while a run for the asset is active; run history stays.
       remove: (symbol) =>
         query(() =>
           db.batch([
             db
               .prepare(
                 `DELETE FROM workflow_assignments
-                 WHERE subject_kind = 'asset' AND subject_id = ?`,
+                 WHERE subject_kind = 'asset' AND subject_id = ?1
+                   AND NOT EXISTS (SELECT 1 ${ACTIVE_RUN_FOR_ASSET})`,
               )
               .bind(symbol),
             db
-              .prepare(`DELETE FROM assets WHERE symbol = ? RETURNING symbol`)
+              .prepare(
+                `DELETE FROM assets
+                 WHERE symbol = ?1 AND NOT EXISTS (SELECT 1 ${ACTIVE_RUN_FOR_ASSET})
+                 RETURNING symbol`,
+              )
+              .bind(symbol),
+            db
+              .prepare(`SELECT r.run_id ${ACTIVE_RUN_FOR_ASSET} LIMIT 1`)
               .bind(symbol),
           ]),
         ).pipe(
-          Effect.flatMap(([, deleted]) =>
-            (deleted?.results.length ?? 0) === 0
-              ? Effect.fail(notFound(symbol))
-              : Effect.void,
-          ),
+          Effect.flatMap(([, deleted, active]) => {
+            if ((deleted?.results.length ?? 0) > 0) return Effect.void;
+            const run = (
+              active?.results as { run_id: string }[] | undefined
+            )?.[0];
+            return Effect.fail(
+              run === undefined
+                ? notFound(symbol)
+                : new AssetError({
+                    kind: "conflict",
+                    message: `Run ${run.run_id} for asset ${symbol} is still active; delete the asset once it finishes`,
+                  }),
+            );
+          }),
         ),
     }),
   );

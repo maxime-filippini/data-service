@@ -5,9 +5,10 @@ description: Assets, complete workflow specifications, step types and their cont
 
 The workflow service is being introduced beside the current downloader (see
 the [specification](https://github.com/maxime-filippini/data-service/blob/develop/docs/specs/workflow-service.md)).
-Configuration can already be created, validated, assigned and inspected.
-Workflows don't run yet: the current [daily schedule](/docs/pipeline/schedule/)
-still owns downloads.
+Configuration can be created, validated, assigned and inspected, and an
+assignment can be [run by hand](/docs/workflows/runs/). Nothing runs
+definitions on a schedule yet: the current
+[daily schedule](/docs/pipeline/schedule/) still owns downloads.
 
 ## Assets
 
@@ -16,7 +17,8 @@ An asset is an instrument identified by its symbol, such as `AAPL.US` or
 not part of an asset's identity, and creating one downloads nothing and
 creates no portfolio. `provider` and `backfillStartDate` are its download
 settings; `enabled: false` pauses it without deleting it. Deleting an asset
-removes its workflow assignments.
+removes its workflow assignments; it is refused (`409`) while a run for the
+asset is active.
 
 Assets are separate from the legacy `tracked_symbols` registry, which keeps
 working unchanged.
@@ -79,9 +81,10 @@ run-context fields with the contract each provides per scope.
 | ----------------- | ------ | ------------------------------------------------- | ------------------------ |
 | `download-prices` | asset  | `asset` (`asset-subject`), `throughDate` (`date`) | `raw` (`raw-prices-eod`) |
 
-`download-prices` takes an optional `startDate` param overriding the asset's
-backfill start. Its contract is registered now; it executes from the next
-workflow ticket.
+`download-prices` requests the asset's prices from its provider, from the
+asset's backfill start (or the optional `startDate` param) through
+`throughDate`. It stores the validated response as a run artifact and outputs
+its reference. See [Workflow runs](/docs/workflows/runs/).
 
 ## Validation
 
@@ -119,7 +122,8 @@ An assignment links one definition to one existing subject of its scope, at
 most once. Assignments can be disabled to pause one subject without changing
 the shared definition. A definition's scope can't change while it has
 assignments (`409`); remove them first. Deleting a definition removes its
-assignments.
+assignments. Deleting a definition or removing an assignment is refused
+(`409`) while it has an active run; run history is kept either way.
 
 ## In the app
 
@@ -130,5 +134,6 @@ assignments.
   where each input comes from (a literal, the run context, or a link to the
   earlier step), and which later steps use each output.
 
-These pages are read-only; change configuration through the API. See
+Both also list recent [runs](/docs/workflows/runs/#in-the-app). These pages
+are read-only; change configuration through the API. See
 [Management API](/docs/reference/api/#assets) for the routes.

@@ -143,7 +143,31 @@ erDiagram
     text subject_id PK "symbol or portfolio ID"
     int enabled
   }
+  workflow_runs {
+    text run_id PK "also the Workflow instance ID"
+    text workflow_id
+    text workflow_name "captured"
+    text subject_kind
+    text subject_id
+    text processing_date
+    text trigger "manual | schedule"
+    text rerun_of
+    text status "queued | running | waiting | completed | failed | skipped"
+    text error
+    text steps_json "captured steps"
+  }
+  workflow_run_steps {
+    text run_id PK, FK
+    text step_id PK
+    int position
+    text step_type
+    text status "running | waiting | completed | failed"
+    int attempts
+    text outputs_json "small named outputs"
+    text error
+  }
   workflow_definitions ||--o{ workflow_assignments : "assigned by"
+  workflow_runs ||--o{ workflow_run_steps : "reached"
 ```
 
 Steps, with their params and bindings, are JSON in `steps_json`; identity,
@@ -151,6 +175,13 @@ scope and schedule are ordinary columns. Deleting a definition, an asset or
 (later) a portfolio removes its assignments in the same batch. The scope
 update is conditional on there being no assignments, so a racing assignment
 can't end up with the wrong kind of subject.
+
+A run captures its definition's name and steps when it claims the
+assignment, and has no foreign keys to definitions, assignments or assets, so
+deleting configuration never deletes run history. Those deletions are
+conditional on there being no active run. Step rows record each reached
+step's attempts, error and small outputs; Cloudflare Workflows keeps the
+checkpoints. Large step data lives in R2 under `runs/<runId>/`.
 
 ## Concurrency rules
 
@@ -163,3 +194,4 @@ database, so two Workers racing can't both win:
 | `processing_jobs_one_active`   | One `queued` or `processing` job per `(dataset, symbol)` |
 | `schedule_runs_one_per_day`    | One `schedule`-triggered run per `run_date`              |
 | `calculation_runs_one_running` | One `running` run per calculation                        |
+| `workflow_runs_one_active`     | One `queued`, `running` or `waiting` run per assignment  |

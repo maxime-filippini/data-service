@@ -49,17 +49,22 @@ under `/app-api/*` with Cloudflare Access in place of the token.
 | `POST`   | `/api/assets`                                   | Create an asset (`409` if the symbol exists)          |
 | `GET`    | `/api/assets/:symbol`                           | One asset                                             |
 | `PATCH`  | `/api/assets/:symbol`                           | Change provider, backfill start or enabled            |
-| `DELETE` | `/api/assets/:symbol`                           | Delete it and its workflow assignments                |
+| `DELETE` | `/api/assets/:symbol`                           | Delete it and its assignments (`409` if a run is on)  |
 | `GET`    | `/api/step-types`                               | The step catalog: step types, contracts, run context  |
 | `GET`    | `/api/workflows`                                | List workflow definitions                             |
 | `POST`   | `/api/workflows`                                | Create a definition from a complete specification     |
 | `GET`    | `/api/workflows/:id`                            | One definition                                        |
 | `PUT`    | `/api/workflows/:id`                            | Replace the whole specification                       |
-| `DELETE` | `/api/workflows/:id`                            | Delete it and its assignments                         |
+| `DELETE` | `/api/workflows/:id`                            | Delete it and its assignments (`409` if a run is on)  |
 | `GET`    | `/api/workflows/:id/assignments`                | Its assignments                                       |
 | `POST`   | `/api/workflows/:id/assignments`                | Assign it to an asset or portfolio                    |
 | `PATCH`  | `/api/workflows/:id/assignments/:kind/:subject` | Enable or disable one assignment                      |
 | `DELETE` | `/api/workflows/:id/assignments/:kind/:subject` | Remove one assignment                                 |
+| `POST`   | `/api/runs`                                     | Run an assignment now (`processingDate` optional)     |
+| `GET`    | `/api/runs`                                     | Runs, newest first (filters, `?limit=` up to 200)     |
+| `GET`    | `/api/runs/:runId`                              | One run with its step outcomes                        |
+| `POST`   | `/api/runs/:runId/rerun`                        | Run the same assignment and date again                |
+| `GET`    | `/api/runs/:runId/steps/:step/artifacts/:name`  | The artifact a step output references                 |
 
 ## Symbols
 
@@ -191,6 +196,30 @@ subject or one of the other kind returns `422`, assigning twice `409`, and a
 assignments use `{"kind":"portfolio","id":"<uuid>"}` and
 `/assignments/portfolio/<uuid>`. See
 [Assets and workflow definitions](/docs/workflows/definitions/).
+
+## Runs
+
+```sh
+curl -X POST "$URL/api/runs" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"workflowId":"'$ID'","subject":{"kind":"asset","symbol":"AAPL.US"}}'
+
+curl "$URL/api/runs?subjectKind=asset&subjectId=AAPL.US&status=failed" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/runs/$RUN" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X POST "$URL/api/runs/$RUN/rerun" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/runs/$RUN/steps/download/artifacts/raw" \
+  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+Starting a run returns `202` with the run (`queued`, or `skipped` when the
+assignment already has an active run). The processing date defaults to
+today's UTC date. A disabled definition, assignment or asset returns `409`,
+an unknown definition or assignment `404`. Deleting a definition, assignment
+or asset while it has an active run returns `409`. The app serves the same
+routes at `/app-api/workflow-runs` (its `/app-api/runs` is the legacy
+ingestion history). See [Workflow runs](/docs/workflows/runs/).
 
 ## Calculations
 

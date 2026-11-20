@@ -111,6 +111,16 @@ const SUBJECT_EXISTS = `(
   OR (?2 = 'portfolio' AND EXISTS (SELECT 1 FROM portfolios WHERE portfolio_id = ?3))
 )`;
 
+/** Active workflow runs (alias `r`), to be narrowed with `AND ...`. */
+const ACTIVE_RUN_FROM = `FROM workflow_runs r
+  WHERE r.status IN ('queued', 'running', 'waiting')`;
+
+/** An active-run subquery body, for `NOT EXISTS (...)`. */
+const ACTIVE_RUN = `SELECT 1 ${ACTIVE_RUN_FROM}`;
+
+/** The run (`r`) is of the assignment over ?1 (workflow), ?2 (kind), ?3 (ID). */
+const SAME_ASSIGNMENT = `r.workflow_id = ?1 AND r.subject_kind = ?2 AND r.subject_id = ?3`;
+
 export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
   const selectAssignment = (workflowId: string, subject: Subject) =>
     db
@@ -227,24 +237,42 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
           }),
         ),
 
+      // Blocked while a run of the definition is active; run history stays.
       remove: (id) =>
         query(() =>
           db.batch([
             db
-              .prepare(`DELETE FROM workflow_assignments WHERE workflow_id = ?`)
+              .prepare(
+                `DELETE FROM workflow_assignments
+                 WHERE workflow_id = ?1 AND NOT EXISTS (${ACTIVE_RUN} AND r.workflow_id = ?1)`,
+              )
               .bind(id),
             db
               .prepare(
-                `DELETE FROM workflow_definitions WHERE workflow_id = ? RETURNING workflow_id`,
+                `DELETE FROM workflow_definitions
+                 WHERE workflow_id = ?1 AND NOT EXISTS (${ACTIVE_RUN} AND r.workflow_id = ?1)
+                 RETURNING workflow_id`,
+              )
+              .bind(id),
+            db
+              .prepare(
+                `SELECT r.run_id ${ACTIVE_RUN_FROM} AND r.workflow_id = ?1 LIMIT 1`,
               )
               .bind(id),
           ]),
         ).pipe(
-          Effect.flatMap(([, deleted]) =>
-            (deleted?.results.length ?? 0) === 0
+          Effect.flatMap(([, deleted, active]) => {
+            if ((deleted?.results.length ?? 0) > 0) return Effect.void;
+            const run = (
+              active?.results as { run_id: string }[] | undefined
+            )?.[0];
+            return run === undefined
               ? definitionNotFound()
-              : Effect.void,
-          ),
+              : fail(
+                  "conflict",
+                  `Run ${run.run_id} of this workflow is still active; delete the workflow once it finishes`,
+                );
+          }),
         ),
 
       listAssignments: (filter) =>
@@ -346,20 +374,37 @@ export const D1WorkflowsLive = (db: D1Database): Layer.Layer<Workflows> => {
           ),
         ),
 
+      // Blocked while the assignment has an active run; run history stays.
       unassign: (workflowId, subject) =>
         query(() =>
-          db
-            .prepare(
-              `DELETE FROM workflow_assignments
-               WHERE workflow_id = ? AND subject_kind = ? AND subject_id = ?
-               RETURNING workflow_id`,
-            )
-            .bind(workflowId, subject.kind, subjectId(subject))
-            .all(),
+          db.batch([
+            db
+              .prepare(
+                `DELETE FROM workflow_assignments
+                 WHERE workflow_id = ?1 AND subject_kind = ?2 AND subject_id = ?3
+                   AND NOT EXISTS (${ACTIVE_RUN} AND ${SAME_ASSIGNMENT})
+                 RETURNING workflow_id`,
+              )
+              .bind(workflowId, subject.kind, subjectId(subject)),
+            db
+              .prepare(
+                `SELECT r.run_id ${ACTIVE_RUN_FROM} AND ${SAME_ASSIGNMENT} LIMIT 1`,
+              )
+              .bind(workflowId, subject.kind, subjectId(subject)),
+          ]),
         ).pipe(
-          Effect.flatMap(({ results }) =>
-            results.length === 0 ? notAssigned(subject) : Effect.void,
-          ),
+          Effect.flatMap(([deleted, active]) => {
+            if ((deleted?.results.length ?? 0) > 0) return Effect.void;
+            const run = (
+              active?.results as { run_id: string }[] | undefined
+            )?.[0];
+            return run === undefined
+              ? notAssigned(subject)
+              : fail(
+                  "conflict",
+                  `Run ${run.run_id} of this assignment is still active; remove the assignment once it finishes`,
+                );
+          }),
         ),
     }),
   );

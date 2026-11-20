@@ -12,6 +12,10 @@ import type {
 } from "../market-data/status/views";
 import type { Portfolio, PortfolioSummary } from "../portfolios/views";
 import type {
+  WorkflowRunDetail,
+  WorkflowRunSummary,
+} from "../workflows/runs/views";
+import type {
   WorkflowAssignment,
   WorkflowInspection,
   WorkflowSummary,
@@ -109,18 +113,34 @@ export interface PageData {
   }>;
   readonly home: () => Promise<HomeData>;
   readonly assets: () => Promise<readonly Asset[]>;
-  /** An asset and the definitions assigned to it. 404 for an unknown symbol. */
+  /**
+   * An asset, the definitions assigned to it and its latest workflow runs,
+   * newest first. 404 for an unknown symbol.
+   */
   readonly asset: (symbol: string) => Promise<{
     readonly asset: Asset;
     readonly assignments: readonly WorkflowAssignment[];
+    readonly runs: readonly WorkflowRunSummary[];
   }>;
   readonly workflows: () => Promise<readonly WorkflowSummary[]>;
   /**
    * A definition's ordered steps with their parameters and reference
-   * connections, and its assignments. 404 for an unknown ID.
+   * connections, its assignments and its latest runs, newest first. 404 for
+   * an unknown ID.
    */
   readonly workflow: (id: string) => Promise<{
     readonly inspection: WorkflowInspection;
     readonly assignments: readonly WorkflowAssignment[];
+    readonly runs: readonly WorkflowRunSummary[];
   }>;
+  /**
+   * Workflow runs, newest first, filtered by status and asset symbol.
+   * Unknown statuses are ignored.
+   */
+  readonly workflowRuns: (filter: {
+    readonly status?: string;
+    readonly symbol?: string;
+  }) => Promise<readonly WorkflowRunSummary[]>;
+  /** A run with its step outcomes. 404 for an unknown ID. */
+  readonly workflowRun: (id: string) => Promise<WorkflowRunDetail>;
 }

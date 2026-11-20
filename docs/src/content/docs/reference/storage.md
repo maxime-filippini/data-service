@@ -24,6 +24,7 @@ flowchart LR
 
 ```txt
 raw-market-data/dataset=<dataset>/symbol=<symbol>/run=<run-id>.json
+raw-market-data/runs/<workflow-run-id>/<step-id>/<name>.<json|parquet>
 processed-market-data/dataset=<dataset>/symbol=<symbol>/data.parquet
 processed-market-data/calculation=<calculation-id>/data.parquet
 ```
@@ -33,6 +34,11 @@ processed-market-data/calculation=<calculation-id>/data.parquet
 Immutable, validated provider responses: one JSON envelope per ingestion run.
 Nothing overwrites them. They are the input to every Parquet rebuild. See
 [Ingestion](/docs/pipeline/ingestion/#raw-envelope) for the envelope format.
+
+Workflow runs keep their temporary artifacts under `runs/<run-id>/`, one
+object per step output, written again if the step is retried. Step outputs
+reference them; they are not published data. See
+[Workflow runs](/docs/workflows/runs/#artifacts).
 
 ## Processed bucket
 

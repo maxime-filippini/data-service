@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatDateTime } from "#lib/format.ts";
   import { href } from "#lib/router.svelte.ts";
+  import WorkflowRunsTable from "#lib/WorkflowRunsTable.svelte";
 
   import type { PageProps } from "./$types";
 
@@ -57,7 +58,18 @@
   {/if}
 </div>
 
+<h2>Recent runs</h2>
+<WorkflowRunsTable runs={data.runs} showSubject={false} />
+<p class="more">
+  <a href={href("workflow-runs", { symbol: asset.symbol })}
+    >All runs for {asset.symbol} →</a
+  >
+</p>
+
 <style>
+  .more {
+    margin: 0.5rem 0 0;
+  }
   h1 {
     margin: 0.5rem 0 1rem;
   }
