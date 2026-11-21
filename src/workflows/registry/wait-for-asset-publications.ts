@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import { publishedDatasetKey } from "$/datasets/contracts";
 import { DatasetPublicationStore, DatasetObjectStore } from "$/datasets/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
-import type { MissingDependency } from "$/workflows/runs/views";
+import type { MissingDependency } from "$/workflows/runs/contracts";
 
 import { assetSubjects, date, publishedAssetPrices } from "./contract";
 import { defineStepType, transient } from "./step-type";

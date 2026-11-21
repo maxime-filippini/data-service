@@ -8,7 +8,7 @@ import {
 } from "$/workflows/contracts";
 
 import type {
-  DependencyWaitView,
+  DependencyWait,
   StepOutcome,
   StepOutcomeStatus,
   WorkflowRunDetail,
@@ -122,7 +122,7 @@ const toDetail = (
       waiting:
         step.waiting_json === null
           ? null
-          : (JSON.parse(step.waiting_json) as DependencyWaitView),
+          : (JSON.parse(step.waiting_json) as DependencyWait),
       startedAt: step.started_at,
       finishedAt: step.finished_at,
     };

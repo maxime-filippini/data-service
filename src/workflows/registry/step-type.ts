@@ -11,7 +11,7 @@ import type { PythonOperations } from "$/operations/client";
 import type { Portfolios } from "$/portfolios/store";
 import type { RunArtifacts } from "$/workflows/artifacts";
 import type { Subject, SubjectKind } from "$/workflows/contracts";
-import type { MissingDependency } from "$/workflows/runs/views";
+import type { MissingDependency } from "$/workflows/runs/contracts";
 import {
   assetSubject,
   type Contract,

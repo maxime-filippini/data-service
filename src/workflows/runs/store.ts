@@ -4,12 +4,12 @@ import type { StepSpec, Subject, WorkflowError } from "$/workflows/contracts";
 import type { RunContext } from "$/workflows/registry";
 
 import type {
+  DependencyWait,
   RunFilter,
   RunTrigger,
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "./contracts";
-import type { DependencyWaitView } from "./views";
 
 /** A request to claim an assignment's active-run slot. */
 export interface ClaimRun {
@@ -131,7 +131,7 @@ export class WorkflowRuns extends Context.Service<
     readonly stepWaiting: (input: {
       readonly runId: string;
       readonly stepId: string;
-      readonly waiting: DependencyWaitView;
+      readonly waiting: DependencyWait;
     }) => Effect.Effect<void, WorkflowError>;
     readonly stepCompleted: (input: {
       readonly runId: string;
