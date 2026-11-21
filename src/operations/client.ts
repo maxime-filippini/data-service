@@ -1,4 +1,6 @@
-import { Context, Effect, Layer, Result, Schema, SchemaIssue } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+
+import { validateValueDescribed } from "$/schema";
 
 import {
   type OperationName,
@@ -13,8 +15,6 @@ const operationContracts: {
     readonly response: Schema.Codec<OperationResponse<N>, unknown>;
   };
 } = operations;
-
-const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 
 /**
  * Calls to the Python service's uniform operations (`POST /operations/{name}`).
@@ -61,26 +61,6 @@ export interface OperationsFetcher {
   readonly fetch: (url: string, init: RequestInit) => Promise<Response>;
 }
 
-const validate = <A>(
-  schema: Schema.Codec<A, unknown>,
-  value: unknown,
-): Result.Result<A, string> => {
-  const result = Schema.decodeUnknownResult(schema, {
-    errors: "all",
-    onExcessProperty: "error",
-  })(value);
-  if (Result.isSuccess(result)) return Result.succeed(result.success);
-  return Result.fail(
-    formatIssue(result.failure.issue)
-      .issues.map((issue) =>
-        issue.path === undefined || issue.path.length === 0
-          ? issue.message
-          : `${issue.path.map(String).join(".")}: ${issue.message}`,
-      )
-      .join("; "),
-  );
-};
-
 const transient = (message: string) =>
   new OperationError({ kind: "transient", message });
 const terminal = (message: string) =>
@@ -92,7 +72,7 @@ const terminal = (message: string) =>
  * by status: 5xx and 429 may be transient, other 4xx are terminal.
  */
 const failureOf = (name: string, status: number, body: unknown) => {
-  const parsed = validate(OperationErrorResponse, body);
+  const parsed = validateValueDescribed(OperationErrorResponse, body);
   if (Result.isSuccess(parsed)) {
     const { kind, message, issues = [] } = parsed.success.error;
     const details = issues
@@ -123,7 +103,7 @@ export const HttpPythonOperationsLive = (
       invoke: (name, request) =>
         Effect.gen(function* () {
           const operation = operationContracts[name];
-          const valid = validate(operation.request, request);
+          const valid = validateValueDescribed(operation.request, request);
           if (Result.isFailure(valid))
             return yield* terminal(
               `The ${name} request does not satisfy its contract: ${valid.failure}`,
@@ -153,7 +133,7 @@ export const HttpPythonOperationsLive = (
           // A body cut off in transit says nothing about the work itself.
           if (body._tag === "None")
             return yield* transient(`The ${name} response could not be read`);
-          const output = validate(operation.response, body.value);
+          const output = validateValueDescribed(operation.response, body.value);
           if (Result.isFailure(output))
             return yield* terminal(
               `The ${name} response does not satisfy its contract: ${output.failure}`,

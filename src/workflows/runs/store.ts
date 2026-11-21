@@ -45,7 +45,12 @@ export interface DueAssignment {
 
 /**
  * What a run executes: its context and the definition's steps as captured
- * when the run was claimed.
+ * when the run was claimed. `workflowId` names the definition the run came
+ * from, which steps record as the producer of what they publish; `steps` is
+ * the frozen copy the run executes, which can differ from the definition's
+ * current steps once it is edited, and outlives its deletion. The rest of
+ * the definition (schedule, scope, enabled) does not affect execution, so
+ * it is not captured.
  */
 export interface CapturedRun {
   readonly runId: string;
