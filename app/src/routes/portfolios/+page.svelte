@@ -18,7 +18,7 @@
   let { data }: PageProps = $props();
 
   let portfolios = $derived<readonly PortfolioSummary[]>(data.portfolios);
-  /** Tracked prices_eod symbols, suggested in the holdings editor. */
+  /** Asset symbols suggested in the holdings editor. */
   const symbols = $derived(data.symbols);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -139,8 +139,8 @@
       <HoldingsEditor bind:rows {symbols} />
     {/if}
     <p class="muted hint">
-      Every symbol must be tracked in prices_eod. Weights can be any non-zero
-      numbers; they don't need to sum to 1.
+      Choose an asset or a symbol from the prices_eod registry. Weights must be
+      non-zero and can be negative. Any total weight is accepted.
     </p>
     {#if formError}
       <div class="error">{formError}</div>

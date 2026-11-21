@@ -3,10 +3,20 @@ import { holdingSymbols } from "#lib/server/symbols.ts";
 
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
   const pages = data();
-  const [portfolio, symbols] = await loaded(
-    Promise.all([pages.portfolio(params.id), pages.symbols()]),
+  const manage = url.searchParams.get("edit") === "1";
+  if (!manage) {
+    const detail = await loaded(pages.portfolioDetail(params.id));
+    return { ...detail, manage, symbols: [] };
+  }
+  const [portfolio, symbols, assets] = await loaded(
+    Promise.all([pages.portfolio(params.id), pages.symbols(), pages.assets()]),
   );
-  return { portfolio, symbols: holdingSymbols(symbols) };
+  return {
+    portfolio,
+    manage,
+    symbols: holdingSymbols(symbols, assets),
+    assignments: [],
+  };
 };

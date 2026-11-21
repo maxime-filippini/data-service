@@ -46,9 +46,9 @@ gantt
 
 ## Rules
 
-- **Symbols.** Every symbol must be a tracked symbol in `prices_eod` (disabled
-  symbols count). A foreign key from holdings to `tracked_symbols` keeps a held
-  symbol from being deleted.
+- **Symbols.** Every symbol must exist as an asset or as a legacy `prices_eod`
+  registry entry. Disabled assets can be held. A holding in any of a
+  portfolio's snapshots prevents deleting the corresponding asset.
 - **Weights.** Any non-zero numbers. Shorts and leverage are allowed, and they
   don't need to sum to 1. Each type normalises or checks them as it needs.
 - **One per date.** A portfolio has at most one snapshot per holdings date;
@@ -58,15 +58,17 @@ gantt
   depend on one snapshot (like `ex_ante_vol`) record its holdings date in their
   results.
 - **Deleting.** Deleting a portfolio that a calculation uses returns `409` with
-  the calculations that use it. Disabling a held symbol is allowed: its Parquet
-  file stays, so calculations keep working on its old data. A future symbol-delete
-  route will need to delete the symbol's single-asset portfolio first.
+  the calculations that use it. Active workflow runs also block deletion.
+  After those runs finish, deleting the portfolio removes its assignments and
+  keeps its workflow run history and published datasets.
 
 ```mermaid
 erDiagram
   portfolios ||--o{ portfolio_snapshots : has
   portfolio_snapshots ||--|{ portfolio_holdings : contains
   tracked_symbols ||--o{ portfolio_holdings : "held as"
+  portfolio_snapshots ||--o{ portfolio_asset_holdings : contains
+  assets ||--o{ portfolio_asset_holdings : "held as"
   portfolios ||--o{ calculation_portfolios : "used by"
 ```
 
@@ -87,7 +89,20 @@ curl -X POST "$URL/api/portfolios/$ID/snapshots" \
 curl -X DELETE "$URL/api/portfolios/$ID/snapshots/2026-10-15" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
 ```
 
-Untracked symbols return `400` with their list in `symbols`; a second snapshot
-for the same date, or a change to a single-asset portfolio, returns `409`.
+New portfolios get the portfolio workflow defaults in effect at creation.
+Assign additional definitions with the workflow assignment API. The app's
+portfolio detail shows the dated holdings and assigned workflows.
+
+To inspect a fixture portfolio, run `pnpm workflow:fixture` and open
+`.local/workflow-fixture/portfolio.json`.
+
 The full route list is in the
 [API reference](/docs/reference/api/#portfolios).
+
+## Rolling back during the registry transition
+
+Before restoring a Worker version from before the asset holdings migration,
+run `SELECT DISTINCT portfolio_id FROM portfolio_asset_holdings`. If the query
+returns any portfolios, keep the current holdings reader in the rollback build.
+The earlier reader omits positions in this table and may calculate from an
+incomplete snapshot. Keep the additive migration in place.

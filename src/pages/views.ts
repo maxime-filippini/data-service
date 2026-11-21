@@ -104,6 +104,11 @@ export interface PageData {
   readonly portfolios: () => Promise<readonly PortfolioSummary[]>;
   /** 404 for an unknown ID. */
   readonly portfolio: (id: string) => Promise<Portfolio>;
+  /** Dated holdings and workflow assignments. 404 for an unknown ID. */
+  readonly portfolioDetail: (id: string) => Promise<{
+    readonly portfolio: Portfolio;
+    readonly assignments: readonly WorkflowAssignment[];
+  }>;
   readonly calculations: () => Promise<readonly Calculation[]>;
   /** A calculation and its latest runs, newest first. 404 for an unknown ID. */
   readonly calculation: (

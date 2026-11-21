@@ -268,6 +268,7 @@ first:
 | `r2/processed-market-data/dataset=prices_eod/symbol=<SYMBOL>/data.parquet` | The published dataset             |
 | `run.json`                                                                 | The run and its step outcomes     |
 | `publication.json`                                                         | The publication's metadata        |
+| `portfolio.json`                                                           | Dated portfolio snapshots         |
 | `api.log`                                                                  | Each API request and its response |
 
 Options: `--out DIR`, `--symbol MSFT.US` (fixtures exist for `AAPL.US` and

@@ -9,6 +9,8 @@ import { Cause, Console, Effect, Option, Stream } from "effect";
 import { CliError, Command } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { ManagementApiError } from "$/management-api/client";
+
 /** An expected script failure: only its message is printed. */
 export class ScriptError extends Error {
   override readonly name = "ScriptError";
@@ -20,7 +22,11 @@ const report = <E>(cause: Cause.Cause<E>) => {
   const error = Cause.findErrorOption(cause);
   if (Option.isSome(error) && CliError.isCliError(error.value))
     return Effect.void;
-  if (Option.isSome(error) && error.value instanceof ScriptError)
+  if (
+    Option.isSome(error) &&
+    (error.value instanceof ScriptError ||
+      error.value instanceof ManagementApiError)
+  )
     return Console.error(error.value.message);
   return Console.error(Cause.pretty(cause));
 };

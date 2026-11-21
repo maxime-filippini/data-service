@@ -142,6 +142,11 @@ export const pageData = (
   const scheduleRuns = (limit: number) =>
     store(ScheduleStore.use((s) => s.listRuns(limit)));
   const listPortfolios = () => portfolios(Portfolios.use((p) => p.list()));
+  const getPortfolio = async (id: string) => {
+    if (!isUuid(PortfolioIdSchema, id))
+      throw new PageDataError(404, "Portfolio not found");
+    return portfolios(Portfolios.use((p) => p.get(id)));
+  };
   const listCalculations = () =>
     calculations(Calculations.use((c) => c.list()));
 
@@ -170,10 +175,14 @@ export const pageData = (
 
     portfolios: () => listPortfolios(),
 
-    portfolio: (id) => {
-      if (!isUuid(PortfolioIdSchema, id))
-        return Promise.reject(new PageDataError(404, "Portfolio not found"));
-      return portfolios(Portfolios.use((p) => p.get(id)));
+    portfolio: getPortfolio,
+
+    portfolioDetail: async (id) => {
+      const portfolio = await getPortfolio(id);
+      const assignments = await workflows(
+        subjectAssignments({ kind: "portfolio", id }),
+      );
+      return { portfolio, assignments };
     },
 
     calculations: () => listCalculations(),

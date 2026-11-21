@@ -26,6 +26,18 @@ const SnapshotParamSchema = Schema.Struct({
   holdingsDate: MarketDateSchema,
 });
 
+const EffectiveSnapshotQuery = Schema.Struct({ date: MarketDateSchema });
+
+const SnapshotIntervalQuery = Schema.Struct({
+  from: MarketDateSchema,
+  through: MarketDateSchema,
+}).check(
+  Schema.makeFilter(
+    ({ from, through }) =>
+      from <= through || "Start date must be on or before the end date",
+  ),
+);
+
 /**
  * Portfolios and their holdings snapshots. Snapshots are added or deleted,
  * never edited. Served by the management API and the dashboard, each with its
@@ -109,6 +121,23 @@ export const createPortfolioRoutes = (
     return c.body(null, 204);
   });
 
+  app.get(
+    "/:id/snapshots",
+    effectValidator("param", IdParamSchema),
+    effectValidator("query", SnapshotIntervalQuery, {
+      onExcessProperty: "error",
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const { from, through } = c.req.valid("query");
+      const snapshots = await run(
+        c.env,
+        Portfolios.use((store) => store.holdingsBetween(id, from, through)),
+      );
+      return c.json({ snapshots });
+    },
+  );
+
   app.post(
     "/:id/snapshots",
     effectValidator("param", IdParamSchema),
@@ -123,6 +152,23 @@ export const createPortfolioRoutes = (
         ),
       );
       return c.json(added, 201);
+    },
+  );
+
+  app.get(
+    "/:id/snapshots/effective",
+    effectValidator("param", IdParamSchema),
+    effectValidator("query", EffectiveSnapshotQuery, {
+      onExcessProperty: "error",
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const { date } = c.req.valid("query");
+      const snapshot = await run(
+        c.env,
+        Portfolios.use((store) => store.holdingsAt(id, date)),
+      );
+      return c.json(snapshot);
     },
   );
 
