@@ -427,24 +427,26 @@ const makeFullService = (
 
   // Stands in for the dispatch Workflow: runs its body as soon as it starts.
   const dispatches: TickReport[] = [];
-  const dispatchPlatform: DispatchPlatform = {
+  const dispatchPlatformFor = (
+    tickEnv: CloudflareBindings,
+  ): DispatchPlatform => ({
     create: async ({ params }: { params: WorkflowDispatchParams }) => {
       dispatches.push(
         await scheduledWorkflowTick(
           local.dependencies,
-          env,
+          tickEnv,
           new Date(params.scheduledTime),
           localSteps(new Map(), { delayScale: 0 }),
         ),
       );
     },
     get: async () => ({ status: async () => ({ status: "complete" }) }),
-  };
+  });
 
   return {
     dependencies: {
       ...dependencies,
-      dispatchPlatformFor: () => dispatchPlatform,
+      dispatchPlatformFor,
     },
     env,
     api,
