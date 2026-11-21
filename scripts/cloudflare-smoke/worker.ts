@@ -29,7 +29,7 @@ import type {
 } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
-import { workflowSteps } from "$/workflows/steps";
+import { type Steps, workflowSteps } from "$/workflows/steps";
 
 // @ts-expect-error -- built SvelteKit adapter, as in the main Worker.
 import sveltekit from "../../app/.svelte-kit/cloudflare/_worker.js";
@@ -172,6 +172,12 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
   }
 }
 
+/**
+ * Runs the dispatch body inside the request or cron invocation: the smoke
+ * exercises recovery of the runs it launches, not of the dispatcher itself.
+ */
+const inlineSteps: Steps = { do: (_name, run) => run() };
+
 control.use("/__smoke/*", requireManagementToken);
 control.post("/__smoke/tick", async (c) => {
   const tick = await c.req.json<{ at: string; fault?: LaunchFault }>();
@@ -184,7 +190,7 @@ control.post("/__smoke/tick", async (c) => {
     fault === undefined
       ? dependencies
       : { ...dependencies, runPlatformFor: () => platform(env, fault) };
-  return c.json(await scheduledWorkflowTick(deps, env, at));
+  return c.json(await scheduledWorkflowTick(deps, env, at, inlineSteps));
 });
 control.get("/__smoke/instances/:id", async (c) => {
   const id = c.req.param("id");
@@ -221,6 +227,7 @@ export default {
       dependencies,
       env,
       new Date(controller.scheduledTime),
+      inlineSteps,
     );
   },
 } satisfies ExportedHandler<SmokeBindings>;
