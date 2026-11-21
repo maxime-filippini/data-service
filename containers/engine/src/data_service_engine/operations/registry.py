@@ -44,9 +44,9 @@ class Operation:
 
 def operations() -> dict[str, Operation]:
     """Every operation, by name. Registrations are explicit."""
-    from . import normalize_prices
+    from . import normalize_prices, portfolio_volatility
 
-    registered = [normalize_prices.OPERATION]
+    registered = [normalize_prices.OPERATION, portfolio_volatility.OPERATION]
     by_name = {operation.name: operation for operation in registered}
     if len(by_name) != len(registered):
         raise RuntimeError("Two operations share a name")

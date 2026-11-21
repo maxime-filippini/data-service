@@ -15,6 +15,13 @@ export interface WorkflowIssue {
 }
 
 const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
+const decodeOptions = { errors: "all", onExcessProperty: "error" } as const;
+
+const prefixedIssues = (failure: Schema.SchemaError, path: readonly string[]) =>
+  formatIssue(failure.issue).issues.map((issue) => ({
+    path: [...path, ...(issue.path ?? []).map(String)],
+    message: issue.message,
+  }));
 
 /** Every schema issue of decoding `value`, prefixed with `path`. */
 const schemaIssues = (
@@ -22,15 +29,9 @@ const schemaIssues = (
   value: unknown,
   path: readonly string[],
 ): WorkflowIssue[] => {
-  const result = Schema.decodeUnknownResult(schema, {
-    errors: "all",
-    onExcessProperty: "error",
-  })(value);
+  const result = Schema.decodeUnknownResult(schema, decodeOptions)(value);
   if (Result.isSuccess(result)) return [];
-  return formatIssue(result.failure.issue).issues.map((issue) => ({
-    path: [...path, ...(issue.path ?? []).map(String)],
-    message: issue.message,
-  }));
+  return prefixedIssues(result.failure, path);
 };
 
 const isContextField = (
@@ -77,7 +78,22 @@ export const validateWorkflowSpec = (
           at("type"),
           `Step type "${step.type}" cannot be used in ${spec.scope} workflows (it supports: ${stepType.scopes.join(", ")})`,
         );
-      issues.push(...schemaIssues(stepType.params, step.params, at("params")));
+      const params = Schema.decodeUnknownResult(
+        stepType.params,
+        decodeOptions,
+      )(step.params);
+      if (Result.isFailure(params)) {
+        issues.push(...prefixedIssues(params.failure, at("params")));
+      } else {
+        const configurationIssues =
+          stepType.validateConfiguration?.(
+            params.success,
+            spec.scope,
+            step.inputs,
+          ) ?? [];
+        for (const problem of configurationIssues)
+          issue(at(...problem.path), problem.message);
+      }
       for (const name of Object.keys(step.inputs))
         if (!Object.hasOwn(stepType.inputs, name))
           issue(
@@ -157,7 +173,8 @@ export const validateWorkflowSpec = (
       if (
         port !== undefined &&
         provided !== undefined &&
-        provided.id !== port.contract.id
+        provided.id !== port.contract.id &&
+        !port.contract.accepts?.includes(provided.id)
       )
         issue(
           refPath,

@@ -70,6 +70,305 @@
     "type": "object"
   },
   "operations": {
+    "calculate-portfolio-volatility": {
+      "description": "Annualised ex-ante volatility from an effective holdings snapshot and published asset prices",
+      "request": {
+        "$defs": {
+          "Execution": {
+            "additionalProperties": false,
+            "description": "Which run and step asks for the work. Outputs are written to locations\nderived from it, so a repeated call replaces the same objects.",
+            "properties": {
+              "runId": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "title": "Runid",
+                "type": "string"
+              },
+              "stepId": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "title": "Stepid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "runId",
+              "stepId"
+            ],
+            "title": "Execution",
+            "type": "object"
+          },
+          "PortfolioVolatilityInputs": {
+            "additionalProperties": false,
+            "properties": {
+              "holdings": {
+                "items": {
+                  "$ref": "#/$defs/VolatilityHolding"
+                },
+                "minItems": 1,
+                "title": "Holdings",
+                "type": "array"
+              },
+              "holdingsDate": {
+                "format": "date",
+                "title": "Holdingsdate",
+                "type": "string"
+              },
+              "portfolioId": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "title": "Portfolioid",
+                "type": "string"
+              },
+              "processingDate": {
+                "format": "date",
+                "title": "Processingdate",
+                "type": "string"
+              },
+              "publications": {
+                "items": {
+                  "$ref": "#/$defs/PublishedAssetPrice"
+                },
+                "minItems": 1,
+                "title": "Publications",
+                "type": "array"
+              }
+            },
+            "required": [
+              "portfolioId",
+              "processingDate",
+              "holdingsDate",
+              "holdings",
+              "publications"
+            ],
+            "title": "PortfolioVolatilityInputs",
+            "type": "object"
+          },
+          "PortfolioVolatilityParams": {
+            "additionalProperties": false,
+            "description": "The same numerical parameters and defaults as the existing calculation.",
+            "properties": {
+              "annualisation": {
+                "default": 252,
+                "description": "Periods per year; the variance is scaled by it.",
+                "exclusiveMinimum": 0,
+                "title": "Annualisation",
+                "type": "number"
+              },
+              "decay": {
+                "anyOf": [
+                  {
+                    "exclusiveMaximum": 1,
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "EWMA decay factor (e.g. 0.94), with a zero mean as in RiskMetrics. Leave empty for an equally weighted sample standard deviation.",
+                "title": "Decay"
+              },
+              "normalise_weights": {
+                "default": false,
+                "description": "Divide the weights by their sum before calculating.",
+                "title": "Normalise Weights",
+                "type": "boolean"
+              },
+              "window": {
+                "default": 252,
+                "description": "Number of daily returns to use.",
+                "minimum": 2,
+                "title": "Window",
+                "type": "integer"
+              }
+            },
+            "title": "PortfolioVolatilityParams",
+            "type": "object"
+          },
+          "PriceAsset": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "asset",
+                "title": "Kind",
+                "type": "string"
+              },
+              "symbol": {
+                "pattern": "^[A-Z0-9][A-Z0-9-]*(\\.[A-Z0-9][A-Z0-9-]*)?$",
+                "title": "Symbol",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "symbol"
+            ],
+            "title": "PriceAsset",
+            "type": "object"
+          },
+          "PublishedAssetPrice": {
+            "additionalProperties": false,
+            "description": "Identity of a matching publication, resolved against current storage.",
+            "properties": {
+              "dataset": {
+                "const": "prices_eod",
+                "title": "Dataset",
+                "type": "string"
+              },
+              "processingDate": {
+                "format": "date",
+                "title": "Processingdate",
+                "type": "string"
+              },
+              "runId": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "title": "Runid",
+                "type": "string"
+              },
+              "subject": {
+                "$ref": "#/$defs/PriceAsset"
+              },
+              "workflowId": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                "title": "Workflowid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "dataset",
+              "subject",
+              "processingDate",
+              "workflowId",
+              "runId"
+            ],
+            "title": "PublishedAssetPrice",
+            "type": "object"
+          },
+          "VolatilityHolding": {
+            "additionalProperties": false,
+            "properties": {
+              "symbol": {
+                "pattern": "^[A-Z0-9][A-Z0-9-]*(\\.[A-Z0-9][A-Z0-9-]*)?$",
+                "title": "Symbol",
+                "type": "string"
+              },
+              "weight": {
+                "title": "Weight",
+                "type": "number"
+              }
+            },
+            "required": [
+              "symbol",
+              "weight"
+            ],
+            "title": "VolatilityHolding",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "execution": {
+            "$ref": "#/$defs/Execution"
+          },
+          "inputs": {
+            "$ref": "#/$defs/PortfolioVolatilityInputs"
+          },
+          "params": {
+            "$ref": "#/$defs/PortfolioVolatilityParams"
+          }
+        },
+        "required": [
+          "execution",
+          "inputs",
+          "params"
+        ],
+        "title": "PortfolioVolatilityRequest",
+        "type": "object"
+      },
+      "response": {
+        "$defs": {
+          "PortfolioVolatilityReference": {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "const": "parquet",
+                "title": "Format",
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^runs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z][A-Za-z0-9_-]{0,63}/[A-Za-z][A-Za-z0-9_-]{0,63}\\.(json|parquet)$",
+                "title": "Id",
+                "type": "string"
+              },
+              "schema": {
+                "const": "portfolio-volatility/v1",
+                "title": "Schema",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "format",
+              "schema"
+            ],
+            "title": "PortfolioVolatilityReference",
+            "type": "object"
+          },
+          "PortfolioVolatilitySummary": {
+            "additionalProperties": false,
+            "properties": {
+              "holdingsDate": {
+                "format": "date",
+                "title": "Holdingsdate",
+                "type": "string"
+              },
+              "observations": {
+                "minimum": 2,
+                "title": "Observations",
+                "type": "integer"
+              },
+              "volatility": {
+                "title": "Volatility",
+                "type": "number"
+              },
+              "windowEnd": {
+                "format": "date",
+                "title": "Windowend",
+                "type": "string"
+              },
+              "windowStart": {
+                "format": "date",
+                "title": "Windowstart",
+                "type": "string"
+              }
+            },
+            "required": [
+              "volatility",
+              "observations",
+              "windowStart",
+              "windowEnd",
+              "holdingsDate"
+            ],
+            "title": "PortfolioVolatilitySummary",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/PortfolioVolatilityReference"
+          },
+          "summary": {
+            "$ref": "#/$defs/PortfolioVolatilitySummary"
+          }
+        },
+        "required": [
+          "data",
+          "summary"
+        ],
+        "title": "PortfolioVolatilityOutputs",
+        "type": "object"
+      }
+    },
     "normalize-prices-eod": {
       "description": "Validate a raw end-of-day price download and write it as a date-sorted prices_eod Parquet artifact; later rows win on duplicate dates",
       "request": {

@@ -84,6 +84,7 @@ export interface ContractView {
   readonly id: string;
   readonly description: string;
   readonly schema: JsonSchemaView;
+  readonly accepts?: readonly string[];
 }
 
 /** One named input or output of a step type and its contract identity. */

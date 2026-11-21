@@ -1,12 +1,12 @@
 import { Effect, Schema } from "effect";
 
 import {
-  DATASET_ARTIFACT_SCHEMAS,
+  PUBLISHED_DATASETS,
   PublishedDatasetSchema,
 } from "$/datasets/contracts";
 import { publishDataset as publish } from "$/datasets/operations";
 
-import { datasetPublication, pricesEod } from "./contract";
+import { datasetPublication, publishableDataset } from "./contract";
 import { defineStepType, terminal, transient } from "./step-type";
 
 /**
@@ -23,16 +23,18 @@ export const publishDataset = defineStepType({
   type: "publish-dataset",
   description:
     "Publish a dataset artifact as the subject's current dataset, independently of temporary run storage",
-  scopes: ["asset"],
+  scopes: ["asset", "portfolio"],
   params: Schema.Struct({
     dataset: PublishedDatasetSchema.annotate({
-      description: "The dataset to publish, e.g. prices_eod",
+      description:
+        "The dataset to publish, e.g. prices_eod or portfolio_volatility",
     }),
   }),
   inputs: {
     data: {
-      contract: pricesEod,
-      description: "The dataset's data, from a normalization step",
+      contract: publishableDataset,
+      description:
+        "The dataset's data, from the normalization or volatility step",
     },
   },
   outputs: {
@@ -41,12 +43,40 @@ export const publishDataset = defineStepType({
       description: "The published dataset's identity",
     },
   },
+  validateConfiguration: ({ dataset }, scope, inputs) => {
+    const expected = PUBLISHED_DATASETS[dataset];
+    if (scope !== expected.subjectKind)
+      return [
+        {
+          path: ["params", "dataset"],
+          message: `${dataset} can only be published for a subject of kind ${expected.subjectKind}`,
+        },
+      ];
+    const data = inputs.data;
+    if (
+      data !== undefined &&
+      "value" in data &&
+      Schema.is(publishableDataset.schema)(data.value) &&
+      data.value.schema !== expected.schema
+    )
+      return [
+        {
+          path: ["inputs", "data", "value"],
+          message: `${dataset} must be published from ${expected.schema} data`,
+        },
+      ];
+    return [];
+  },
   implementation: ({ params, inputs, context, execution }) =>
     Effect.gen(function* () {
-      const expected = DATASET_ARTIFACT_SCHEMAS[params.dataset];
-      if (inputs.data.schema !== expected)
+      const expected = PUBLISHED_DATASETS[params.dataset];
+      if (context.subject.kind !== expected.subjectKind)
         return yield* terminal(
-          `${params.dataset} must be published from ${expected} data, not ${inputs.data.schema}`,
+          `${params.dataset} can only be published for a subject of kind ${expected.subjectKind}`,
+        );
+      if (inputs.data.schema !== expected.schema)
+        return yield* terminal(
+          `${params.dataset} must be published from ${expected.schema} data, not ${inputs.data.schema}`,
         );
       yield* publish({
         dataset: params.dataset,

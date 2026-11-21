@@ -11,11 +11,10 @@ def load_settings() -> OperationSettings:
 
 @contextmanager
 def artifact_store(settings: OperationSettings | None = None):
-    """The run artifact store the settings select: local files under
-    `ARTIFACT_ROOT`, or the R2 artifact bucket."""
+    """Open the configured local or R2 operation storage."""
     settings = settings if settings is not None else load_settings()
     if settings.artifact_root is not None:
-        yield FileArtifactStore(settings.artifact_root)
+        yield FileArtifactStore(settings.artifact_root, settings.processed_root)
         return
     assert settings.r2_endpoint_url is not None
     assert settings.r2_access_key_id is not None
@@ -26,4 +25,4 @@ def artifact_store(settings: OperationSettings | None = None):
         settings.r2_access_key_id,
         settings.r2_secret_access_key,
     ) as s3:
-        yield S3ArtifactStore(s3, settings.artifact_bucket)
+        yield S3ArtifactStore(s3, settings.artifact_bucket, settings.processed_bucket)

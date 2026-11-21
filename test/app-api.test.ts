@@ -733,6 +733,7 @@ test("the app serves assets, workflow definitions and the step catalog behind Ac
       "publish-dataset",
       "portfolio-holdings",
       "wait-for-asset-publications",
+      "calculate-portfolio-volatility",
     ],
   );
 

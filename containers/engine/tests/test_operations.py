@@ -185,10 +185,16 @@ def test_unknown_operations_are_terminal_not_found(client):
 
 
 def test_operations_are_described_with_their_schemas(client):
-    [normalize] = client.get("/operations").json()
-    assert normalize["name"] == "normalize-prices-eod"
+    described = {
+        operation["name"]: operation for operation in client.get("/operations").json()
+    }
+    assert set(described) == {"normalize-prices-eod", "calculate-portfolio-volatility"}
+    normalize = described["normalize-prices-eod"]
     assert normalize["request"]["required"] == ["execution", "inputs", "params"]
     assert normalize["response"]["required"] == ["prices"]
+    volatility = described["calculate-portfolio-volatility"]
+    assert volatility["request"]["required"] == ["execution", "inputs", "params"]
+    assert volatility["response"]["required"] == ["data", "summary"]
 
 
 class BrokenS3:
@@ -234,9 +240,9 @@ def test_unexpected_errors_are_reported_as_transient_not_as_success(root):
     }
 
 
-def test_s3_store_reads_and_writes_only_run_artifacts():
+def test_s3_store_separates_run_artifacts_and_published_prices():
     r2 = FakeR2()
-    store = S3ArtifactStore(r2, "raw-market-data")
+    store = S3ArtifactStore(r2, "raw-market-data", "processed-market-data")
     assert store.read(RAW_ID) is None
     store.write(PRICES_ID, b"data", "application/vnd.apache.parquet")
     assert store.read(PRICES_ID) == b"data"
@@ -244,6 +250,16 @@ def test_s3_store_reads_and_writes_only_run_artifacts():
     for key in ["dataset=prices_eod/symbol=A.US/data.parquet", f"{RAW_ID}/../x.json"]:
         with pytest.raises(TerminalError):
             store.read(key)
+    r2.put_object(
+        Bucket="processed-market-data",
+        Key="dataset=prices_eod/symbol=A.US/data.parquet",
+        Body=b"published prices",
+        ContentType="application/vnd.apache.parquet",
+    )
+    assert store.read_published_prices("A.US") == b"published prices"
+    assert store.read_published_prices("B.US") is None
+    with pytest.raises(TerminalError):
+        store.read_published_prices("../A.US")
 
 
 def test_file_store_never_leaves_the_root(tmp_path):
