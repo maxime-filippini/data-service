@@ -5,6 +5,10 @@
   import type { PageProps } from "./$types";
 
   let { data }: PageProps = $props();
+
+  const defaultIds = $derived(
+    new Set(data.defaults.map((entry) => entry.workflowId)),
+  );
 </script>
 
 <svelte:head>
@@ -13,7 +17,8 @@
 
 <p class="muted intro">
   Workflow definitions: ordered steps run once a day for each assigned subject.
-  Submit and replace whole specifications through the API.
+  Submit and replace whole specifications through the API. Defaults are assigned
+  to each new asset or portfolio when it is created.
 </p>
 
 <div class="card">
@@ -26,6 +31,7 @@
         <th class="num">Steps</th>
         <th class="num">Assignments</th>
         <th>Enabled</th>
+        <th>Default</th>
       </tr>
     </thead>
     <tbody>
@@ -44,6 +50,11 @@
             >{workflow.assignmentCount}</td
           >
           <td data-label="Enabled">{workflow.enabled ? "On" : "Paused"}</td>
+          <td data-label="Default"
+            >{defaultIds.has(workflow.id)
+              ? `For new ${workflow.scope}s`
+              : "—"}</td
+          >
         </tr>
       {/each}
     </tbody>
@@ -53,7 +64,47 @@
   {/if}
 </div>
 
+<h2>Defaults for new subjects</h2>
+<div class="card">
+  <table class="stack">
+    <thead>
+      <tr>
+        <th>Subject kind</th>
+        <th>Workflow</th>
+        <th>Schedule</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each data.defaults as entry (`${entry.subjectKind}/${entry.workflowId}`)}
+        <tr class:disabled={!entry.workflowEnabled}>
+          <td>{entry.subjectKind}</td>
+          <td data-label="Workflow"
+            ><a href={href("workflows", { id: entry.workflowId })}
+              >{entry.workflowName}</a
+            ></td
+          >
+          <td data-label="Schedule" class="mono"
+            >{formatHourUtc(entry.schedule.hourUtc)}</td
+          >
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+  {#if data.defaults.length === 0}
+    <p class="notice">
+      No defaults: new subjects get no workflows until assigned. Manage them
+      with <span class="mono"
+        >PUT /api/workflow-defaults/&lt;kind&gt;/&lt;id&gt;</span
+      >.
+    </p>
+  {/if}
+</div>
+
 <style>
+  h2 {
+    font-size: 1rem;
+    margin: 1.5rem 0 0.5rem;
+  }
   .intro {
     margin-top: 0;
   }

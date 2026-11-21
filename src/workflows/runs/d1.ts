@@ -14,7 +14,12 @@ import type {
   WorkflowRunStatus,
   WorkflowRunSummary,
 } from "./contracts";
-import { type CapturedRun, WorkflowRuns } from "./store";
+import {
+  type CapturedRun,
+  type ClaimOutcome,
+  type DueAssignment,
+  WorkflowRuns,
+} from "./store";
 
 /** Private `workflow_runs` row. */
 interface RunRow {
@@ -26,6 +31,7 @@ interface RunRow {
   readonly processing_date: string;
   readonly trigger: "manual" | "schedule";
   readonly rerun_of: string | null;
+  readonly scheduled_for: string | null;
   readonly status: WorkflowRunStatus;
   readonly error: string | null;
   readonly steps_json: string;
@@ -65,6 +71,7 @@ const toSummary = (row: RunRow): WorkflowRunSummary => ({
   processingDate: row.processing_date,
   trigger: row.trigger,
   rerunOf: row.rerun_of,
+  scheduledFor: row.scheduled_for,
   status: row.status,
   error: row.error,
   createdAt: row.created_at,
@@ -136,16 +143,23 @@ const describe = (subject: Subject) =>
 
 /**
  * The assignment row (alias `a`) and its definition (`d`) can run now: both
- * enabled and, for an asset, the asset enabled. Over ?2 (workflow), ?3
- * (subject kind) and ?4 (subject ID).
+ * enabled and, for an asset, the asset enabled.
  */
-const ELIGIBLE = `a.workflow_id = ?2 AND a.subject_kind = ?3 AND a.subject_id = ?4
-  AND a.enabled = 1 AND d.enabled = 1
+const RUNNABLE = `a.enabled = 1 AND d.enabled = 1
   AND (a.subject_kind <> 'asset' OR EXISTS (
     SELECT 1 FROM assets s WHERE s.symbol = a.subject_id AND s.enabled = 1))`;
 
+/** `RUNNABLE` for one assignment, over ?2 (workflow), ?3 (kind), ?4 (ID). */
+const ELIGIBLE = `a.workflow_id = ?2 AND a.subject_kind = ?3 AND a.subject_id = ?4
+  AND ${RUNNABLE}`;
+
+/** The run (`r`) is of the assignment `a`. */
+const OF_ASSIGNMENT = `r.workflow_id = a.workflow_id
+  AND r.subject_kind = a.subject_kind AND r.subject_id = a.subject_id`;
+
 const RUN_COLUMNS = `run_id, workflow_id, workflow_name, subject_kind, subject_id,
-  processing_date, trigger, rerun_of, status, error, steps_json, created_at, finished_at`;
+  processing_date, trigger, rerun_of, scheduled_for, status, error, steps_json,
+  created_at, finished_at`;
 
 /** Why a claim recorded nothing, over ?1 (workflow), ?2 (kind), ?3 (ID). */
 interface EligibilityRow {
@@ -159,7 +173,9 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
     WorkflowRuns,
     WorkflowRuns.of({
       // One batch, one transaction: claim the slot, or record a skip when
-      // another run holds it, then explain whichever happened.
+      // another run holds it, then explain whichever happened. The unique
+      // indexes make the queued insert a no-op when the slot is taken or the
+      // occurrence was already claimed; the skip insert then checks both.
       claim: (input) =>
         query(() => {
           const values = [
@@ -171,13 +187,14 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
             input.trigger,
             input.rerunOf,
             input.now,
+            input.scheduledFor,
           ];
           return db.batch([
             db
               .prepare(
                 `INSERT INTO workflow_runs (${RUN_COLUMNS})
                  SELECT ?1, d.workflow_id, d.name, a.subject_kind, a.subject_id,
-                   ?5, ?6, ?7, 'queued', NULL, d.steps_json, ?8, NULL
+                   ?5, ?6, ?7, ?9, 'queued', NULL, d.steps_json, ?8, NULL
                  FROM workflow_assignments a
                  JOIN workflow_definitions d ON d.workflow_id = a.workflow_id
                  WHERE ${ELIGIBLE}
@@ -188,17 +205,17 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
               .prepare(
                 `INSERT INTO workflow_runs (${RUN_COLUMNS})
                  SELECT ?1, d.workflow_id, d.name, a.subject_kind, a.subject_id,
-                   ?5, ?6, ?7, 'skipped',
+                   ?5, ?6, ?7, ?9, 'skipped',
                    'Run ' || r.run_id || ' of this assignment was still ' || r.status,
                    d.steps_json, ?8, ?8
                  FROM workflow_assignments a
                  JOIN workflow_definitions d ON d.workflow_id = a.workflow_id
-                 JOIN workflow_runs r ON r.workflow_id = a.workflow_id
-                   AND r.subject_kind = a.subject_kind
-                   AND r.subject_id = a.subject_id
-                   AND r.status IN ${ACTIVE}
+                 JOIN workflow_runs r ON ${OF_ASSIGNMENT} AND r.status IN ${ACTIVE}
                  WHERE ${ELIGIBLE}
                    AND NOT EXISTS (SELECT 1 FROM workflow_runs x WHERE x.run_id = ?1)
+                   AND NOT EXISTS (SELECT 1 FROM workflow_runs x
+                     WHERE x.workflow_id = ?2 AND x.subject_kind = ?3
+                       AND x.subject_id = ?4 AND x.scheduled_for = ?9)
                  LIMIT 1`,
               )
               .bind(...values),
@@ -222,41 +239,67 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
             db
               .prepare(`SELECT * FROM workflow_runs WHERE run_id = ?`)
               .bind(input.runId),
+            db
+              .prepare(
+                `SELECT * FROM workflow_runs
+                 WHERE ?4 IS NOT NULL AND workflow_id = ?1 AND subject_kind = ?2
+                   AND subject_id = ?3 AND scheduled_for = ?4`,
+              )
+              .bind(
+                input.workflowId,
+                input.subject.kind,
+                subjectId(input.subject),
+                input.scheduledFor,
+              ),
           ]);
         }).pipe(
-          Effect.flatMap(([, , eligibility, recorded]) => {
-            const run = (recorded?.results as RunRow[] | undefined)?.[0];
-            if (run !== undefined) return Effect.succeed(toSummary(run));
-            const check = (
-              eligibility?.results as EligibilityRow[] | undefined
-            )?.[0];
-            if (check === undefined)
-              return fail(
-                "not_found",
-                "The workflow definition does not exist",
-              );
-            if (check.assignment_enabled === null)
-              return fail(
-                "not_found",
-                `The workflow is not assigned to ${describe(input.subject)}`,
-              );
-            if (check.definition_enabled !== 1)
-              return fail(
-                "conflict",
-                "The workflow definition is disabled; enable it to run it",
-              );
-            if (check.assignment_enabled !== 1)
-              return fail(
-                "conflict",
-                `The assignment to ${describe(input.subject)} is disabled; enable it to run it`,
-              );
-            if (check.subject_enabled !== 1)
-              return fail(
-                "conflict",
-                `The ${describe(input.subject)} is disabled; enable it to run it`,
-              );
-            return fail("database", "Could not record the run");
-          }),
+          Effect.flatMap(
+            ([, , eligibility, recorded, occurrence]): Effect.Effect<
+              ClaimOutcome,
+              WorkflowError
+            > => {
+              const run = (recorded?.results as RunRow[] | undefined)?.[0];
+              if (run !== undefined)
+                return Effect.succeed({ run: toSummary(run), claimed: true });
+              const earlier = (
+                occurrence?.results as RunRow[] | undefined
+              )?.[0];
+              if (earlier !== undefined)
+                return Effect.succeed({
+                  run: toSummary(earlier),
+                  claimed: false,
+                });
+              const check = (
+                eligibility?.results as EligibilityRow[] | undefined
+              )?.[0];
+              if (check === undefined)
+                return fail(
+                  "not_found",
+                  "The workflow definition does not exist",
+                );
+              if (check.assignment_enabled === null)
+                return fail(
+                  "not_found",
+                  `The workflow is not assigned to ${describe(input.subject)}`,
+                );
+              if (check.definition_enabled !== 1)
+                return fail(
+                  "conflict",
+                  "The workflow definition is disabled; enable it to run it",
+                );
+              if (check.assignment_enabled !== 1)
+                return fail(
+                  "conflict",
+                  `The assignment to ${describe(input.subject)} is disabled; enable it to run it`,
+                );
+              if (check.subject_enabled !== 1)
+                return fail(
+                  "conflict",
+                  `The ${describe(input.subject)} is disabled; enable it to run it`,
+                );
+              return fail("database", "Could not record the run");
+            },
+          ),
         ),
 
       get: (runId) =>
@@ -291,6 +334,7 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
                  AND (?2 IS NULL OR subject_kind = ?2)
                  AND (?3 IS NULL OR subject_id = ?3)
                  AND (?4 IS NULL OR status = ?4)
+                 AND (?6 IS NULL OR trigger = ?6)
                ORDER BY created_at DESC, run_id DESC
                LIMIT ?5`,
             )
@@ -300,6 +344,7 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
               filter.subject?.id ?? null,
               filter.status ?? null,
               filter.limit,
+              filter.trigger ?? null,
             )
             .all<RunRow>(),
         ).pipe(Effect.map(({ results }) => results.map(toSummary))),
@@ -315,6 +360,69 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
             .bind(workflowId, subject.kind, subjectId(subject))
             .all<RunRow>(),
         ).pipe(Effect.map(({ results }) => results.map(toSummary))),
+
+      allActive: (limit, after) =>
+        query(() =>
+          db
+            .prepare(
+              `SELECT * FROM workflow_runs WHERE status IN ${ACTIVE}
+               AND (?2 IS NULL OR (created_at, run_id) > (?2, ?3))
+               ORDER BY created_at, run_id LIMIT ?1`,
+            )
+            .bind(limit, after?.createdAt ?? null, after?.id ?? null)
+            .all<RunRow>(),
+        ).pipe(Effect.map(({ results }) => results.map(toSummary))),
+
+      // Each enabled definition's occurrence is the entry for its hour in
+      // the JSON array ?1; claimed occurrences are excluded by the same
+      // column the claim's unique index covers.
+      due: (occurrenceByHour, limit, after) =>
+        query(() =>
+          db
+            .prepare(
+              `SELECT a.workflow_id, a.subject_kind, a.subject_id, o.scheduled_for
+               FROM (
+                 SELECT workflow_id,
+                   json_extract(?1, '$[' || schedule_hour_utc || ']') AS scheduled_for
+                 FROM workflow_definitions WHERE enabled = 1
+               ) o
+               JOIN workflow_definitions d ON d.workflow_id = o.workflow_id
+               JOIN workflow_assignments a ON a.workflow_id = d.workflow_id
+               WHERE ${RUNNABLE}
+                 AND (?3 IS NULL OR
+                   (o.scheduled_for, a.workflow_id, a.subject_kind, a.subject_id)
+                     > (?3, ?4, ?5, ?6))
+                 AND NOT EXISTS (SELECT 1 FROM workflow_runs r
+                   WHERE ${OF_ASSIGNMENT} AND r.scheduled_for = o.scheduled_for)
+               ORDER BY o.scheduled_for, a.workflow_id, a.subject_kind, a.subject_id
+               LIMIT ?2`,
+            )
+            .bind(
+              JSON.stringify(occurrenceByHour),
+              limit,
+              after?.scheduledFor ?? null,
+              after?.workflowId ?? null,
+              after?.subject.kind ?? null,
+              after === undefined ? null : subjectId(after.subject),
+            )
+            .all<{
+              workflow_id: string;
+              subject_kind: "asset" | "portfolio";
+              subject_id: string;
+              scheduled_for: string;
+            }>(),
+        ).pipe(
+          Effect.map(({ results }) =>
+            results.map((row): DueAssignment => ({
+              workflowId: row.workflow_id,
+              subject:
+                row.subject_kind === "asset"
+                  ? { kind: "asset", symbol: row.subject_id }
+                  : { kind: "portfolio", id: row.subject_id },
+              scheduledFor: row.scheduled_for,
+            })),
+          ),
+        ),
 
       start: (runId, now) =>
         query(() =>

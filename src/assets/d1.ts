@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 
 import { type Asset, AssetError } from "$/assets/contracts";
 import { Assets } from "$/assets/store";
+import { assignDefaultsOnCreate } from "$/workflows/d1";
 
 /** Private `assets` row, converted to the `Asset` view by `fromRow`. */
 interface AssetRow {
@@ -60,26 +61,38 @@ export const D1AssetsLive = (db: D1Database): Layer.Layer<Assets> =>
             .first<AssetRow>(),
         ).pipe(Effect.flatMap(found(symbol))),
 
+      // The asset defaults are assigned in the same batch, only when the
+      // asset is new.
       create: (input, now) =>
         query(() =>
-          db
-            .prepare(
-              `INSERT INTO assets
-                 (symbol, provider, backfill_start_date, enabled, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT (symbol) DO NOTHING
-               RETURNING *`,
-            )
-            .bind(
-              input.symbol,
-              input.provider,
-              input.backfillStartDate,
-              Number(input.enabled ?? true),
+          db.batch([
+            assignDefaultsOnCreate(
+              db,
+              { kind: "asset", symbol: input.symbol },
               now,
-              now,
-            )
-            .first<AssetRow>(),
+            ),
+            db
+              .prepare(
+                `INSERT INTO assets
+                   (symbol, provider, backfill_start_date, enabled, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT (symbol) DO NOTHING
+                 RETURNING *`,
+              )
+              .bind(
+                input.symbol,
+                input.provider,
+                input.backfillStartDate,
+                Number(input.enabled ?? true),
+                now,
+                now,
+              ),
+          ]),
         ).pipe(
+          Effect.map(
+            ([, inserted]) =>
+              (inserted?.results as AssetRow[] | undefined)?.[0] ?? null,
+          ),
           Effect.flatMap((row) =>
             row === null
               ? Effect.fail(

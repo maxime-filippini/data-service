@@ -18,10 +18,14 @@
 
   const symbol = $derived(route.params.get("symbol") ?? "");
   const status = $derived(route.params.get("status") ?? "");
+  const trigger = $derived(route.params.get("trigger") ?? "");
   let symbolInput = $derived(symbol);
 
-  const setFilter = (next: { symbol?: string; status?: string }) =>
-    replace("workflow-runs", { symbol, status, ...next });
+  const setFilter = (next: {
+    symbol?: string;
+    status?: string;
+    trigger?: string;
+  }) => replace("workflow-runs", { symbol, status, trigger, ...next });
 
   const applySymbol = (event: SubmitEvent) => {
     event.preventDefault();
@@ -35,8 +39,10 @@
 
 <p class="muted intro">
   Runs of workflow definitions, newest first. Start a run with
-  <span class="mono">POST /api/runs</span>; each run executes its steps in its
-  own Cloudflare Workflow.
+  <span class="mono">POST /api/runs</span>, or let the hourly tick dispatch each
+  assignment at its workflow's daily hour; each run executes its steps in its
+  own Cloudflare Workflow. A skipped run never ran because the assignment's
+  previous run was still active.
 </p>
 
 <div class="toolbar">
@@ -56,6 +62,15 @@
     {#each STATUSES as option (option)}
       <option value={option}>{option}</option>
     {/each}
+  </select>
+  <select
+    aria-label="Trigger"
+    value={trigger}
+    onchange={(event) => setFilter({ trigger: event.currentTarget.value })}
+  >
+    <option value="">Manual or scheduled</option>
+    <option value="manual">manual</option>
+    <option value="schedule">scheduled</option>
   </select>
 </div>
 

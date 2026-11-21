@@ -172,10 +172,8 @@ export const runIngestion = Effect.fn("MarketData.runIngestion")(function* (
     dependencies.processingQueue.send({ jobId }),
   ).pipe(
     Effect.tapError(() =>
-      Effect.sync(() =>
-        console.error(
-          JSON.stringify({ event: "processing_send_failed", jobId }),
-        ),
+      Effect.logError("processing_send_failed").pipe(
+        Effect.annotateLogs({ jobId }),
       ),
     ),
     Effect.ignore,

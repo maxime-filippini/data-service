@@ -3,7 +3,7 @@
   import { formatDateTime, formatDuration } from "./format";
   import { href } from "./router.svelte";
   import StatusBadge from "./StatusBadge.svelte";
-  import { subjectHref, subjectLabel } from "./subjects";
+  import { formatHourUtc, subjectHref, subjectLabel } from "./subjects";
 
   let {
     runs,
@@ -26,6 +26,7 @@
         {#if showWorkflow}<th>Workflow</th>{/if}
         {#if showSubject}<th>Subject</th>{/if}
         <th>Processing date</th>
+        <th>Trigger</th>
         <th>Status</th>
         <th>Duration</th>
       </tr>
@@ -52,6 +53,16 @@
             >
           {/if}
           <td data-label="Processing date" class="mono">{run.processingDate}</td
+          >
+          <td data-label="Trigger"
+            >{#if run.scheduledFor !== null}<span
+                title={`Schedule occurrence ${run.scheduledFor}`}
+                >scheduled <span class="mono"
+                  >{formatHourUtc(
+                    new Date(run.scheduledFor).getUTCHours(),
+                  )}</span
+                ></span
+              >{:else}manual{/if}</td
           >
           <td data-label="Status"
             ><StatusBadge

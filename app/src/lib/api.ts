@@ -48,6 +48,7 @@ export type {
   InspectedStep,
   SubjectView,
   WorkflowAssignment,
+  WorkflowDefault,
   WorkflowInspection,
   WorkflowSummary,
 } from "../../../src/workflows/views";

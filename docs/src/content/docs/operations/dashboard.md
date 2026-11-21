@@ -21,8 +21,9 @@ description: What the app (home page and dashboard) does, how it is built, and h
 - **Assets** (`/assets`, `/assets/:symbol`). Read-only assets and the workflow
   definitions assigned to each.
 - **Workflows** (`/workflows`, `/workflows/:id`). Read-only workflow
-  definitions: schedule, assignments and ordered steps with parameters, input
-  sources and output connections. See
+  definitions and the defaults for new subjects: schedule, whether a
+  definition is a default, assignments and ordered steps with parameters,
+  input sources and output connections. See
   [Assets and workflow definitions](/docs/workflows/definitions/).
 - **Calculations** (`/calculations`, `/calculations/:id`). Create and edit
   calculations with a JSON params editor and the type's params schema as help;

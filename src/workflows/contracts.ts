@@ -1,6 +1,6 @@
 /**
- * Workflow definition and assignment request schemas, subjects and expected
- * failures. A definition is a complete specification: scope, enabled state,
+ * Workflow domain records, request schemas, subjects and expected failures.
+ * A definition is a complete specification: scope, enabled state,
  * daily UTC hour and an ordered list of uniquely identified steps. These
  * schemas check shape only; `validateWorkflowSpec` checks the steps against
  * the step registry. Response types live in `views.ts`.
@@ -127,7 +127,36 @@ export type StepSpec = typeof StepSpecSchema.Type;
 /** A decoded, not yet registry-validated, complete specification. */
 export type WorkflowSpec = typeof WorkflowSpecSchema.Type;
 
-export type * from "$/workflows/views";
+export interface WorkflowDefinition extends WorkflowSpec {
+  readonly id: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface WorkflowSummary extends Omit<WorkflowDefinition, "steps"> {
+  readonly stepCount: number;
+  readonly assignmentCount: number;
+}
+
+export interface WorkflowAssignment {
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly workflowEnabled: boolean;
+  readonly schedule: WorkflowSpec["schedule"];
+  readonly subject: Subject;
+  readonly enabled: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface WorkflowDefault {
+  readonly subjectKind: SubjectKind;
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly workflowEnabled: boolean;
+  readonly schedule: WorkflowSpec["schedule"];
+  readonly createdAt: string;
+}
 
 /** A subject's identifier: an asset's symbol or a portfolio's ID. */
 export const subjectId = (subject: Subject): string =>

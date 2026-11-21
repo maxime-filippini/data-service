@@ -37,10 +37,15 @@
   "build": { "command": "pnpm --filter app build && pnpm --filter docs build" },
   // Bucket names for the containers (bindings don't expose them),
   // and the ingestion queue name so the consumer can tell its queues apart.
+  // WORKFLOW_DISPATCH: "on" lets the hourly cron dispatch workflow
+  // assignments at their definitions' daily hour. It stays "off" while the
+  // legacy scheduled download owns automatic downloads: running both would
+  // download twice. Turning it on is part of the download cutover.
   "vars": {
     "RAW_BUCKET_NAME": "raw-market-data",
     "PROCESSED_BUCKET_NAME": "processed-market-data",
     "INGESTION_QUEUE_NAME": "market-data-ingestion",
+    "WORKFLOW_DISPATCH": "off",
   },
   "containers": [
     {
@@ -66,7 +71,8 @@
   },
   // One instance per run of the daily schedule (queues the downloads), one
   // per calculation run (calls the engine off the request path), and one per
-  // workflow-definition run (its instance ID is the run ID).
+  // workflow-definition run (its instance ID is the run ID), plus a durable
+  // batch dispatcher per hourly tick while WORKFLOW_DISPATCH is on.
   "workflows": [
     {
       "name": "data-service-scheduled-downloads",
@@ -82,6 +88,11 @@
       "name": "data-service-workflow-runs",
       "binding": "WORKFLOW_RUNS",
       "class_name": "DefinitionRunWorkflow",
+    },
+    {
+      "name": "data-service-workflow-dispatches",
+      "binding": "WORKFLOW_DISPATCHES",
+      "class_name": "WorkflowDispatchWorkflow",
     },
   ],
   "migrations": [
@@ -159,6 +170,7 @@
         "RAW_BUCKET_NAME": "raw-market-data-dev",
         "PROCESSED_BUCKET_NAME": "processed-market-data-dev",
         "INGESTION_QUEUE_NAME": "market-data-ingestion-dev",
+        "WORKFLOW_DISPATCH": "off",
       },
       "containers": [
         {
@@ -200,6 +212,11 @@
           "name": "data-service-workflow-runs-dev",
           "binding": "WORKFLOW_RUNS",
           "class_name": "DefinitionRunWorkflow",
+        },
+        {
+          "name": "data-service-workflow-dispatches-dev",
+          "binding": "WORKFLOW_DISPATCHES",
+          "class_name": "WorkflowDispatchWorkflow",
         },
       ],
       "queues": {

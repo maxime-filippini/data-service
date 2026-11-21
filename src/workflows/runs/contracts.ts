@@ -1,18 +1,17 @@
 /**
- * Workflow run request schemas and the platform seam. Expected failures use
- * `WorkflowError`; response types live in `views.ts`.
+ * Workflow run domain records, request schemas and the platform seam.
+ * Expected failures use `WorkflowError`; response types live in `views.ts`.
  */
 
 import { Schema } from "effect";
 
 import { MarketDateSchema } from "$/market-data/schemas";
 import {
+  type Subject,
   SubjectKindSchema,
   SubjectSchema,
   WorkflowIdSchema,
 } from "$/workflows/contracts";
-
-import type { ActiveRunStatus, WorkflowRunStatus } from "./views";
 
 /** The statuses that hold an assignment's one active-run slot. */
 export const ACTIVE_RUN_STATUSES: readonly ActiveRunStatus[] = [
@@ -29,6 +28,8 @@ export const RunStatusSchema = Schema.Literals([
   "failed",
   "skipped",
 ]);
+
+export const RunTriggerSchema = Schema.Literals(["manual", "schedule"]);
 
 /** UUID identifying a run; also its Workflow instance ID. */
 export const RunIdSchema = Schema.String.check(Schema.isUUID());
@@ -52,6 +53,7 @@ export const RunsQuerySchema = Schema.Struct({
   subjectKind: Schema.optionalKey(SubjectKindSchema),
   subjectId: Schema.optionalKey(Schema.NonEmptyString),
   status: Schema.optionalKey(RunStatusSchema),
+  trigger: Schema.optionalKey(RunTriggerSchema),
   limit: Schema.optionalKey(
     Schema.String.check(
       Schema.isPattern(/^[1-9]\d*$/u, {
@@ -64,11 +66,53 @@ export const RunsQuerySchema = Schema.Struct({
   ),
 });
 
+export type WorkflowRunStatus = typeof RunStatusSchema.Type;
+export type ActiveRunStatus = Extract<
+  WorkflowRunStatus,
+  "queued" | "running" | "waiting"
+>;
+export type StepOutcomeStatus =
+  Exclude<WorkflowRunStatus, "queued"> | "pending";
+export type RunTrigger = typeof RunTriggerSchema.Type;
+
+export interface WorkflowRunSummary {
+  readonly id: string;
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly subject: Subject;
+  readonly processingDate: typeof MarketDateSchema.Type;
+  readonly trigger: RunTrigger;
+  readonly rerunOf: string | null;
+  readonly scheduledFor: string | null;
+  readonly status: WorkflowRunStatus;
+  readonly error: string | null;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+}
+
+export interface StepOutcome {
+  readonly position: number;
+  readonly id: string;
+  readonly type: string;
+  readonly status: StepOutcomeStatus;
+  readonly attempts: number;
+  readonly outputs: Readonly<Record<string, unknown>> | null;
+  readonly error: string | null;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+}
+
+export interface WorkflowRunDetail extends WorkflowRunSummary {
+  readonly steps: readonly StepOutcome[];
+}
+
 /** Which runs to list, newest first. */
 export interface RunFilter {
   readonly workflowId?: string;
   readonly subject?: { readonly kind: string; readonly id?: string };
   readonly status?: WorkflowRunStatus;
+  readonly trigger?: RunTrigger;
   readonly limit: number;
 }
 
@@ -87,5 +131,3 @@ export interface WorkflowRunParams {
  * and the local fixture command supply an in-process stand-in.
  */
 export type RunPlatform = Pick<Workflow<WorkflowRunParams>, "create" | "get">;
-
-export type * from "./views";

@@ -103,6 +103,7 @@ export const createRunRoutes = (
                   },
                 }),
             ...(query.status === undefined ? {} : { status: query.status }),
+            ...(query.trigger === undefined ? {} : { trigger: query.trigger }),
             limit:
               query.limit === undefined
                 ? DEFAULT_RUN_LIST

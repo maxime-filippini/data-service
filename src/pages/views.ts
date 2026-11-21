@@ -18,6 +18,7 @@ import type {
 } from "../workflows/runs/views";
 import type {
   WorkflowAssignment,
+  WorkflowDefault,
   WorkflowInspection,
   WorkflowSummary,
 } from "../workflows/views";
@@ -125,22 +126,26 @@ export interface PageData {
     readonly publications: readonly PublicationView[];
   }>;
   readonly workflows: () => Promise<readonly WorkflowSummary[]>;
+  /** The default workflows of each subject kind. */
+  readonly workflowDefaults: () => Promise<readonly WorkflowDefault[]>;
   /**
    * A definition's ordered steps with their parameters and reference
-   * connections, its assignments and its latest runs, newest first. 404 for
-   * an unknown ID.
+   * connections, its assignments, whether new subjects of its scope get it
+   * by default, and its latest runs, newest first. 404 for an unknown ID.
    */
   readonly workflow: (id: string) => Promise<{
     readonly inspection: WorkflowInspection;
     readonly assignments: readonly WorkflowAssignment[];
+    readonly isDefault: boolean;
     readonly runs: readonly WorkflowRunSummary[];
   }>;
   /**
-   * Workflow runs, newest first, filtered by status and asset symbol.
-   * Unknown statuses are ignored.
+   * Workflow runs, newest first, filtered by status, trigger and asset
+   * symbol. Unknown statuses and triggers are ignored.
    */
   readonly workflowRuns: (filter: {
     readonly status?: string;
+    readonly trigger?: string;
     readonly symbol?: string;
   }) => Promise<readonly WorkflowRunSummary[]>;
   /** A run with its step outcomes. 404 for an unknown ID. */

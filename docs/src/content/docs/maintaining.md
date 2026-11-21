@@ -376,6 +376,14 @@ definitions (such as Python calculation `TYPE`) stay after those definitions.
   dependency key for every argument.
 - Keep HTTP error translation in `runHttp`; keep schema validation in the validator.
 - Keep runtime-free view types separate for browser imports.
+- Workflow domain and persistence records belong in their owning `contracts.ts`,
+  using the existing schemas and domain types. Keep `views.ts` as independent,
+  browser-safe API DTOs; duplication at this boundary is intentional. Import display
+  projections directly from views, never reexport them from domain contracts.
+- Worker queue/cron handlers and dispatcher reports use Effect logs: the event
+  name is the JSON `message`, and structured fields are annotations. Entrypoints
+  install `WorkerLoggerLive`; domain operations never call `console` or
+  `JSON.stringify` for logs.
 - Prefer a small interface that hides meaningful work. Avoid pass-through
   layers, compatibility barrels and one-file-per-helper rules.
 - Update the relevant behavior test and this map when responsibilities move.

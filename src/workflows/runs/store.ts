@@ -18,7 +18,28 @@ export interface ClaimRun {
   readonly processingDate: string;
   readonly trigger: RunTrigger;
   readonly rerunOf: string | null;
+  /**
+   * The schedule occurrence a scheduled run claims (ISO whole UTC hour);
+   * null for a manual run. An assignment claims each occurrence once.
+   */
+  readonly scheduledFor: string | null;
   readonly now: string;
+}
+
+/**
+ * What a claim recorded: a new `queued` or `skipped` run (`claimed`), or,
+ * when the assignment had already claimed the occurrence, that earlier run.
+ */
+export interface ClaimOutcome {
+  readonly run: WorkflowRunSummary;
+  readonly claimed: boolean;
+}
+
+/** An enabled assignment whose latest due occurrence it has not claimed. */
+export interface DueAssignment {
+  readonly workflowId: string;
+  readonly subject: Subject;
+  readonly scheduledFor: string;
 }
 
 /**
@@ -44,13 +65,27 @@ export class WorkflowRuns extends Context.Service<
     /**
      * Atomically claim the assignment's one active-run slot and capture the
      * definition. Records a `queued` run, or a `skipped` one when another run
-     * of the assignment is active. `not_found` for an unknown definition or
-     * assignment; `conflict` when the definition, assignment or asset is
-     * disabled (nothing is recorded then).
+     * of the assignment is active; for a schedule occurrence the assignment
+     * already claimed, records nothing and returns the earlier run.
+     * `not_found` for an unknown definition or assignment; `conflict` when
+     * the definition, assignment or asset is disabled (nothing is recorded
+     * then).
      */
     readonly claim: (
       input: ClaimRun,
-    ) => Effect.Effect<WorkflowRunSummary, WorkflowError>;
+    ) => Effect.Effect<ClaimOutcome, WorkflowError>;
+    /**
+     * Enabled assignments (of enabled definitions and, for assets, enabled
+     * assets) that have not claimed their definition's occurrence, given the
+     * occurrence for each UTC hour (index 0–23). Ordered by occurrence,
+     * workflow ID, subject kind and subject ID, at most `limit`, after the
+     * optional last selected assignment (even if it was not claimed).
+     */
+    readonly due: (
+      occurrenceByHour: readonly string[],
+      limit: number,
+      after?: DueAssignment,
+    ) => Effect.Effect<readonly DueAssignment[], WorkflowError>;
     readonly get: (
       runId: string,
     ) => Effect.Effect<WorkflowRunDetail, WorkflowError>;
@@ -62,6 +97,11 @@ export class WorkflowRuns extends Context.Service<
     readonly active: (
       workflowId: string,
       subject: Subject,
+    ) => Effect.Effect<readonly WorkflowRunSummary[], WorkflowError>;
+    /** Active runs by creation time and ID, at most `limit`, after a cursor. */
+    readonly allActive: (
+      limit: number,
+      after?: Pick<WorkflowRunSummary, "createdAt" | "id">,
     ) => Effect.Effect<readonly WorkflowRunSummary[], WorkflowError>;
     /**
      * Mark an active run `running` and return what it executes, or null when

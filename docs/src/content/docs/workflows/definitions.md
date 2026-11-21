@@ -1,14 +1,17 @@
 ---
 title: Assets and workflow definitions
-description: Assets, complete workflow specifications, step types and their contracts, validation and assignments.
+description: Assets, complete workflow specifications, step types and their contracts, validation, assignments and defaults.
 ---
 
 The workflow service is being introduced beside the current downloader (see
 the [specification](https://github.com/maxime-filippini/data-service/blob/develop/docs/specs/workflow-service.md)).
 Configuration can be created, validated, assigned and inspected, and an
-assignment can be [run by hand](/docs/workflows/runs/). Nothing runs
-definitions on a schedule yet: the current
-[daily schedule](/docs/pipeline/schedule/) still owns downloads.
+assignment can be [run by hand](/docs/workflows/runs/) or
+[dispatched daily](/docs/workflows/runs/#scheduled-dispatch). Scheduled
+dispatch is switched off in every deployed environment
+(`WORKFLOW_DISPATCH` is `off`): the current
+[daily schedule](/docs/pipeline/schedule/) still owns downloads until the
+cutover.
 
 ## Assets
 
@@ -16,9 +19,10 @@ An asset is an instrument identified by its symbol, such as `AAPL.US` or
 `BRK-B.US`. Provider-qualified symbols are kept exactly as given. Datasets are
 not part of an asset's identity, and creating one downloads nothing and
 creates no portfolio. `provider` and `backfillStartDate` are its download
-settings; `enabled: false` pauses it without deleting it. Deleting an asset
-removes its workflow assignments; it is refused (`409`) while a run for the
-asset is active.
+settings; `enabled: false` pauses it without deleting it. Creating an asset
+assigns it the [asset defaults](#defaults). Deleting an asset removes its
+workflow assignments; it is refused (`409`) while a run for the asset is
+active.
 
 Assets are separate from the legacy `tracked_symbols` registry, which keeps
 working unchanged.
@@ -49,7 +53,9 @@ and replaced as a whole with `PUT`:
 ```
 
 - `scope` is the subject kind it runs for: `asset` or `portfolio`.
-- `schedule.hourUtc` is the whole UTC hour (0–23) it runs daily.
+- `schedule.hourUtc` is the whole UTC hour (0–23) at which it is
+  [dispatched](/docs/workflows/runs/#scheduled-dispatch) daily for each
+  enabled assignment.
 - `steps` run in the listed order. Each has a unique `id`, a registered
   `type`, literal `params` and `inputs` bindings. Omitted `params` and
   `inputs` are saved as `{}`.
@@ -126,18 +132,52 @@ saved definition unchanged.
 An assignment links one definition to one existing subject of its scope, at
 most once. Assignments can be disabled to pause one subject without changing
 the shared definition. A definition's scope can't change while it has
-assignments (`409`); remove them first. Deleting a definition removes its
-assignments. Deleting a definition or removing an assignment is refused
-(`409`) while it has an active run; run history is kept either way.
+assignments or is a default (`409`); remove them first. Deleting a definition
+removes its assignments and its default link. Deleting a definition or
+removing an assignment is refused (`409`) while it has an active run; run
+history is kept either way.
+
+Each assignment is listed with its definition's schedule (`schedule.hourUtc`)
+and enabled state (`workflowEnabled`). `GET /api/workflow-assignments` lists
+them across definitions, filtered by `workflowId` or by subject
+(`subjectKind` and `subjectId` together): what is scheduled for which
+subject.
+
+## Defaults
+
+Defaults are explicit per subject kind: a definition made an `asset` default
+is assigned, enabled, to every asset created afterwards, in the same database
+batch as the asset. A definition can only be a default for its own scope.
+
+```sh
+curl -X PUT "$URL/api/workflow-defaults/asset/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl "$URL/api/workflow-defaults" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X DELETE "$URL/api/workflow-defaults/asset/$ID" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+curl -X POST "$URL/api/workflow-defaults/asset/apply" -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
+```
+
+- Adding a default is idempotent. Adding or removing one affects only
+  subjects created later; existing subjects keep their assignments.
+- Applying the defaults to existing subjects is explicit: `POST
+/api/workflow-defaults/<kind>/apply` adds each missing default assignment,
+  enabled, and returns them as `added`. It never touches an existing
+  assignment, so a deliberately disabled one stays disabled, and applying
+  again adds nothing. A removed assignment counts as missing.
+- Creating a subject that already exists (`409`) assigns nothing.
+- Portfolio creation will use the same hook (`assignDefaultsOnCreate` in
+  `src/workflows/d1.ts`) once portfolios become workflow subjects.
 
 ## In the app
 
 - **Assets** (`/assets`, `/assets/:symbol`) list assets and the definitions
   assigned to each.
-- **Workflows** (`/workflows`, `/workflows/:id`) list definitions and show one
-  with its schedule, assignments and ordered steps: each step's parameters,
+- **Workflows** (`/workflows`, `/workflows/:id`) list definitions and the
+  defaults for each subject kind, and show one with its schedule, whether it
+  is a default, its assignments and ordered steps: each step's parameters,
   where each input comes from (a literal, the run context, or a link to the
   earlier step), and which later steps use each output.
+
+An asset's page shows each assigned workflow's daily UTC hour.
 
 Both also list recent [runs](/docs/workflows/runs/#in-the-app). These pages
 are read-only; change configuration through the API. See

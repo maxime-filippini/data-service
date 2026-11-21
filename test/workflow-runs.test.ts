@@ -18,11 +18,11 @@ import {
   rawPricesEod,
   type StepType,
 } from "$/workflows/registry";
+import type { RunPlatform } from "$/workflows/runs/contracts";
 import type {
-  RunPlatform,
   WorkflowRunDetail,
   WorkflowRunSummary,
-} from "$/workflows/runs/contracts";
+} from "$/workflows/runs/views";
 
 import { makeTestDatabase } from "./support/d1";
 

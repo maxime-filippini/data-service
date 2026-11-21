@@ -8,7 +8,8 @@ import type { SubjectView } from "../views";
  * Where a run is. `queued`: claimed, its Workflow instance launched or
  * launching. `running`: executing its steps. `waiting`: in a durable wait
  * for upstream data. `completed` and `failed` are final. `skipped`: never
- * ran, because another run of the same assignment was active.
+ * ran, because another run of the same assignment was active (for a
+ * scheduled run, when its occurrence was due).
  */
 export type WorkflowRunStatus =
   "queued" | "running" | "waiting" | "completed" | "failed" | "skipped";
@@ -41,6 +42,12 @@ export interface WorkflowRunSummary {
   readonly trigger: RunTrigger;
   /** The run this one reruns from the beginning, if any. */
   readonly rerunOf: string | null;
+  /**
+   * For a scheduled run, the daily occurrence (a whole UTC hour) it was
+   * dispatched for; its processing date is that occurrence's UTC date.
+   * Null for manual runs.
+   */
+  readonly scheduledFor: string | null;
   readonly status: WorkflowRunStatus;
   /** Why the run failed or was skipped. */
   readonly error: string | null;

@@ -702,6 +702,8 @@ test("assignments are listed, added, disabled and removed, once per subject", as
     {
       workflowId: id,
       workflowName: "Daily asset prices",
+      workflowEnabled: true,
+      schedule: assetPrices.schedule,
       subject: { kind: "asset", symbol: "AAPL.US" },
       enabled: true,
       createdAt: undefined,
@@ -794,7 +796,7 @@ test("assignments are listed, added, disabled and removed, once per subject", as
   );
 });
 
-test("the scope cannot change while the definition has assignments", async () => {
+test("the scope cannot change while the definition has assignments or is a default", async () => {
   const { api, json, createAsset, createWorkflow } = setup([notePortfolio]);
   await createAsset("AAPL.US");
   const { id } = await createWorkflow(assetPrices);
@@ -811,6 +813,15 @@ test("the scope cannot change while the definition has assignments", async () =>
 
   assert.equal(
     (await api(`/workflows/${id}/assignments/asset/AAPL.US`, "DELETE")).status,
+    204,
+  );
+  await json(api(`/workflow-defaults/asset/${id}`, "PUT"));
+  assert.equal(
+    (await api(`/workflows/${id}`, "PUT", portfolioNotes)).status,
+    409,
+  );
+  assert.equal(
+    (await api(`/workflow-defaults/asset/${id}`, "DELETE")).status,
     204,
   );
   const changed = await json(api(`/workflows/${id}`, "PUT", portfolioNotes));

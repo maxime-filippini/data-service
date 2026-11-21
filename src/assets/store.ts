@@ -13,7 +13,10 @@ export class Assets extends Context.Service<
     /** Every asset, by symbol. */
     readonly list: () => Effect.Effect<readonly Asset[], AssetError>;
     readonly get: (symbol: string) => Effect.Effect<Asset, AssetError>;
-    /** A `conflict` if the symbol already exists. */
+    /**
+     * Create the asset with the asset defaults' workflow assignments, in one
+     * batch. A `conflict` if the symbol already exists (nothing is assigned).
+     */
     readonly create: (
       input: CreateAsset,
       now: string,

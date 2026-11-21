@@ -1,12 +1,13 @@
 ---
 title: Workflow runs
-description: Starting a definition for one subject, how its steps execute, run and step outcomes, artifacts, and running it locally against fixtures.
+description: Starting a definition for one subject by hand or on its daily schedule, how its steps execute, run and step outcomes, artifacts, and running it locally against fixtures.
 ---
 
 A run executes one workflow definition for one assigned subject and one
-processing date. Runs are started by hand for now; the daily dispatcher comes
-later, and the legacy [daily schedule](/docs/pipeline/schedule/) still owns
-production downloads.
+processing date. Runs are started by hand or
+[dispatched daily](#scheduled-dispatch) by the hourly tick. Dispatch is off
+in every deployed environment: the legacy
+[daily schedule](/docs/pipeline/schedule/) still owns production downloads.
 
 ## Starting a run
 
@@ -34,6 +35,72 @@ assignments run independently.
 `POST /api/runs/:runId/rerun` starts a new run of the same assignment and
 processing date from the beginning, with the definition as it is now. Its
 `rerunOf` names the earlier run. There is no resuming from a chosen step.
+
+## Scheduled dispatch
+
+The Worker's hourly cron starts a durable dispatcher
+(`WorkflowDispatchWorkflow`, bound as `WORKFLOW_DISPATCHES`) when the
+`WORKFLOW_DISPATCH` var is `on`.
+It is `off` in `wrangler.jsonc` for both production and dev, so the new
+dispatcher and the legacy scheduled download never both download. Switching
+it on is a step of the download cutover, together with stopping the legacy
+schedule. Tests and the [fixture command](#running-locally-against-fixtures)
+run it with a controlled clock.
+
+The dispatcher uses one instance ID per UTC tick hour, so a repeated trigger
+or a lost launch response does not start a second dispatcher for that hour.
+It uses the original tick time throughout, including after replay or across
+midnight, rather than moving assignments to a newer occurrence partway
+through dispatch.
+
+Each dispatch:
+
+1. **Reconciles** active runs (`queued`, `running`, `waiting`) against their
+   Workflow instances, as a submission does (see
+   [Reconciling launches](#reconciling-launches)), so an uncertain launch is
+   relaunched under its ID and a stopped instance's run fails without waiting
+   for a new submission.
+2. **Finds** each enabled definition's latest due occurrence: today at its
+   `schedule.hourUtc` once that hour has started, otherwise yesterday's. The
+   run's processing date is the occurrence's UTC date, so a 23:00 workflow
+   ticked at 00:10 runs for the previous day.
+3. **Claims and launches** every enabled assignment (of an enabled
+   definition and, for an asset, an enabled asset) that has not claimed that
+   occurrence, through the same claim and launch path as a manual run, with
+   `trigger: "schedule"` and `scheduledFor` set to the occurrence.
+
+Rules that follow:
+
+- **Once per occurrence.** A unique index on
+  `(workflow_id, subject_kind, subject_id, scheduled_for)` makes the claim a
+  no-op when the assignment already claimed the occurrence, so repeated or
+  concurrent ticks cannot dispatch it twice.
+- **Latest only.** Missed occurrences are never replayed: after downtime,
+  the next tick runs only the latest occurrence.
+- **Overlap.** An occurrence due while the assignment's previous run (manual
+  or scheduled) is still active is recorded as a `skipped` run with its
+  `scheduledFor` and an `error` naming the active run. Equally, a manual
+  submission while a scheduled run is active is skipped.
+- **Disabled.** Disabled definitions, assignments and assets are not
+  dispatched and nothing is recorded. Once enabled again, an assignment
+  catches up the latest occurrence if it never claimed it; the same goes for
+  a new assignment (for example an asset created after its default's hour)
+  and a definition whose hour moved later in the day.
+- **Batched, not capped per tick.** The dispatcher reconciles active runs
+  and claims due assignments in batches of at most 100, continuing until
+  both scans are exhausted. For example, 500 assignments are dispatched in
+  five batches by the same dispatcher, without waiting for five hourly
+  ticks. Each assignment still executes its own workflow independently;
+  there is no cross-assignment barrier between steps.
+- **Checkpointed.** Selecting and processing each batch are separate durable
+  steps. After interruption, the dispatcher reuses the selected batch and
+  resumes from its checkpoints. Occurrence claims and run IDs remain
+  retry-safe if a batch executes again before its checkpoint is saved.
+- **Forward progress.** Keyset cursors advance past each selected page,
+  including assignments rejected after selection and active runs kept
+  active. Removing claimed rows or keeping older runs active cannot skip
+  later pages or keep the dispatcher cycling over the first batch. A
+  rejected assignment is reported and can be reconsidered by a later tick.
 
 ## How a run executes
 
@@ -88,7 +155,9 @@ Workflow instance:
 ## Run and step outcomes
 
 `GET /api/runs` lists runs, newest first (filters: `workflowId`,
-`subjectKind` and `subjectId`, `status`, `limit` up to 200).
+`subjectKind` and `subjectId`, `status`, `trigger` (`manual` or
+`schedule`), `limit` up to 200). For example, the occurrences skipped because
+a run was still active: `?trigger=schedule&status=skipped`.
 `GET /api/runs/:runId` returns a run with every captured step:
 
 ```json
@@ -100,6 +169,7 @@ Workflow instance:
   "processingDate": "2024-01-10",
   "trigger": "manual",
   "rerunOf": null,
+  "scheduledFor": null,
   "status": "completed",
   "error": null,
   "steps": [
@@ -122,7 +192,9 @@ Workflow instance:
 }
 ```
 
-Timestamps are left out above. A step is `pending` until reached, `running`
+Timestamps are left out above. A scheduled run has `"trigger": "schedule"`
+and `scheduledFor`, the occurrence it was dispatched for (such as
+`"2024-01-10T02:00:00.000Z"`). A step is `pending` until reached, `running`
 while it executes or retries (with the last attempt's `error`), then
 `completed` or `failed`; steps a finished run never reached are `skipped`.
 
@@ -154,8 +226,9 @@ last is [published](/docs/workflows/datasets/) to a separate location.
 
 ## In the app
 
-**Workflow runs** (`/workflow-runs`) lists runs with status and asset
-filters. A run's page shows its status, error, processing date and each step
+**Workflow runs** (`/workflow-runs`) lists runs with status, trigger and
+asset filters; scheduled runs show their occurrence's hour, and a skipped
+run's reason is on its status badge. A run's page shows its status, error, processing date and each step
 with its attempts, error and outputs, linking artifacts. Workflow and asset
 pages list their recent runs.
 
@@ -172,9 +245,12 @@ the Worker, without credentials or network. It needs
 
 1. it starts the real Python service with uv on a free localhost port;
 2. it opens a local SQLite D1 database with the real migrations;
-3. it creates an asset, a definition and an assignment through the
-   management API;
-4. it starts a run with `POST /api/runs`;
+3. through the management API it creates a definition, makes it the
+   [asset default](/docs/workflows/definitions/#defaults) and creates the
+   asset, which assigns it;
+4. it starts a run with `POST /api/runs` or, with `--scheduled`, runs one
+   [dispatch tick](#scheduled-dispatch) at 03:00 UTC on the date, which
+   dispatches the definition's 02:00 occurrence;
 5. an in-process Workflow binding executes the run. The real EODHD adapter
    is answered from `fixtures/eodhd/<SYMBOL>.json`, the normalize step calls
    the Python service over HTTP, and the publish step copies its output to
@@ -195,7 +271,7 @@ first:
 | `api.log`                                                                  | Each API request and its response |
 
 Options: `--out DIR`, `--symbol MSFT.US` (fixtures exist for `AAPL.US` and
-`MSFT.US`) and `--date YYYY-MM-DD` (default `2024-01-10`). Retries happen
+`MSFT.US`), `--date YYYY-MM-DD` (default `2024-01-10`) and `--scheduled`. Retries happen
 without waiting locally.
 
 The local Workflow binding and Steps adapter follow the platform's rules

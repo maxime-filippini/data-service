@@ -22,6 +22,10 @@ import { createRunRoutes } from "$/routes/runs";
 import { createScheduleRoutes } from "$/routes/schedule";
 import { createSymbolRoutes } from "$/routes/symbols";
 import { createStepTypeRoutes, createWorkflowRoutes } from "$/routes/workflows";
+import {
+  createAssignmentRoutes,
+  createWorkflowDefaultRoutes,
+} from "$/routes/workflows/defaults";
 
 /**
  * Every route on the hostname:
@@ -79,6 +83,17 @@ export const createRoutes = (
   api.route(
     "/step-types",
     createStepTypeRoutes(dependencies.workflowsFor, requireManagementToken),
+  );
+  api.route(
+    "/workflow-defaults",
+    createWorkflowDefaultRoutes(
+      dependencies.workflowsFor,
+      requireManagementToken,
+    ),
+  );
+  api.route(
+    "/workflow-assignments",
+    createAssignmentRoutes(dependencies.workflowsFor, requireManagementToken),
   );
   api.route("/runs", createRunRoutes(dependencies, requireManagementToken));
   api.route(

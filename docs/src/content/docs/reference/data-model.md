@@ -143,6 +143,10 @@ erDiagram
     text subject_id PK "symbol or portfolio ID"
     int enabled
   }
+  workflow_defaults {
+    text subject_kind PK "asset | portfolio"
+    text workflow_id PK, FK
+  }
   workflow_runs {
     text run_id PK "also the Workflow instance ID"
     text workflow_id
@@ -152,6 +156,7 @@ erDiagram
     text processing_date
     text trigger "manual | schedule"
     text rerun_of
+    text scheduled_for "occurrence, scheduled runs only"
     text status "queued | running | waiting | completed | failed | skipped"
     text error
     text steps_json "captured steps"
@@ -167,6 +172,7 @@ erDiagram
     text error
   }
   workflow_definitions ||--o{ workflow_assignments : "assigned by"
+  workflow_definitions ||--o{ workflow_defaults : "default for"
   workflow_runs ||--o{ workflow_run_steps : "reached"
 ```
 
@@ -174,7 +180,12 @@ Steps, with their params and bindings, are JSON in `steps_json`; identity,
 scope and schedule are ordinary columns. Deleting a definition, an asset or
 (later) a portfolio removes its assignments in the same batch. The scope
 update is conditional on there being no assignments, so a racing assignment
-can't end up with the wrong kind of subject.
+can't end up with the wrong kind of subject; the same goes for default links.
+
+`workflow_defaults` lists, per subject kind, the definitions assigned to each
+new subject. Creating an asset inserts its default assignments in the same
+batch, before the asset row and only if the asset does not exist yet.
+Scheduled runs record their daily occurrence in `scheduled_for`.
 
 A run captures its definition's name and steps when it claims the
 assignment, and has no foreign keys to definitions, assignments or assets, so
@@ -195,10 +206,11 @@ runs it has no foreign keys, so deleting configuration keeps it.
 Partial unique indexes enforce the service's "one at a time" rules in the
 database, so two Workers racing can't both win:
 
-| Index                          | Rule                                                     |
-| ------------------------------ | -------------------------------------------------------- |
-| `ingestion_runs_one_fetching`  | One `fetching` run per `(dataset, symbol)`               |
-| `processing_jobs_one_active`   | One `queued` or `processing` job per `(dataset, symbol)` |
-| `schedule_runs_one_per_day`    | One `schedule`-triggered run per `run_date`              |
-| `calculation_runs_one_running` | One `running` run per calculation                        |
-| `workflow_runs_one_active`     | One `queued`, `running` or `waiting` run per assignment  |
+| Index                              | Rule                                                               |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `ingestion_runs_one_fetching`      | One `fetching` run per `(dataset, symbol)`                         |
+| `processing_jobs_one_active`       | One `queued` or `processing` job per `(dataset, symbol)`           |
+| `schedule_runs_one_per_day`        | One `schedule`-triggered run per `run_date`                        |
+| `calculation_runs_one_running`     | One `running` run per calculation                                  |
+| `workflow_runs_one_active`         | One `queued`, `running` or `waiting` run per assignment            |
+| `workflow_runs_one_per_occurrence` | One run (queued or skipped) per assignment and schedule occurrence |

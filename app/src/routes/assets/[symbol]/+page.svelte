@@ -2,6 +2,7 @@
   import { publicationDataUrl } from "#lib/api.ts";
   import { formatBytes, formatDateTime } from "#lib/format.ts";
   import { href } from "#lib/router.svelte.ts";
+  import { formatHourUtc } from "#lib/subjects.ts";
   import WorkflowRunsTable from "#lib/WorkflowRunsTable.svelte";
 
   import type { PageProps } from "./$types";
@@ -36,6 +37,7 @@
     <thead>
       <tr>
         <th>Workflow</th>
+        <th>Schedule</th>
         <th>Assignment</th>
       </tr>
     </thead>
@@ -46,6 +48,13 @@
             ><a href={href("workflows", { id: assignment.workflowId })}
               >{assignment.workflowName}</a
             ></td
+          >
+          <td data-label="Schedule" class="mono"
+            >Daily at {formatHourUtc(
+              assignment.schedule.hourUtc,
+            )}{#if !assignment.workflowEnabled}<span class="muted">
+                (workflow paused)</span
+              >{/if}</td
           >
           <td data-label="Assignment"
             >{assignment.enabled ? "Enabled" : "Disabled"}</td
