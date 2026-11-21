@@ -727,7 +727,13 @@ test("the app serves assets, workflow definitions and the step catalog behind Ac
   };
   assert.deepEqual(
     stepTypes.map((stepType) => stepType.type),
-    ["download-prices", "normalize-prices", "publish-dataset"],
+    [
+      "download-prices",
+      "normalize-prices",
+      "publish-dataset",
+      "portfolio-holdings",
+      "wait-for-asset-publications",
+    ],
   );
 
   const asset = {

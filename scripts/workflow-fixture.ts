@@ -23,6 +23,7 @@
  *   run.json               the run and its step outcomes (API view)
  *   publication.json       the publication's metadata (API view)
  *   portfolio.json         a portfolio with two dated holdings snapshots
+ *   portfolio-run.json     the portfolio's holdings and matching publications
  *   api.log                every API request and response status
  *
  * Both languages share `r2/raw-market-data/` as the run artifact store.
@@ -209,6 +210,8 @@ const command = Command.make(
           run.status === "completed"
             ? yield* api<unknown>("GET", `/datasets/prices_eod/asset/${symbol}`)
             : undefined;
+        let portfolioRun: WorkflowRunDetail | undefined;
+
         if (publication !== undefined) {
           yield* writeJson("publication.json", publication);
           const firstDate = previousDay(
@@ -229,6 +232,50 @@ const command = Command.make(
             "portfolio.json",
             yield* api<Portfolio>("GET", `/portfolios/${id}`),
           );
+          const portfolioWorkflow = yield* api<{ id: string }>(
+            "POST",
+            "/workflows",
+            {
+              name: "Portfolio price dependencies (fixture)",
+              scope: "portfolio",
+              enabled: true,
+              schedule: { hourUtc: 4 },
+              steps: [
+                {
+                  id: "holdings",
+                  type: "portfolio-holdings",
+                  inputs: {
+                    portfolio: { ref: "context.subject" },
+                    processingDate: { ref: "context.processingDate" },
+                  },
+                },
+                {
+                  id: "dependencies",
+                  type: "wait-for-asset-publications",
+                  params: { workflowId: workflow.id, timeoutSeconds: 1 },
+                  inputs: {
+                    assets: { ref: "steps.holdings.outputs.assets" },
+                    processingDate: { ref: "context.processingDate" },
+                  },
+                },
+              ],
+            },
+          );
+          const subject = { kind: "portfolio", id };
+          yield* api("POST", `/workflows/${portfolioWorkflow.id}/assignments`, {
+            subject,
+          });
+          const startedPortfolio = yield* api<{ id: string }>("POST", "/runs", {
+            workflowId: portfolioWorkflow.id,
+            subject,
+            processingDate: run.processingDate,
+          });
+          yield* Effect.promise(() => service.platform.idle());
+          portfolioRun = yield* api<WorkflowRunDetail>(
+            "GET",
+            `/runs/${startedPortfolio.id}`,
+          );
+          yield* writeJson("portfolio-run.json", portfolioRun);
         }
 
         const show = (file: string) => path.relative(".", file) || ".";
@@ -255,11 +302,21 @@ const command = Command.make(
             `Portfolio:  ${show(path.join(out, "portfolio.json"))}`,
           );
         }
+        if (portfolioRun !== undefined)
+          yield* Console.log(
+            `Portfolio run ${portfolioRun.id}: ${portfolioRun.status} (${show(path.join(out, "portfolio-run.json"))})`,
+          );
         yield* Console.log(`Run record: ${show(path.join(out, "run.json"))}`);
         yield* Console.log(`Database:   ${show(path.join(out, "d1.sqlite"))}`);
         if (run.status !== "completed")
           return yield* Effect.fail(
             new ScriptError(`The run ended ${run.status}`),
+          );
+        if (portfolioRun?.status !== "completed")
+          return yield* Effect.fail(
+            new ScriptError(
+              `The portfolio run ended ${portfolioRun?.status ?? "without starting"}`,
+            ),
           );
       });
       yield* scenario.pipe(Effect.provide(instance));

@@ -30,6 +30,17 @@ export interface PublicationFilter {
   readonly dataset?: PublishedDataset;
 }
 
+/** Upstream results for the requested workflow, symbols and processing date. */
+export interface AssetPublicationCheck {
+  readonly symbol: string;
+  readonly succeeded: boolean;
+  readonly publication: {
+    readonly runId: string;
+    readonly etag: string;
+    readonly matches: boolean;
+  } | null;
+}
+
 /**
  * Injectable publication metadata (D1). One row per dataset and subject,
  * replaced by each publication. Recording is an upsert, so repeating it
@@ -49,6 +60,12 @@ export class DatasetPublicationStore extends Context.Service<
       dataset: PublishedDataset,
       subject: Subject,
     ) => Effect.Effect<PublicationView, DatasetError>;
+    readonly checkAssetPrices: (request: {
+      readonly workflowId: string;
+      readonly symbols: readonly string[];
+      readonly processingDate: string;
+      readonly deadline: string;
+    }) => Effect.Effect<readonly AssetPublicationCheck[], DatasetError>;
   }
 >()("data-service/DatasetPublicationStore") {}
 
@@ -80,5 +97,7 @@ export class DatasetObjectStore extends Context.Service<
     readonly get: (
       key: string,
     ) => Effect.Effect<DatasetObject | null, DatasetError>;
+    /** Read an object's identity without downloading the dataset. */
+    readonly etag: (key: string) => Effect.Effect<string | null, DatasetError>;
   }
 >()("data-service/DatasetObjectStore") {}

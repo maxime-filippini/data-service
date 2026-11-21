@@ -38,5 +38,10 @@ export const R2DatasetObjectStoreLive = (
                 },
           ),
         ),
+      etag: (key) =>
+        Effect.tryPromise({
+          try: async () => (await bucket.head(key))?.etag ?? null,
+          catch: () => storageError("Could not check the published dataset"),
+        }),
     }),
   );

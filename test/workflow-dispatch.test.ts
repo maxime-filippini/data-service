@@ -34,7 +34,10 @@ const setup = (
   const { api, json, dependencies, env } = service;
 
   /** One hourly tick at the given instant. */
-  const tick = (at: string, steps = localSteps(new Map(), { delayScale: 0 })) =>
+  const tick = (
+    at: string,
+    steps: Steps = localSteps(new Map(), { delayScale: 0 }),
+  ) =>
     scheduledWorkflowTick(
       dependencies,
       env,

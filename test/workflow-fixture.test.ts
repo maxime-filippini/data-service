@@ -103,6 +103,23 @@ test(
           },
         ],
       );
+      const portfolioRun = JSON.parse(
+        readFileSync(join(out, "portfolio-run.json"), "utf8"),
+      ) as WorkflowRunDetail;
+      assert.equal(portfolioRun.status, "completed", portfolioRun.error ?? "");
+      assert.deepEqual(portfolioRun.subject, {
+        kind: "portfolio",
+        id: portfolio.id,
+      });
+      assert.deepEqual(portfolioRun.steps[1]?.outputs?.publications, [
+        {
+          dataset: "prices_eod",
+          subject: detail.subject,
+          processingDate: detail.processingDate,
+          workflowId: detail.workflowId,
+          runId: detail.id,
+        },
+      ]);
 
       assert.ok(existsSync(join(out, "d1.sqlite")));
       assert.match(

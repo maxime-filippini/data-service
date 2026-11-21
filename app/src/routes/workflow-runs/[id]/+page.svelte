@@ -12,6 +12,16 @@
 
   import type { PageProps } from "./$types";
 
+  const missingReasons = {
+    "no-successful-run":
+      "No successful run from the upstream workflow for the requested date",
+    "no-publication": "The asset has no current price publication",
+    "publication-does-not-match":
+      "The current publication came from a different run",
+    "publication-object-does-not-match":
+      "The published data is missing or differs from the publication record",
+  } as const;
+
   let { data }: PageProps = $props();
   const run = $derived(data.run);
 
@@ -108,6 +118,23 @@
           {step.status === "running" ? "Last attempt: " : ""}{step.error}
         </p>
       {/if}
+      {#if step.waiting !== null}
+        <p>
+          {step.status === "waiting"
+            ? "Waiting for assets. Deadline"
+            : "Last missing inputs. Wait deadline"}
+          <time datetime={step.waiting.deadline}
+            >{formatDateTime(step.waiting.deadline)}</time
+          >
+        </p>
+        <ul class="missing">
+          {#each step.waiting.missing as { symbol, reason } (symbol)}
+            <li>
+              <span class="mono">{symbol}</span> · {missingReasons[reason]}
+            </li>
+          {/each}
+        </ul>
+      {/if}
       {#if outputs(step).length > 0}
         <dl class="outputs">
           {#each outputs(step) as [name, value] (name)}
@@ -132,6 +159,23 @@
                 <a href={publicationDataUrl(value.dataset, value.subject)}
                   >current data</a
                 >
+              {:else if Array.isArray(value) && value.length > 0 && value.every(isPublication)}
+                <ul class="publications">
+                  {#each value as publication (subjectLabel(publication.subject))}
+                    <li>
+                      <a
+                        href={publicationDataUrl(
+                          publication.dataset,
+                          publication.subject,
+                        )}
+                      >
+                        {subjectLabel(publication.subject)}
+                      </a>
+                      (processing date
+                      <span class="mono">{publication.processingDate}</span>)
+                    </li>
+                  {/each}
+                </ul>
               {:else}
                 <code>{JSON.stringify(value)}</code>
               {/if}
@@ -196,6 +240,11 @@
   }
   .step p {
     margin: 0.5rem 0 0;
+  }
+  .missing,
+  .publications {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
   }
   .outputs {
     display: grid;
