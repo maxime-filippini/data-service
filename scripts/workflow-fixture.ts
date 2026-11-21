@@ -44,6 +44,7 @@ import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
 import { localSteps } from "$/local/steps";
+import { HttpManagementApiLive, ManagementApi } from "$/management-api/client";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import type { Portfolio } from "$/portfolios/views";
 import { createRoutes } from "$/routes";
@@ -51,7 +52,6 @@ import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 import { runScript, ScriptError } from "./cli";
-import { ManagementApi, ManagementApiLive } from "./management-api";
 
 // A local-only token: the management API's authentication stays in place.
 const TOKEN = "local-fixture-token";
@@ -127,7 +127,7 @@ const command = Command.make(
           })
           .pipe(Effect.orDie);
       // The management API in-process, through its real routes and auth.
-      const instance = ManagementApiLive({
+      const instance = HttpManagementApiLive({
         origin: "http://localhost",
         token: TOKEN,
         fetch: async (request) => routes.fetch(request, env),
