@@ -51,6 +51,7 @@ import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
 import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 import { runScript, ScriptError } from "./cli";
+import { ManagementApi, ManagementApiLive } from "./management-api";
 
 // A local-only token: the management API's authentication stays in place.
 const TOKEN = "local-fixture-token";
@@ -119,168 +120,149 @@ const command = Command.make(
         fetch: () => new Response("No app locally", { status: 404 }),
       });
 
-      const api = <T>(method: string, route: string, body?: unknown) =>
-        Effect.gen(function* () {
-          const response = yield* Effect.promise(async () =>
-            routes.request(
-              `http://localhost/api${route}`,
-              {
-                method,
-                headers: {
-                  Authorization: `Bearer ${TOKEN}`,
-                  ...(body === undefined
-                    ? {}
-                    : { "Content-Type": "application/json" }),
-                },
-                ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-              },
-              env,
-            ),
-          );
-          const responseText = yield* Effect.promise(() => response.text());
-          yield* fs.writeFileString(
-            path.join(out, "api.log"),
-            `${method} /api${route} -> ${response.status}\n`,
-            { flag: "a" },
-          );
-          if (!response.ok)
-            return yield* Effect.fail(
-              new ScriptError(
-                `${method} /api${route} -> ${response.status}: ${responseText}`,
-              ),
-            );
-          return JSON.parse(responseText) as T;
-        });
+      const log = (line: string) =>
+        fs
+          .writeFileString(path.join(out, "api.log"), `${line}\n`, {
+            flag: "a",
+          })
+          .pipe(Effect.orDie);
+      // The management API in-process, through its real routes and auth.
+      const instance = ManagementApiLive({
+        origin: "http://localhost",
+        token: TOKEN,
+        fetch: async (request) => routes.fetch(request, env),
+        onResponse: log,
+      });
       const writeJson = (file: string, value: unknown) =>
         fs.writeFileString(
           path.join(out, file),
           `${JSON.stringify(value, null, 2)}\n`,
         );
 
-      const symbol = options.symbol;
-      const workflow = yield* api<{ id: string }>("POST", "/workflows", {
-        name: "Daily asset prices (fixture)",
-        scope: "asset",
-        enabled: true,
-        schedule: { hourUtc: 2 },
-        steps: [
-          {
-            id: "download",
-            type: "download-prices",
-            inputs: {
-              asset: { ref: "context.subject" },
-              throughDate: { ref: "context.processingDate" },
+      const scenario = Effect.gen(function* () {
+        const { request: api } = yield* ManagementApi;
+        const symbol = options.symbol;
+        const workflow = yield* api<{ id: string }>("POST", "/workflows", {
+          name: "Daily asset prices (fixture)",
+          scope: "asset",
+          enabled: true,
+          schedule: { hourUtc: 2 },
+          steps: [
+            {
+              id: "download",
+              type: "download-prices",
+              inputs: {
+                asset: { ref: "context.subject" },
+                throughDate: { ref: "context.processingDate" },
+              },
             },
-          },
-          {
-            id: "normalize",
-            type: "normalize-prices",
-            inputs: { raw: { ref: "steps.download.outputs.raw" } },
-          },
-          {
-            id: "publish",
-            type: "publish-dataset",
-            params: { dataset: "prices_eod" },
-            inputs: { data: { ref: "steps.normalize.outputs.prices" } },
-          },
-        ],
-      });
-      // The default assigns the definition to the asset when it is created.
-      yield* api("PUT", `/workflow-defaults/asset/${workflow.id}`);
-      yield* api("POST", "/assets", {
-        symbol,
-        provider: "eodhd",
-        backfillStartDate: "2024-01-01",
-      });
+            {
+              id: "normalize",
+              type: "normalize-prices",
+              inputs: { raw: { ref: "steps.download.outputs.raw" } },
+            },
+            {
+              id: "publish",
+              type: "publish-dataset",
+              params: { dataset: "prices_eod" },
+              inputs: { data: { ref: "steps.normalize.outputs.prices" } },
+            },
+          ],
+        });
+        // The default assigns the definition to the asset when it is created.
+        yield* api("PUT", `/workflow-defaults/asset/${workflow.id}`);
+        yield* api("POST", "/assets", {
+          symbol,
+          provider: "eodhd",
+          backfillStartDate: "2024-01-01",
+        });
 
-      const startManual = api<{ id: string }>("POST", "/runs", {
-        workflowId: workflow.id,
-        subject: { kind: "asset", symbol },
-        processingDate: options.date,
-      });
-      const dispatch = Effect.gen(function* () {
-        const at = `${options.date}T03:00:00Z`;
-        const tick = yield* Effect.promise(() =>
-          scheduledWorkflowTick(
-            service.dependencies,
-            env,
-            new Date(at),
-            localSteps(new Map(), { delayScale: 0 }),
-          ),
-        );
-        const run = tick.status === "dispatched" ? tick.runs[0] : undefined;
-        if (run === undefined)
-          return yield* Effect.fail(
-            new ScriptError("The tick dispatched no run"),
+        const startManual = api<{ id: string }>("POST", "/runs", {
+          workflowId: workflow.id,
+          subject: { kind: "asset", symbol },
+          processingDate: options.date,
+        });
+        const dispatch = Effect.gen(function* () {
+          const at = `${options.date}T03:00:00Z`;
+          const tick = yield* Effect.promise(() =>
+            scheduledWorkflowTick(
+              service.dependencies,
+              env,
+              new Date(at),
+              localSteps(new Map(), { delayScale: 0 }),
+            ),
           );
-        yield* fs.writeFileString(
-          path.join(out, "api.log"),
-          `tick ${at} -> run ${run.runId} (${run.status})\n`,
-          { flag: "a" },
-        );
-        return { id: run.runId };
-      });
-      const started = yield* options.scheduled ? dispatch : startManual;
-
-      yield* Effect.promise(() => service.platform.idle());
-      const run = yield* api<WorkflowRunDetail>("GET", `/runs/${started.id}`);
-      yield* writeJson("run.json", run);
-      const publication =
-        run.status === "completed"
-          ? yield* api<unknown>("GET", `/datasets/prices_eod/asset/${symbol}`)
-          : undefined;
-      if (publication !== undefined) {
-        yield* writeJson("publication.json", publication);
-        const firstDate = previousDay(
-          new Date(`${run.processingDate}T00:00:00Z`),
-        );
-        const { id } = yield* api<Portfolio>("POST", "/portfolios", {
-          name: `${symbol} fixture portfolio`,
-          snapshot: {
-            holdingsDate: firstDate,
-            holdings: [{ symbol, weight: 0.75 }],
-          },
-        });
-        yield* api("POST", `/portfolios/${id}/snapshots`, {
-          holdingsDate: run.processingDate,
-          holdings: [{ symbol, weight: 1.25 }],
-        });
-        yield* writeJson(
-          "portfolio.json",
-          yield* api<Portfolio>("GET", `/portfolios/${id}`),
-        );
-      }
-
-      const show = (file: string) => path.relative(".", file) || ".";
-      yield* Console.log(`Run ${run.id}: ${run.status}`);
-      for (const step of run.steps)
-        yield* Console.log(
-          `  ${step.position}. ${step.id} (${step.type}): ${step.status}` +
-            (step.error === null ? "" : ` - ${step.error}`),
-        );
-      for (const step of run.steps)
-        for (const value of Object.values(step.outputs ?? {}))
-          if (typeof value === "object" && value !== null && "id" in value)
-            yield* Console.log(
-              `  artifact: ${show(path.join(rawBucket, String(value.id)))}`,
+          const run = tick.status === "dispatched" ? tick.runs[0] : undefined;
+          if (run === undefined)
+            return yield* Effect.fail(
+              new ScriptError("The tick dispatched no run"),
             );
-      if (publication !== undefined) {
-        yield* Console.log(
-          `Published:  ${show(path.join(processedBucket, publishedDatasetKey("prices_eod", { kind: "asset", symbol })))}`,
-        );
-        yield* Console.log(
-          `Metadata:   ${show(path.join(out, "publication.json"))}`,
-        );
-        yield* Console.log(
-          `Portfolio:  ${show(path.join(out, "portfolio.json"))}`,
-        );
-      }
-      yield* Console.log(`Run record: ${show(path.join(out, "run.json"))}`);
-      yield* Console.log(`Database:   ${show(path.join(out, "d1.sqlite"))}`);
-      if (run.status !== "completed")
-        return yield* Effect.fail(
-          new ScriptError(`The run ended ${run.status}`),
-        );
+          yield* log(`tick ${at} -> run ${run.runId} (${run.status})`);
+          return { id: run.runId };
+        });
+        const started = yield* options.scheduled ? dispatch : startManual;
+
+        yield* Effect.promise(() => service.platform.idle());
+        const run = yield* api<WorkflowRunDetail>("GET", `/runs/${started.id}`);
+        yield* writeJson("run.json", run);
+        const publication =
+          run.status === "completed"
+            ? yield* api<unknown>("GET", `/datasets/prices_eod/asset/${symbol}`)
+            : undefined;
+        if (publication !== undefined) {
+          yield* writeJson("publication.json", publication);
+          const firstDate = previousDay(
+            new Date(`${run.processingDate}T00:00:00Z`),
+          );
+          const { id } = yield* api<Portfolio>("POST", "/portfolios", {
+            name: `${symbol} fixture portfolio`,
+            snapshot: {
+              holdingsDate: firstDate,
+              holdings: [{ symbol, weight: 0.75 }],
+            },
+          });
+          yield* api("POST", `/portfolios/${id}/snapshots`, {
+            holdingsDate: run.processingDate,
+            holdings: [{ symbol, weight: 1.25 }],
+          });
+          yield* writeJson(
+            "portfolio.json",
+            yield* api<Portfolio>("GET", `/portfolios/${id}`),
+          );
+        }
+
+        const show = (file: string) => path.relative(".", file) || ".";
+        yield* Console.log(`Run ${run.id}: ${run.status}`);
+        for (const step of run.steps)
+          yield* Console.log(
+            `  ${step.position}. ${step.id} (${step.type}): ${step.status}` +
+              (step.error === null ? "" : ` - ${step.error}`),
+          );
+        for (const step of run.steps)
+          for (const value of Object.values(step.outputs ?? {}))
+            if (typeof value === "object" && value !== null && "id" in value)
+              yield* Console.log(
+                `  artifact: ${show(path.join(rawBucket, String(value.id)))}`,
+              );
+        if (publication !== undefined) {
+          yield* Console.log(
+            `Published:  ${show(path.join(processedBucket, publishedDatasetKey("prices_eod", { kind: "asset", symbol })))}`,
+          );
+          yield* Console.log(
+            `Metadata:   ${show(path.join(out, "publication.json"))}`,
+          );
+          yield* Console.log(
+            `Portfolio:  ${show(path.join(out, "portfolio.json"))}`,
+          );
+        }
+        yield* Console.log(`Run record: ${show(path.join(out, "run.json"))}`);
+        yield* Console.log(`Database:   ${show(path.join(out, "d1.sqlite"))}`);
+        if (run.status !== "completed")
+          return yield* Effect.fail(
+            new ScriptError(`The run ended ${run.status}`),
+          );
+      });
+      yield* scenario.pipe(Effect.provide(instance));
     }).pipe(Effect.scoped),
 ).pipe(
   Command.withDescription(
