@@ -6,7 +6,7 @@ import {
   startScheduledWorkflowTick,
 } from "$/workflows/runs/dispatch";
 
-/** What the Worker's hourly scheduled handler selects from its bindings. */
+/** Overrides for the Worker's hourly scheduled handler; tests supply a stand-in. */
 export interface ScheduledDependencies {
   /** Where the dispatch Workflow starts; the `WORKFLOW_DISPATCHES` binding by default. */
   readonly dispatchPlatformFor?: (env: CloudflareBindings) => DispatchPlatform;
@@ -25,7 +25,7 @@ export type ScheduledHandlerOutcome =
 export const runScheduledHandlers = (
   now: Date,
   env: CloudflareBindings,
-  deps: ScheduledDependencies,
+  deps: ScheduledDependencies = {},
 ): Promise<ScheduledHandlerOutcome> =>
   Effect.gen(function* () {
     const dispatch = yield* Effect.tryPromise(() =>
