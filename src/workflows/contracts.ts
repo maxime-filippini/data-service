@@ -123,6 +123,7 @@ export const AssignmentChangeSchema = Schema.Struct({
   enabled: Schema.Boolean,
 });
 
+export type SubjectKind = typeof SubjectKindSchema.Type;
 export type AssetSubject = typeof AssetSubjectSchema.Type;
 export type PortfolioSubject = typeof PortfolioSubjectSchema.Type;
 export type Subject = typeof SubjectSchema.Type;
