@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Effect } from "effect";
-
 import { requireManagementToken } from "$/auth";
-import { SymbolRegistry } from "$/market-data/symbol-registry";
-import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { D1PortfoliosLive } from "$/portfolios/d1";
-import { Portfolios } from "$/portfolios/store";
 import { createPortfolioRoutes } from "$/routes/portfolios";
 
 import { makeTestDatabase } from "./support/d1";
@@ -40,14 +35,16 @@ interface PortfolioBody {
 
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
-  const track = (symbol: string, enabled = 1) =>
+  const seedAsset = (symbol: string, enabled = 1) =>
     sqlite
       .prepare(
-        `INSERT INTO tracked_symbols VALUES ('prices_eod', ?, 'eodhd', ?, '2016-01-01', '2026-01-01', '2026-01-01')`,
+        `INSERT INTO assets
+           (symbol, provider, backfill_start_date, enabled, created_at, updated_at)
+         VALUES (?, 'eodhd', '2016-01-01', ?, '2026-01-01', '2026-01-01')`,
       )
       .run(symbol, enabled);
-  track("AAPL.US");
-  track("MSFT.US", 0);
+  seedAsset("AAPL.US");
+  seedAsset("MSFT.US", 0);
 
   const app = createPortfolioRoutes(
     () => D1PortfoliosLive(db),
@@ -125,6 +122,8 @@ test("create, list, rename and delete a portfolio", async () => {
       ],
     ],
   );
+  assert.equal(count("portfolio_asset_holdings"), 2);
+  assert.equal(count("portfolio_holdings"), 0);
 
   const list = (await (await request("/")).json()) as {
     portfolios: Record<string, unknown>[];
@@ -157,7 +156,7 @@ test("create, list, rename and delete a portfolio", async () => {
     404,
   );
   assert.equal(count("portfolio_snapshots"), 0);
-  assert.equal(count("portfolio_holdings"), 0);
+  assert.equal(count("portfolio_asset_holdings"), 0);
 });
 
 test("add and delete snapshots", async () => {
@@ -201,57 +200,83 @@ test("add and delete snapshots", async () => {
   );
 });
 
-test("a symbol's single-asset portfolio can't be changed", async () => {
-  const { request, db } = setup();
-  await SymbolRegistry.use((registry) =>
-    registry.register(
-      {
-        dataset: "prices_eod",
-        symbol: "NVDA.US",
-        provider: "eodhd",
-        backfillStartDate: "2016-01-01",
-      },
-      "2026-10-28T00:00:00.000Z",
-    ),
-  ).pipe(Effect.provide(D1SymbolRegistryLive(db)), Effect.runPromise);
+test("retained legacy portfolio_holdings and single-asset portfolios remain readable and protected", async () => {
+  const { sqlite, request } = setup();
+  const legacyId = crypto.randomUUID();
+  const singleId = crypto.randomUUID();
 
-  const list = (await (await request("/")).json()) as {
-    portfolios: { id: string; name: string; assetSymbol: string | null }[];
-  };
-  const nvda = list.portfolios.find((p) => p.assetSymbol === "NVDA.US");
-  assert.ok(nvda);
-  assert.equal(nvda.name, "NVDA.US");
-  const { id } = nvda;
+  sqlite
+    .prepare(
+      `INSERT INTO tracked_symbols VALUES ('prices_eod', 'NVDA.US', 'eodhd', 1, '2016-01-01', '2026-01-01', '2026-01-01')`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO portfolios (portfolio_id, name, created_at, updated_at)
+       VALUES (?, 'Pre-cutover', '2026-01-01', '2026-01-01')`,
+    )
+    .run(legacyId);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolio_snapshots (portfolio_id, holdings_date, created_at)
+       VALUES (?, '2026-09-30', '2026-01-01')`,
+    )
+    .run(legacyId);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolio_holdings (portfolio_id, holdings_date, dataset, symbol, weight)
+       VALUES (?, '2026-09-30', 'prices_eod', 'NVDA.US', 1)`,
+    )
+    .run(legacyId);
 
-  const portfolio = (await (
-    await request(`/${id}`)
-  ).json()) as PortfolioBody & { assetSymbol: string };
-  assert.equal(portfolio.assetSymbol, "NVDA.US");
+  const loaded = (await (
+    await request(`/${legacyId}`)
+  ).json()) as PortfolioBody;
   assert.deepEqual(
-    portfolio.snapshots.map(({ holdingsDate, holdings }) => ({
+    loaded.snapshots.map(({ holdingsDate, holdings }) => ({
       holdingsDate,
       holdings,
     })),
     [
       {
-        holdingsDate: "1900-01-01",
+        holdingsDate: "2026-09-30",
         holdings: [{ symbol: "NVDA.US", weight: 1 }],
       },
     ],
   );
 
+  // Retained single-asset portfolio (asset_symbol non-null) remains immutable.
+  sqlite
+    .prepare(
+      `INSERT INTO portfolios (portfolio_id, name, asset_symbol, created_at, updated_at)
+       VALUES (?, 'NVDA.US', 'NVDA.US', '2026-01-01', '2026-01-01')`,
+    )
+    .run(singleId);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolio_snapshots (portfolio_id, holdings_date, created_at)
+       VALUES (?, '1900-01-01', '2026-01-01')`,
+    )
+    .run(singleId);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolio_holdings (portfolio_id, holdings_date, dataset, symbol, weight)
+       VALUES (?, '1900-01-01', 'prices_eod', 'NVDA.US', 1)`,
+    )
+    .run(singleId);
+
   for (const [path, method, body] of [
-    [`/${id}`, "PATCH", { name: "Nvidia" }],
-    [`/${id}`, "DELETE", undefined],
+    [`/${singleId}`, "PATCH", { name: "Nvidia" }],
+    [`/${singleId}`, "DELETE", undefined],
     [
-      `/${id}/snapshots`,
+      `/${singleId}/snapshots`,
       "POST",
       {
         holdingsDate: "2026-01-02",
-        holdings: [{ symbol: "NVDA.US", weight: 1 }],
+        holdings: [{ symbol: "AAPL.US", weight: 1 }],
       },
     ],
-    [`/${id}/snapshots/1900-01-01`, "DELETE", undefined],
+    [`/${singleId}/snapshots/1900-01-01`, "DELETE", undefined],
   ] as const) {
     const response = await request(path, method, body);
     assert.equal(response.status, 409, `${method} ${path}`);
@@ -260,14 +285,9 @@ test("a symbol's single-asset portfolio can't be changed", async () => {
       /single-asset portfolio of NVDA\.US/u,
     );
   }
-  assert.equal(
-    ((await (await request(`/${id}`)).json()) as PortfolioBody).snapshots
-      .length,
-    1,
-  );
 });
 
-test("snapshots only hold tracked prices_eod symbols", async () => {
+test("snapshots only hold registered assets", async () => {
   const { request, create, count } = setup();
   const { id } = await create({ name: "Core" });
 
@@ -297,6 +317,28 @@ test("snapshots only hold tracked prices_eod symbols", async () => {
   );
   assert.equal(count("portfolios"), 1);
   assert.equal(count("portfolio_snapshots"), 0);
+});
+
+test("deleting a portfolio still referenced by a historical table returns 409", async () => {
+  const { sqlite, request, create } = setup();
+  const { id } = await create({ name: "Referenced", snapshot: september });
+  const calcId = crypto.randomUUID();
+  sqlite
+    .prepare(
+      `INSERT INTO calculations
+         (calculation_id, name, type, params_json, cron, enabled, created_at, updated_at)
+       VALUES (?, 'Legacy vol', 'ex_ante_vol', '{}', '0 7 * * *', 0, '2026-01-01', '2026-01-01')`,
+    )
+    .run(calcId);
+  sqlite
+    .prepare(
+      `INSERT INTO calculation_portfolios (calculation_id, portfolio_id, position)
+       VALUES (?, ?, 0)`,
+    )
+    .run(calcId, id);
+
+  const response = await request(`/${id}`, "DELETE");
+  assert.equal(response.status, 409);
 });
 
 test("invalid input is rejected", async () => {
@@ -355,62 +397,6 @@ test("invalid input is rejected", async () => {
     400,
   );
   assert.equal(count("portfolio_snapshots"), 0);
-});
-
-test("a held symbol can't leave the registry, but can be disabled", async () => {
-  const { sqlite, create } = setup();
-  await create({ name: "Core", snapshot: september });
-
-  assert.throws(
-    () =>
-      sqlite
-        .prepare(`DELETE FROM tracked_symbols WHERE symbol = 'AAPL.US'`)
-        .run(),
-    /FOREIGN KEY/u,
-  );
-  sqlite
-    .prepare(`UPDATE tracked_symbols SET enabled = 0 WHERE symbol = 'AAPL.US'`)
-    .run();
-});
-
-test("forEngine loads the snapshots up to the as-of date", async () => {
-  const { db, create } = setup();
-  const { id } = await create({ name: "Core", snapshot: september });
-  await Effect.runPromise(
-    Portfolios.use((store) =>
-      store.addSnapshot(id, october, "2026-10-16T00:00:00.000Z"),
-    ).pipe(Effect.provide(D1PortfoliosLive(db))),
-  );
-
-  const load = (asOf: string) =>
-    Portfolios.use((store) => store.forEngine(id, asOf)).pipe(
-      Effect.provide(D1PortfoliosLive(db)),
-      Effect.runPromise,
-    );
-
-  assert.deepEqual(await load("2026-10-14"), {
-    id,
-    name: "Core",
-    snapshots: [
-      {
-        holdingsDate: "2026-09-30",
-        holdings: [
-          { symbol: "AAPL.US", weight: 0.6 },
-          { symbol: "MSFT.US", weight: 0.4 },
-        ],
-      },
-    ],
-  });
-  assert.deepEqual(
-    (await load("2026-10-15")).snapshots.map((s) => s.holdingsDate),
-    ["2026-09-30", "2026-10-15"],
-  );
-  assert.deepEqual((await load("2026-09-29")).snapshots, []);
-
-  const missing = await Portfolios.use((store) =>
-    store.forEngine(crypto.randomUUID(), "2026-10-15"),
-  ).pipe(Effect.provide(D1PortfoliosLive(db)), Effect.flip, Effect.runPromise);
-  assert.equal(missing.kind, "not_found");
 });
 
 test("database failures return a sanitized 500", async () => {

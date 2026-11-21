@@ -217,8 +217,8 @@
   </p>
   {#if portfolio.assetSymbol !== null}
     <p class="muted meta">
-      The single-asset portfolio of {portfolio.assetSymbol}, created when the
-      symbol was registered. It can't be changed.
+      Retained legacy single-asset portfolio of {portfolio.assetSymbol}. It
+      can't be changed.
     </p>
   {/if}
 {:else if loading}
@@ -327,7 +327,8 @@
       </section>
     {:else}
       <p class="notice">
-        No snapshots yet. Calculations fail for this portfolio until it has one.
+        No snapshots yet. Portfolio workflows that load holdings fail until this
+        portfolio has one.
       </p>
     {/each}
   </div>

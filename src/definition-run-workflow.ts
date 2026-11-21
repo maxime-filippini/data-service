@@ -43,7 +43,7 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
       D1PortfoliosLive(db),
       MarketDataSourcesLayer(liveSourceFor(this.env)),
       R2RunArtifactsLive(this.env.MARKET_DATA_BUCKET),
-      // One engine instance, as for calculations.
+      // Single named container instance for Python workflow operations.
       HttpPythonOperationsLive(
         this.env.CALCULATION_ENGINE.getByName("engine"),
         "http://engine",

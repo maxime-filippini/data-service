@@ -14,7 +14,8 @@ export default defineConfig({
     mermaid({ theme: "neutral", autoTheme: true }),
     starlight({
       title: "Data service",
-      description: "How the market-data and calculation service works.",
+      description:
+        "Ownership guide for the workflow-based market-data and portfolio service.",
       social: [
         {
           icon: "github",
@@ -28,28 +29,12 @@ export default defineConfig({
         "architecture",
         "maintaining",
         {
-          label: "Market data",
-          items: [
-            "pipeline/schedule",
-            "pipeline/ingestion",
-            "pipeline/processing",
-          ],
-        },
-        {
           label: "Workflows",
           items: [
             "workflows/definitions",
+            "workflows/portfolios",
             "workflows/runs",
             "workflows/datasets",
-          ],
-        },
-        {
-          label: "Calculations",
-          items: [
-            "calculations/portfolios",
-            "calculations/runs",
-            "calculations/scheduling",
-            "calculations/types",
           ],
         },
         {

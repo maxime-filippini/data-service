@@ -1,39 +1,24 @@
-import type {
-  DashboardUser,
-  RunPage,
-  RunStatus,
-  SymbolStatusView,
-} from "../../../src/market-data/status/views";
-
-import type {
-  ScheduleRun,
-  ScheduleView,
-} from "../../../src/market-data/schedule/views";
-import type {
-  Calculation,
-  CalculationParams,
-  CalculationRun,
-  CalculationTypeInfo,
-} from "../../../src/calculations/views";
+import type { DashboardUser } from "../../../src/pages/views";
 import type {
   HoldingView,
   Portfolio,
   PortfolioSummary,
   Snapshot,
 } from "../../../src/portfolios/views";
-
-export type {
-  Calculation,
-  CalculationParams,
-  CalculationRun,
-  CalculationRunStatus,
-  CalculationTypeInfo,
-  PortfolioOutcome,
-} from "../../../src/calculations/views";
+import type { SubjectView } from "../../../src/workflows/views";
 
 export type { Asset } from "../../../src/assets/views";
 
 export type { PublicationView } from "../../../src/datasets/views";
+
+export type { DashboardUser } from "../../../src/pages/views";
+
+export type {
+  HoldingView,
+  Portfolio,
+  PortfolioSummary,
+  Snapshot,
+} from "../../../src/portfolios/views";
 
 export type {
   StepOutcome,
@@ -53,65 +38,12 @@ export type {
   WorkflowSummary,
 } from "../../../src/workflows/views";
 
-export type {
-  HoldingView,
-  Portfolio,
-  PortfolioSummary,
-  Snapshot,
-} from "../../../src/portfolios/views";
-
-export type {
-  ScheduleRun,
-  ScheduleRunStatus,
-  ScheduleView,
-} from "../../../src/market-data/schedule/views";
-
-export type {
-  DashboardUser,
-  IngestionRunView,
-  JobStatus,
-  ProcessingJobView,
-  RunPage,
-  RunStatus,
-  SymbolStatusView,
-} from "../../../src/market-data/status/views";
-
 /**
  * Subset of Worker JSON error responses used to build a readable form error.
- * Includes schema issues, rejected downloads and engine validation details;
- * it is a presentation shape, not a runtime decoder for every error response.
  */
 type ErrorBody = {
   error?: string;
   issues?: { message: string; path?: string[] }[];
-  rejected?: { symbol: string; reason: string }[];
-  /** The engine's detail: for invalid params, Pydantic's errors. */
-  detail?: unknown;
-};
-
-/**
- * Pydantic field-error shape interpreted by the params editor. `loc` identifies
- * the parameter path and `msg` supplies the engine's validation explanation.
- */
-type EngineIssue = { loc?: (string | number)[]; msg?: string };
-
-/**
- * Dataset-to-provider choices returned by `/app-api/options` for the symbol
- * form. Keys stay strings in the browser; the Worker owns the supported registry.
- */
-export type DatasetProviders = Record<string, readonly string[]>;
-
-/**
- * Complete symbol-form submission to the registry upsert route. Strings come
- * from user input/options and are validated by the Worker; registration configures
- * future downloads rather than immediately fetching history.
- */
-export type RegisterInput = {
-  dataset: string;
-  symbol: string;
-  provider: string;
-  backfillStartDate: string;
-  enabled: boolean;
 };
 
 /**
@@ -120,20 +52,6 @@ export type RegisterInput = {
  * here, while editable `HoldingRow` values can still contain unfinished text.
  */
 export type NewSnapshot = { holdingsDate: string; holdings: HoldingView[] };
-
-/**
- * Complete calculation-form submission for saving a reusable configuration.
- * The engine validates params; updates send only changed fields and cannot
- * change the type. This shape is distinct from returned run/history metadata.
- */
-export type CalculationInput = {
-  name: string;
-  type: string;
-  params: CalculationParams;
-  portfolioIds: string[];
-  cron: string;
-  enabled: boolean;
-};
 
 /**
  * User-facing failure from an app JSON/data request. Forms display its message;
@@ -151,29 +69,12 @@ export const apiUrl = (
   return `/app-api${path}${query.size > 0 ? `?${query}` : ""}`;
 };
 
-/** Pydantic's errors as "window: Input should be greater than or equal to 2". */
-const engineIssues = (detail: unknown) =>
-  Array.isArray(detail)
-    ? (detail as EngineIssue[])
-        .filter((issue) => typeof issue?.msg === "string")
-        .map(
-          (issue) =>
-            (issue.loc?.length ? `${issue.loc.join(".")}: ` : "") + issue.msg,
-        )
-    : [];
-
-/** The server's message, with any validation issues or rejected entries. */
+/** The server's message, with any validation issues. */
 const errorMessage = (body: ErrorBody | undefined, status: number) => {
-  const details = [
-    ...(body?.issues ?? []).map(
-      (issue) =>
-        (issue.path?.length ? `${issue.path.join(".")}: ` : "") + issue.message,
-    ),
-    ...(body?.rejected ?? []).map(
-      (entry) => `${entry.symbol}: ${entry.reason}`,
-    ),
-    ...engineIssues(body?.detail),
-  ];
+  const details = (body?.issues ?? []).map(
+    (issue) =>
+      (issue.path?.length ? `${issue.path.join(".")}: ` : "") + issue.message,
+  );
   const message = body?.error ?? `Request failed (${status})`;
   return details.length > 0 ? `${message}: ${details.join("; ")}` : message;
 };
@@ -226,85 +127,27 @@ const get = async <T>(
 ): Promise<T> =>
   (await (await request(apiUrl(path, params), "application/json")).json()) as T;
 
-export const datasetUrl = (dataset: string, symbol: string) =>
-  apiUrl(
-    `/datasets/${encodeURIComponent(dataset)}/${encodeURIComponent(symbol)}`,
-  );
-
-/** The symbol's Parquet file. The browser revalidates its cached copy by ETag. */
-export const fetchDatasetFile = async (dataset: string, symbol: string) =>
-  (
-    await request(datasetUrl(dataset, symbol), "application/vnd.apache.parquet")
-  ).arrayBuffer();
-
 /** A published dataset's current data (Parquet), by dataset and subject. */
-export const publicationDataUrl = (
-  dataset: string,
-  subject:
-    { kind: "asset"; symbol: string } | { kind: "portfolio"; id: string },
-) =>
+export const publicationDataUrl = (dataset: string, subject: SubjectView) =>
   apiUrl(
     `/publications/${encodeURIComponent(dataset)}/${subject.kind}/${encodeURIComponent(
       subject.kind === "asset" ? subject.symbol : subject.id,
     )}/data`,
   );
 
-export const calculationResultsUrl = (id: string) =>
-  apiUrl(`/calculations/${encodeURIComponent(id)}/results`);
-
-/** A calculation's results file, `calculation=<id>/data.parquet`. Revalidated by ETag. */
-export const fetchCalculationResults = async (id: string) =>
+/** Fetch a published dataset's current Parquet bytes. Revalidated by ETag. */
+export const fetchPublicationData = async (
+  dataset: string,
+  subject: SubjectView,
+) =>
   (
-    await request(calculationResultsUrl(id), "application/vnd.apache.parquet")
+    await request(
+      publicationDataUrl(dataset, subject),
+      "application/vnd.apache.parquet",
+    )
   ).arrayBuffer();
 
 export const fetchMe = () => get<DashboardUser>("/me");
-
-export const fetchRuns = (filter: {
-  symbol?: string;
-  status?: RunStatus;
-  cursor?: string;
-}) => get<RunPage>("/runs", filter);
-
-export const fetchSymbols = (filter: { enabled?: "true" | "false" }) =>
-  get<{ symbols: SymbolStatusView[] }>("/symbols", filter);
-
-export const fetchOptions = () =>
-  get<{ datasetProviders: DatasetProviders }>("/options");
-
-/** Add a symbol, or update one with the same dataset and symbol. */
-export const registerSymbol = (input: RegisterInput) =>
-  send<{ enabled: boolean }>("POST", "/registry", input);
-
-const identity = (dataset: string, symbol: string) =>
-  `/registry/${encodeURIComponent(dataset)}/${encodeURIComponent(symbol)}`;
-
-export const setOnSchedule = (
-  dataset: string,
-  symbol: string,
-  enabled: boolean,
-) =>
-  send<{ enabled: boolean }>(
-    "POST",
-    `${identity(dataset, symbol)}/${enabled ? "enable" : "disable"}`,
-  );
-
-/** Queue a full-history download for each entry now. */
-export const requestDownloads = (
-  entries: { dataset: string; symbol: string }[],
-) => send<{ queued: unknown[] }>("POST", "/ingestions", { entries });
-
-export const fetchSchedule = () => get<ScheduleView>("/schedule");
-
-export const updateSchedule = (patch: { hourUtc?: number; paused?: boolean }) =>
-  send<ScheduleView>("PATCH", "/schedule", patch);
-
-export const fetchScheduleRuns = (limit = 10) =>
-  get<{ runs: ScheduleRun[] }>("/schedule/runs", { limit: String(limit) });
-
-/** Queue a download for every symbol on the schedule now. */
-export const runScheduleNow = () =>
-  send<{ runId: string }>("POST", "/schedule/runs");
 
 const portfolioPath = (id: string) => `/portfolios/${encodeURIComponent(id)}`;
 
@@ -321,7 +164,7 @@ export const createPortfolio = (input: {
 export const renamePortfolio = (id: string, name: string) =>
   send<Portfolio>("PATCH", portfolioPath(id), { name });
 
-/** Fails with the calculations using it if any do. */
+/** Fails with 409 if an active workflow run uses the portfolio. */
 export const deletePortfolio = (id: string) => remove(portfolioPath(id));
 
 export const addSnapshot = (id: string, snapshot: NewSnapshot) =>
@@ -329,41 +172,3 @@ export const addSnapshot = (id: string, snapshot: NewSnapshot) =>
 
 export const deleteSnapshot = (id: string, holdingsDate: string) =>
   remove(`${portfolioPath(id)}/snapshots/${encodeURIComponent(holdingsDate)}`);
-
-const calculationPath = (id: string) =>
-  `/calculations/${encodeURIComponent(id)}`;
-
-export const fetchCalculationTypes = () =>
-  get<{ types: CalculationTypeInfo[] }>("/calculation-types");
-
-export const fetchCalculations = () =>
-  get<{ calculations: Calculation[] }>("/calculations");
-
-export const fetchCalculation = (id: string) =>
-  get<Calculation>(calculationPath(id));
-
-/** The engine checks the params; the saved calculation has defaults filled in. */
-export const createCalculation = (input: CalculationInput) =>
-  send<Calculation>("POST", "/calculations", input);
-
-/** Omitted fields are kept. The type can't change. */
-export const updateCalculation = (
-  id: string,
-  patch: Partial<Omit<CalculationInput, "type">>,
-) => send<Calculation>("PATCH", calculationPath(id), patch);
-
-/** Deletes the calculation and its runs. Its results stay in R2. */
-export const deleteCalculation = (id: string) => remove(calculationPath(id));
-
-export const fetchCalculationRuns = (id: string, limit = 20) =>
-  get<{ runs: CalculationRun[] }>(`${calculationPath(id)}/runs`, {
-    limit: String(limit),
-  });
-
-/** Run now, as of `asOf` (default: the previous UTC day). `skipped` if a run is already going. */
-export const startCalculationRun = (id: string, asOf?: string) =>
-  send<{ runId: string; status: "running" | "skipped" }>(
-    "POST",
-    `${calculationPath(id)}/runs`,
-    asOf ? { asOf } : {},
-  );

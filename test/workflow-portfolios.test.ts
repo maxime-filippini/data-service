@@ -146,8 +146,9 @@ test("an asset appearing in an old snapshot cannot be deleted until that snapsho
   );
 });
 
-test("new assets are also protected by pre-existing registry-backed holdings", async () => {
+test("assets are also protected by pre-cutover portfolio_holdings rows", async () => {
   const { api, json, createAsset, sqlite } = workflowService();
+  const id = crypto.randomUUID();
   sqlite
     .prepare(
       `INSERT INTO tracked_symbols
@@ -155,10 +156,24 @@ test("new assets are also protected by pre-existing registry-backed holdings", a
      VALUES ('prices_eod', 'AAPL.US', 'eodhd', 1, '2016-01-01', '2024-01-01', '2024-01-01')`,
     )
     .run();
-  const { id } = await json<Portfolio>(
-    api("/portfolios", "POST", { name: "Existing", snapshot: september }),
-    201,
-  );
+  sqlite
+    .prepare(
+      `INSERT INTO portfolios (portfolio_id, name, created_at, updated_at)
+       VALUES (?, 'Existing', '2024-01-01', '2024-01-01')`,
+    )
+    .run(id);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolio_snapshots (portfolio_id, holdings_date, created_at)
+       VALUES (?, ?, '2024-01-01')`,
+    )
+    .run(id, september.holdingsDate);
+  sqlite
+    .prepare(
+      `INSERT INTO portfolio_holdings (portfolio_id, holdings_date, dataset, symbol, weight)
+       VALUES (?, ?, 'prices_eod', 'AAPL.US', 2)`,
+    )
+    .run(id, september.holdingsDate);
   await createAsset("AAPL.US");
   await createAsset("MSFT.US");
   await json(
@@ -219,6 +234,8 @@ test("new portfolios get scoped defaults and deletion preserves completed histor
   assert.deepEqual(await pages.portfolioDetail(id), {
     portfolio: await json(api(`/portfolios/${id}`)),
     assignments: await assignments(id),
+    runs: [],
+    publications: [],
   });
   await json(
     api(`/workflows/${assetWorkflow}/assignments`, "POST", { subject }),

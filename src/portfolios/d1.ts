@@ -15,14 +15,10 @@ const ACTIVE_RUN_FOR_PORTFOLIO = `FROM workflow_runs
   WHERE subject_kind = 'portfolio' AND subject_id = ?1
     AND status IN ('queued', 'running', 'waiting')`;
 
-const HAS_LEGACY_POSITION_SYMBOL = `EXISTS (
-  SELECT 1 FROM tracked_symbols
-  WHERE dataset = 'prices_eod' AND symbol = j.value ->> '$.symbol'
-)`;
-
 /**
  * Private persisted portfolio metadata. Holdings are loaded separately and
- * combined into the `Portfolio` detail view; `asset_symbol` marks managed records.
+ * combined into the `Portfolio` detail view; `asset_symbol` marks retained
+ * legacy single-asset portfolios.
  */
 interface PortfolioRow {
   readonly portfolio_id: string;
@@ -73,14 +69,10 @@ const dateTaken = (holdingsDate: string) =>
     message: `The portfolio already has a snapshot for ${holdingsDate}`,
   });
 
-const inUse = (calculations: readonly { id: string; name: string }[]) =>
+const referenced = () =>
   new PortfolioError({
     kind: "conflict",
-    message:
-      calculations.length === 0
-        ? "A calculation uses the portfolio"
-        : `Used by calculations: ${calculations.map((calculation) => calculation.name).join(", ")}`,
-    calculations,
+    message: "The portfolio is still referenced by historical records",
   });
 
 const symbolsOf = (snapshot: NewSnapshot) =>
@@ -150,18 +142,16 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
       }),
     );
 
-  const requireSymbols = (symbols: readonly string[], includeAssets: boolean) =>
+  const requireAssets = (symbols: readonly string[]) =>
     query(() =>
       db
         .prepare(
           `SELECT j.value AS symbol FROM json_each(?1) j
            WHERE NOT EXISTS (
-             SELECT 1 FROM tracked_symbols t WHERE t.dataset = 'prices_eod' AND t.symbol = j.value
-           ) AND NOT EXISTS (
-             SELECT 1 FROM assets a WHERE ?2 AND a.symbol = j.value
+             SELECT 1 FROM assets a WHERE a.symbol = j.value
            )`,
         )
-        .bind(JSON.stringify(symbols), Number(includeAssets))
+        .bind(JSON.stringify(symbols))
         .all<{ symbol: string }>(),
     ).pipe(
       Effect.flatMap(({ results }) =>
@@ -170,14 +160,14 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           : Effect.fail(
               new PortfolioError({
                 kind: "untracked_symbols",
-                message: `${includeAssets ? "Unknown assets" : "Not tracked in prices_eod"}: ${results.map((row) => row.symbol).join(", ")}`,
+                message: `Unknown assets: ${results.map((row) => row.symbol).join(", ")}`,
                 symbols: results.map((row) => row.symbol),
               }),
             ),
       ),
     );
 
-  /** Fails unless the portfolio exists and isn't a single-asset portfolio. */
+  /** Fails unless the portfolio exists and isn't a retained single-asset portfolio. */
   const requireEditable = (id: string) =>
     query(() =>
       db
@@ -193,7 +183,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
       }),
     );
 
-  /** Keep registry-backed positions in the legacy table during the transition. */
+  /** Write new snapshots to `portfolio_asset_holdings` (referencing `assets`). */
   const insertSnapshot = (id: string, snapshot: NewSnapshot, now: string) => {
     const { holdingsDate } = snapshot;
     const holdings = JSON.stringify(snapshot.holdings);
@@ -206,18 +196,8 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
       db
         .prepare(
           `INSERT INTO portfolio_asset_holdings (portfolio_id, holdings_date, symbol, weight)
-         SELECT ?1, ?2, a.symbol, j.value ->> '$.weight'
-         FROM json_each(?3) j JOIN assets a ON a.symbol = j.value ->> '$.symbol'
-         WHERE NOT ${HAS_LEGACY_POSITION_SYMBOL}`,
-        )
-        .bind(id, holdingsDate, holdings),
-      db
-        .prepare(
-          `INSERT INTO portfolio_holdings (portfolio_id, holdings_date, dataset, symbol, weight)
-         SELECT ?1, ?2, 'prices_eod', j.value ->> '$.symbol', j.value ->> '$.weight'
-         FROM json_each(?3) j
-         WHERE ${HAS_LEGACY_POSITION_SYMBOL}
-            OR NOT EXISTS (SELECT 1 FROM assets a WHERE a.symbol = j.value ->> '$.symbol')`,
+           SELECT ?1, ?2, j.value ->> '$.symbol', j.value ->> '$.weight'
+           FROM json_each(?3) j`,
         )
         .bind(id, holdingsDate, holdings),
     ];
@@ -286,7 +266,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
       create: (input, id, now) =>
         Effect.gen(function* () {
           if (input.snapshot !== undefined)
-            yield* requireSymbols(symbolsOf(input.snapshot), true);
+            yield* requireAssets(symbolsOf(input.snapshot));
           yield* write([
             assignDefaultsOnCreate(db, { kind: "portfolio", id }, now),
             db
@@ -319,18 +299,6 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
       remove: (id) =>
         Effect.gen(function* () {
           yield* requireEditable(id);
-          const { results: users } = yield* query(() =>
-            db
-              .prepare(
-                `SELECT c.calculation_id AS id, c.name
-                 FROM calculation_portfolios cp JOIN calculations c USING (calculation_id)
-                 WHERE cp.portfolio_id = ?
-                 ORDER BY c.name, c.calculation_id`,
-              )
-              .bind(id)
-              .all<{ id: string; name: string }>(),
-          );
-          if (users.length > 0) return yield* Effect.fail(inUse(users));
           const [deleted, , active] = yield* Effect.tryPromise({
             try: () =>
               db.batch([
@@ -352,10 +320,10 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
                   .prepare(`SELECT run_id ${ACTIVE_RUN_FOR_PORTFOLIO} LIMIT 1`)
                   .bind(id),
               ]),
-            // A calculation started using it since the check.
+            // Historical tables such as calculation_portfolios may still hold a FK.
             catch: (error) =>
               String(error).includes("FOREIGN KEY constraint failed")
-                ? inUse([])
+                ? referenced()
                 : databaseError(),
           });
           if ((deleted?.results.length ?? 0) > 0) return;
@@ -387,7 +355,7 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
             return yield* Effect.fail(managed(existing.asset_symbol));
           if (existing.taken === 1)
             return yield* Effect.fail(dateTaken(snapshot.holdingsDate));
-          yield* requireSymbols(symbolsOf(snapshot), true);
+          yield* requireAssets(symbolsOf(snapshot));
           yield* write(
             [
               ...insertSnapshot(id, snapshot, now),
@@ -436,19 +404,6 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
               .run(),
           );
         }),
-
-      requireTracked: (symbols) => requireSymbols(symbols, false),
-
-      forEngine: (id, asOf) =>
-        load(id, asOf).pipe(
-          Effect.map((portfolio) => ({
-            id: portfolio.id,
-            name: portfolio.name,
-            snapshots: portfolio.snapshots.map(
-              ({ holdingsDate, holdings }) => ({ holdingsDate, holdings }),
-            ),
-          })),
-        ),
     }),
   );
 };

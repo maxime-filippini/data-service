@@ -7,13 +7,6 @@ from botocore.exceptions import ClientError
 
 BUCKET = "processed-market-data-dev"
 
-ENVIRONMENT = {
-    "R2_ENDPOINT_URL": "https://account.r2.cloudflarestorage.com",
-    "R2_ACCESS_KEY_ID": "access-key",
-    "R2_SECRET_ACCESS_KEY": "secret-key",
-    "PROCESSED_BUCKET": BUCKET,
-}
-
 
 class FakeR2:
     """In-memory S3 with ETags and conditional puts, like R2."""
@@ -89,29 +82,3 @@ def prices_key(symbol: str) -> str:
 @pytest.fixture
 def r2():
     return FakeR2()
-
-
-@pytest.fixture
-def environment(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    for name, value in ENVIRONMENT.items():
-        monkeypatch.setenv(name, value)
-
-
-@pytest.fixture
-def engine_r2(environment, monkeypatch, r2):
-    """Points the runtime at the fake R2 with settings from the environment."""
-    from data_service_engine import runtime
-
-    class FakeClient:
-        def __init__(self, settings):
-            self.settings = settings
-
-        def __enter__(self):
-            return r2
-
-        def __exit__(self, *args):
-            return False
-
-    monkeypatch.setattr(runtime, "s3_client", FakeClient)
-    return r2

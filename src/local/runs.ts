@@ -41,20 +41,6 @@ export interface LocalServiceOptions {
   readonly now?: () => number;
 }
 
-const missing = (name: string) =>
-  new Error(`${name} is not available in the local workflow service`);
-
-/**
- * A legacy service's layer. Building it fails, so pages that construct every
- * layer still work and only using the service fails.
- */
-const unavailable =
-  (name: string) =>
-  <A>(): Layer.Layer<A> =>
-    Layer.effectDiscard(
-      Effect.die(missing(name)),
-    ) as Layer.Layer<never> as Layer.Layer<A>;
-
 /** No Python service: every call fails terminally, saying so. */
 const noPython = Layer.succeed(
   PythonOperations,
@@ -69,17 +55,11 @@ const noPython = Layer.succeed(
   }),
 );
 
-/** A legacy Workflow binding: selecting it fails. */
-const unavailableBinding = (name: string) => (): never => {
-  throw missing(name);
-};
-
 /**
  * The workflow service composed from local adapters: SQLite D1, local
  * artifacts, injected providers, and an in-process Workflow binding that
  * executes runs with the real executor and step implementations. Returns
- * dependencies for `createRoutes` (only asset, portfolio, workflow, run and
- * dataset routes work; legacy routes fail) and the platform's controls.
+ * dependencies for `createRoutes` and the platform's controls.
  */
 export const localWorkflowService = (options: LocalServiceOptions) => {
   const registry = StepRegistryLayer([
@@ -113,15 +93,8 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     options.platform,
   );
   const dependencies = {
-    statusFor: unavailable("Pipeline status"),
-    registryFor: unavailable("The symbol registry"),
-    scheduleFor: unavailable("The legacy schedule"),
-    downloadWorkflowFor: unavailableBinding("The legacy download workflow"),
-    engineFor: unavailable("The calculation engine"),
-    calculationsFor: unavailable("Calculations"),
-    runWorkflowFor: unavailableBinding("Calculation runs"),
-    portfoliosFor: () => D1PortfoliosLive(options.db),
     assetsFor: () => D1AssetsLive(options.db),
+    portfoliosFor: () => D1PortfoliosLive(options.db),
     workflowsFor: () => Layer.merge(D1WorkflowsLive(options.db), registry),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(options.db), options.artifacts),

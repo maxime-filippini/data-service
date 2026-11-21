@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 from botocore.exceptions import ClientError
 
-from data_service_engine.framework import MissingDataError
+from data_service_engine.errors import MissingDataError
 from data_service_engine.storage import SymbolReader, write_results
 
 from .conftest import BUCKET, prices_df, prices_key
