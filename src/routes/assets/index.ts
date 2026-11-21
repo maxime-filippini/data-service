@@ -7,7 +7,7 @@ import {
   CreateAssetSchema,
   UpdateAssetSchema,
 } from "$/assets/contracts";
-import { Assets } from "$/assets/store";
+import { AssetStore } from "$/assets/store";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
 
@@ -20,7 +20,7 @@ const SymbolParamSchema = Schema.Struct({ symbol: AssetSymbolSchema });
  * portfolio; deleting one removes its workflow assignments.
  */
 export const createAssetRoutes = (
-  assetsFor: (env: CloudflareBindings) => Layer.Layer<Assets>,
+  assetsFor: (env: CloudflareBindings) => Layer.Layer<AssetStore>,
   auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
 ) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -28,13 +28,13 @@ export const createAssetRoutes = (
 
   const run = <A>(
     env: CloudflareBindings,
-    program: Effect.Effect<A, AssetError, Assets>,
+    program: Effect.Effect<A, AssetError, AssetStore>,
   ) => runHttp(program, assetsFor(env));
 
   app.get("/", async (c) => {
     const assets = await run(
       c.env,
-      Assets.use((store) => store.list()),
+      AssetStore.use((store) => store.list()),
     );
     return c.json({ assets });
   });
@@ -46,7 +46,9 @@ export const createAssetRoutes = (
       const input = c.req.valid("json");
       const asset = await run(
         c.env,
-        Assets.use((store) => store.create(input, new Date().toISOString())),
+        AssetStore.use((store) =>
+          store.create(input, new Date().toISOString()),
+        ),
       );
       return c.json(asset, 201);
     },
@@ -60,7 +62,7 @@ export const createAssetRoutes = (
       return c.json(
         await run(
           c.env,
-          Assets.use((store) => store.get(symbol)),
+          AssetStore.use((store) => store.get(symbol)),
         ),
       );
     },
@@ -76,7 +78,7 @@ export const createAssetRoutes = (
       return c.json(
         await run(
           c.env,
-          Assets.use((store) =>
+          AssetStore.use((store) =>
             store.update(symbol, input, new Date().toISOString()),
           ),
         ),
@@ -91,7 +93,7 @@ export const createAssetRoutes = (
       const { symbol } = c.req.valid("param");
       await run(
         c.env,
-        Assets.use((store) => store.remove(symbol)),
+        AssetStore.use((store) => store.remove(symbol)),
       );
       return c.body(null, 204);
     },

@@ -10,12 +10,13 @@ import { Effect, Schema } from "effect";
 
 import { AssetSymbolSchema } from "$/assets/contracts";
 import { PortfolioIdSchema } from "$/portfolios/contracts";
+import { SUBJECT_KINDS } from "$/workflows/subjects";
 
 /** Most steps one definition can have. */
 export const MAX_WORKFLOW_STEPS = 50;
 
 /** The kind of subject a definition runs for: its scope. */
-export const SubjectKindSchema = Schema.Literals(["asset", "portfolio"]);
+export const SubjectKindSchema = Schema.Literals(SUBJECT_KINDS);
 
 /** An asset subject, identified by its symbol. */
 export const AssetSubjectSchema = Schema.Struct({
@@ -41,15 +42,20 @@ export const SubjectSchema = Schema.Union([
 /** UUID identifying a saved workflow definition. */
 export const WorkflowIdSchema = Schema.String.check(Schema.isUUID());
 
+/** Longest step ID, in characters. */
+export const MAX_STEP_ID_LENGTH = 64;
+
 /**
  * A step's identity within its definition. Letters, digits, `_` and `-`, so a
- * reference such as `steps.download.outputs.raw` stays unambiguous.
+ * reference such as `steps.download.outputs.raw` stays unambiguous. The one
+ * definition of a valid step ID: references parse their step with it too.
  */
 export const StepIdSchema = Schema.String.check(
-  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u, {
+  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_-]*$/u, {
     message:
       "Expected a step ID of letters, digits, _ or - starting with a letter",
   }),
+  Schema.isMaxLength(MAX_STEP_ID_LENGTH),
 );
 
 /** A literal input value, used as given. */
@@ -157,10 +163,6 @@ export interface WorkflowDefault {
   readonly schedule: WorkflowSpec["schedule"];
   readonly createdAt: string;
 }
-
-/** A subject's identifier: an asset's symbol or a portfolio's ID. */
-export const subjectId = (subject: Subject): string =>
-  subject.kind === "asset" ? subject.symbol : subject.id;
 
 /**
  * Expected failure reading or changing definitions and assignments.

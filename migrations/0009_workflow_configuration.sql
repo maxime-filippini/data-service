@@ -15,6 +15,10 @@ CREATE TABLE assets (
 -- A complete workflow specification. The ordered steps, with their
 -- heterogeneous params and input bindings, are JSON; identity, scope and
 -- scheduling are ordinary columns.
+--
+-- The scope and subject_kind CHECK lists must match SUBJECT_KINDS in
+-- src/workflows/subjects.ts. Changing the kinds needs a migration that
+-- rebuilds every table with such a CHECK: SQLite can't alter one.
 CREATE TABLE workflow_definitions (
   workflow_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

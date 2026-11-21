@@ -759,7 +759,7 @@ test("rehearsal from migration 0007: dry-run inventory, idempotent apply, API/ap
   const workflowPage = await pages.workflow(DEFAULT_PRICES_EOD_WORKFLOW_ID);
   assert.equal(workflowPage.isDefault, true);
   assert.equal(workflowPage.assignments.length, 4);
-  assert.equal(workflowPage.inspection.steps.length, 3);
+  assert.equal(workflowPage.detail.steps.length, 3);
   assert.equal((await pages.workflowDefaults()).length, 1);
   const portfolioPage = await pages.portfolioDetail(REAL_PORTFOLIO_ID);
   assert.equal(portfolioPage.portfolio.snapshots.length, 2);

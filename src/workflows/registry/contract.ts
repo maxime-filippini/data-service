@@ -16,12 +16,16 @@ import {
   WorkflowIdSchema,
 } from "$/workflows/contracts";
 import { RunIdSchema } from "$/workflows/runs/contracts";
+import type { SubjectKind } from "$/workflows/subjects";
 
 /**
  * A named data contract: the explicit identity two step ports must share to
  * be connected, plus the schema their values satisfy. Save-time compatibility
  * compares identities and explicitly accepted alternatives. Execution validates
  * the resolved value with the input schema.
+ *
+ * A contract describes a value, not the value itself: an input whose
+ * contract is `assetSubjectContract` requires an asset subject.
  */
 export interface Contract<T = unknown> {
   readonly id: string;
@@ -49,21 +53,27 @@ export const ArtifactReferenceSchema = Schema.Struct({
 export type ArtifactReference = typeof ArtifactReferenceSchema.Type;
 
 /** The run's asset, from `context.subject` in an asset workflow. */
-export const assetSubject = defineContract({
+export const assetSubjectContract = defineContract({
   id: "asset-subject",
   description: "An asset subject: { kind: 'asset', symbol }",
   schema: AssetSubjectSchema,
 });
 
 /** The run's portfolio, from `context.subject` in a portfolio workflow. */
-export const portfolioSubject = defineContract({
+export const portfolioSubjectContract = defineContract({
   id: "portfolio-subject",
   description: "A portfolio subject: { kind: 'portfolio', id }",
   schema: PortfolioSubjectSchema,
 });
 
+/** The contract of `context.subject`, for each definition scope. */
+export const subjectContracts = {
+  asset: assetSubjectContract,
+  portfolio: portfolioSubjectContract,
+} as const satisfies Record<SubjectKind, Contract<any>>;
+
 /** A calendar date, such as the run's processing date. */
-export const date = defineContract({
+export const dateContract = defineContract({
   id: "date",
   description: "A calendar date in YYYY-MM-DD form",
   schema: MarketDateSchema,
@@ -73,7 +83,7 @@ export const date = defineContract({
  * Raw provider end-of-day prices, as written by the download step. The
  * schema is generated from the Python service's Pydantic contract.
  */
-export const rawPricesEod = defineContract({
+export const rawPricesEodContract = defineContract({
   id: "raw-prices-eod",
   description:
     "An artifact reference to one provider's raw end-of-day price response (JSON)",
@@ -81,35 +91,35 @@ export const rawPricesEod = defineContract({
 });
 
 /** Normalized end-of-day prices, as the Python normalization writes them. */
-export const pricesEod = defineContract({
+export const pricesEodContract = defineContract({
   id: "prices-eod",
   description:
     "An artifact reference to normalized end-of-day prices (Parquet, prices_eod columns)",
   schema: PricesEodReference,
 });
 
-export const portfolioVolatilityData = defineContract({
+export const portfolioVolatilityDataContract = defineContract({
   id: "portfolio-volatility-data",
   description: "An artifact reference to portfolio volatility data in Parquet",
   schema: PortfolioVolatilityReference,
 });
 
-export const portfolioVolatilitySummary = defineContract({
+export const portfolioVolatilitySummaryContract = defineContract({
   id: "portfolio-volatility-summary",
   description:
     "Annualised volatility, the return window and the effective holdings date",
   schema: PortfolioVolatilitySummary,
 });
 
-export const publishableDataset = defineContract({
+export const publishableDatasetContract = defineContract({
   id: "publishable-dataset",
   description: "A normalized prices or portfolio volatility Parquet artifact",
   schema: Schema.Union([PricesEodReference, PortfolioVolatilityReference]),
-  accepts: [pricesEod.id, portfolioVolatilityData.id],
+  accepts: [pricesEodContract.id, portfolioVolatilityDataContract.id],
 });
 
 /** What a publish step published: look it up by dataset and subject. */
-export const datasetPublication = defineContract({
+export const datasetPublicationContract = defineContract({
   id: "dataset-publication",
   description:
     "A published dataset: its name, subject and processing date (retrieve it through the dataset API)",
@@ -120,13 +130,13 @@ export const datasetPublication = defineContract({
   }),
 });
 
-export const portfolioHoldings = defineContract({
+export const portfolioHoldingsContract = defineContract({
   id: "holdings",
   description: "A portfolio's effective asset symbols and weights",
   schema: HoldingsSchema,
 });
 
-export const assetSubjects = defineContract({
+export const assetSubjectsContract = defineContract({
   id: "asset-subjects",
   description: "Distinct asset subjects required by a portfolio",
   schema: Schema.Array(AssetSubjectSchema).check(
@@ -140,7 +150,7 @@ export const assetSubjects = defineContract({
   ),
 });
 
-export const publishedAssetPrices = defineContract({
+export const publishedAssetPricesContract = defineContract({
   id: "published-asset-prices",
   description:
     "Current published prices for each required asset, with the matching processing date and upstream run",

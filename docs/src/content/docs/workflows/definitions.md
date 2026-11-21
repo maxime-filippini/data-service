@@ -61,7 +61,9 @@ and replaced atomically with `PUT`:
 }
 ```
 
-- `scope` is the subject kind it runs for: `asset` or `portfolio`.
+- `scope` is the subject kind it runs for: `asset` or `portfolio`. The kinds
+  are listed once, in `src/workflows/subjects.ts`; a new kind also needs a
+  migration (see the [data model](/docs/reference/data-model/)).
 - `schedule.hourUtc` is the whole UTC hour (0–23) at which it is
   [dispatched](/docs/workflows/runs/#scheduled-dispatch) daily for each
   enabled assignment.

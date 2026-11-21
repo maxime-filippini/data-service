@@ -1,11 +1,12 @@
 import { Effect, Layer } from "effect";
 
+import { d1Query } from "$/d1";
 import {
   type StepSpec,
   type Subject,
-  subjectId,
   WorkflowError,
 } from "$/workflows/contracts";
+import { type SubjectKind, subjectId, subjectOf } from "$/workflows/subjects";
 
 import type {
   DependencyWait,
@@ -27,7 +28,7 @@ interface RunRow {
   readonly run_id: string;
   readonly workflow_id: string;
   readonly workflow_name: string;
-  readonly subject_kind: "asset" | "portfolio";
+  readonly subject_kind: SubjectKind;
   readonly subject_id: string;
   readonly processing_date: string;
   readonly trigger: "manual" | "schedule";
@@ -60,16 +61,14 @@ const ACTIVE = `('queued', 'running', 'waiting')`;
 const isActive = (status: WorkflowRunStatus) =>
   status === "queued" || status === "running" || status === "waiting";
 
-const subjectOf = (row: RunRow): Subject =>
-  row.subject_kind === "asset"
-    ? { kind: "asset", symbol: row.subject_id }
-    : { kind: "portfolio", id: row.subject_id };
+const rowSubject = (row: RunRow): Subject =>
+  subjectOf(row.subject_kind, row.subject_id);
 
 const toSummary = (row: RunRow): WorkflowRunSummary => ({
   id: row.run_id,
   workflowId: row.workflow_id,
   workflowName: row.workflow_name,
-  subject: subjectOf(row),
+  subject: rowSubject(row),
   processingDate: row.processing_date,
   trigger: row.trigger,
   rerunOf: row.rerun_of,
@@ -130,23 +129,18 @@ const toDetail = (
   return { ...toSummary(row), steps };
 };
 
-const query = <A>(operation: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: operation,
-    catch: () =>
-      new WorkflowError({
-        kind: "database",
-        message: "Could not access workflow runs",
-      }),
-  });
+const query = d1Query(
+  () =>
+    new WorkflowError({
+      kind: "database",
+      message: "Could not access workflow runs",
+    }),
+);
 
 const fail = (kind: WorkflowError["kind"], message: string) =>
   Effect.fail(new WorkflowError({ kind, message }));
 
-const describe = (subject: Subject) =>
-  subject.kind === "asset"
-    ? `asset ${subject.symbol}`
-    : `portfolio ${subject.id}`;
+const describe = (subject: Subject) => `${subject.kind} ${subjectId(subject)}`;
 
 /**
  * The assignment row (alias `a`) and its definition (`d`) can run now: both
@@ -414,7 +408,7 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
             )
             .all<{
               workflow_id: string;
-              subject_kind: "asset" | "portfolio";
+              subject_kind: SubjectKind;
               subject_id: string;
               scheduled_for: string;
             }>(),
@@ -422,10 +416,7 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
           Effect.map(({ results }) =>
             results.map((row): DueAssignment => ({
               workflowId: row.workflow_id,
-              subject:
-                row.subject_kind === "asset"
-                  ? { kind: "asset", symbol: row.subject_id }
-                  : { kind: "portfolio", id: row.subject_id },
+              subject: subjectOf(row.subject_kind, row.subject_id),
               scheduledFor: row.scheduled_for,
             })),
           ),
@@ -451,7 +442,7 @@ export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
                   runId: row.run_id,
                   workflowId: row.workflow_id,
                   context: {
-                    subject: subjectOf(row),
+                    subject: rowSubject(row),
                     processingDate: row.processing_date,
                   },
                   steps: capturedSteps(row),

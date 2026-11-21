@@ -5,7 +5,11 @@ import { DatasetPublicationStore, DatasetObjectStore } from "$/datasets/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
 
-import { assetSubjects, date, publishedAssetPrices } from "./contract";
+import {
+  assetSubjectsContract,
+  dateContract,
+  publishedAssetPricesContract,
+} from "./contract";
 import { defineStepType, transient } from "./step-type";
 
 const DEFAULT_TIMEOUT_SECONDS = 2 * 60 * 60;
@@ -30,17 +34,17 @@ export const waitForAssetPublications = defineStepType({
   }),
   inputs: {
     assets: {
-      contract: assetSubjects,
+      contract: assetSubjectsContract,
       description: "All assets whose prices must be ready",
     },
     processingDate: {
-      contract: date,
+      contract: dateContract,
       description: "The required upstream processing date",
     },
   },
   outputs: {
     publications: {
-      contract: publishedAssetPrices,
+      contract: publishedAssetPricesContract,
       description: "The matching current price publications",
     },
   },

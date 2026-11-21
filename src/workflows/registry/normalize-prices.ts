@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { PythonOperations } from "$/operations/client";
 import { NormalizePricesParams } from "$/operations/contracts.generated";
 
-import { pricesEod, rawPricesEod } from "./contract";
+import { pricesEodContract, rawPricesEodContract } from "./contract";
 import { defineStepType, StepFailure } from "./step-type";
 
 /**
@@ -22,13 +22,13 @@ export const normalizePrices = defineStepType({
   params: NormalizePricesParams,
   inputs: {
     raw: {
-      contract: rawPricesEod,
+      contract: rawPricesEodContract,
       description: "The raw provider response, from a download step",
     },
   },
   outputs: {
     prices: {
-      contract: pricesEod,
+      contract: pricesEodContract,
       description: "Date-sorted prices_eod rows, stored under the run",
     },
   },

@@ -1,12 +1,4 @@
-import { Context, Layer, Schema } from "effect";
-
-import type { SubjectKind } from "$/workflows/contracts";
-import type {
-  ContractView,
-  JsonSchemaView,
-  PortView,
-  StepCatalog,
-} from "$/workflows/views";
+import { Context, Layer } from "effect";
 
 import type { Contract } from "./contract";
 import { calculatePortfolioVolatility } from "./calculate-portfolio-volatility";
@@ -14,7 +6,7 @@ import { downloadPrices } from "./download-prices";
 import { normalizePrices } from "./normalize-prices";
 import { loadPortfolioHoldings } from "./portfolio-holdings";
 import { publishDataset } from "./publish-dataset";
-import { type Ports, runContextFields, type StepType } from "./step-type";
+import type { StepType } from "./step-type";
 import { waitForAssetPublications } from "./wait-for-asset-publications";
 
 export * from "./contract";
@@ -31,16 +23,19 @@ export const builtInStepTypes: readonly StepType[] = [
 ];
 
 /**
- * The step types definitions can use, by type name. Validation, inspection,
- * the catalog and the executor all read the same registry.
+ * The step types definitions can use, looked up by type name or listed in
+ * catalog order. Validation, the workflow detail, the catalog and the
+ * executor all read the same registry.
  */
-export interface StepTypes {
+export interface StepTypeRegistry {
   readonly get: (type: string) => StepType | undefined;
   readonly all: readonly StepType[];
 }
 
 /** Build a registry; fails fast on a repeated type name or contract ID. */
-export const makeStepTypes = (stepTypes: readonly StepType[]): StepTypes => {
+export const makeStepTypeRegistry = (
+  stepTypes: readonly StepType[],
+): StepTypeRegistry => {
   const byType = new Map<string, StepType>();
   const contracts = new Map<string, Contract<any>>();
   for (const stepType of stepTypes) {
@@ -61,73 +56,14 @@ export const makeStepTypes = (stepTypes: readonly StepType[]): StepTypes => {
 };
 
 /** The injectable step registry. */
-export class StepRegistry extends Context.Service<StepRegistry, StepTypes>()(
-  "data-service/StepRegistry",
-) {}
+export class StepRegistry extends Context.Service<
+  StepRegistry,
+  StepTypeRegistry
+>()("data-service/StepRegistry") {}
 
 /** A layer providing a registry of the given step types. */
 export const StepRegistryLayer = (stepTypes: readonly StepType[]) =>
-  Layer.succeed(StepRegistry, StepRegistry.of(makeStepTypes(stepTypes)));
+  Layer.succeed(StepRegistry, StepRegistry.of(makeStepTypeRegistry(stepTypes)));
 
 /** The service's registry. */
 export const StepRegistryLive = StepRegistryLayer(builtInStepTypes);
-
-const jsonSchema = (schema: Schema.Top): JsonSchemaView => {
-  const document = Schema.toJsonSchemaDocument(schema);
-  return Object.keys(document.definitions).length === 0
-    ? document.schema
-    : { ...document.schema, $defs: document.definitions };
-};
-
-const ports = (named: Ports): PortView[] =>
-  Object.entries(named).map(([name, port]) => ({
-    name,
-    contract: port.contract.id,
-    description: port.description,
-  }));
-
-const SCOPES: readonly SubjectKind[] = ["asset", "portfolio"];
-
-/** The catalog of a registry: step types, contracts and run-context fields. */
-export const stepCatalog = (registry: StepTypes): StepCatalog => {
-  const contracts = new Map<string, Contract<any>>();
-  const collect = (contract: Contract<any>) =>
-    contracts.set(contract.id, contract);
-  for (const field of Object.values(runContextFields))
-    for (const scope of SCOPES) collect(field.contract(scope));
-  for (const stepType of registry.all)
-    for (const port of [
-      ...Object.values(stepType.inputs),
-      ...Object.values(stepType.outputs),
-    ])
-      collect(port.contract);
-
-  return {
-    stepTypes: registry.all.map((stepType) => ({
-      type: stepType.type,
-      description: stepType.description,
-      scopes: stepType.scopes,
-      params: jsonSchema(stepType.params),
-      inputs: ports(stepType.inputs),
-      outputs: ports(stepType.outputs),
-    })),
-    contracts: [...contracts.values()]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((contract): ContractView => ({
-        id: contract.id,
-        description: contract.description,
-        schema: jsonSchema(contract.schema),
-        ...(contract.accepts === undefined
-          ? {}
-          : { accepts: contract.accepts }),
-      })),
-    context: Object.entries(runContextFields).map(([field, definition]) => ({
-      field,
-      description: definition.description,
-      contracts: {
-        asset: definition.contract("asset").id,
-        portfolio: definition.contract("portfolio").id,
-      },
-    })),
-  };
-};

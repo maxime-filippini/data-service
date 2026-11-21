@@ -1,6 +1,8 @@
 import { Effect, Layer } from "effect";
 
-import { type Subject, subjectId } from "$/workflows/contracts";
+import { d1Query } from "$/d1";
+import type { Subject } from "$/workflows/contracts";
+import { type SubjectKind, subjectId, subjectOf } from "$/workflows/subjects";
 
 import { DatasetError, type PublicationView } from "./contracts";
 import { DatasetPublicationStore } from "./store";
@@ -8,7 +10,7 @@ import { DatasetPublicationStore } from "./store";
 /** Private `dataset_publications` row joined with its run's workflow name. */
 interface PublicationRow {
   readonly dataset: string;
-  readonly subject_kind: "asset" | "portfolio";
+  readonly subject_kind: SubjectKind;
   readonly subject_id: string;
   readonly processing_date: string;
   readonly workflow_id: string;
@@ -24,10 +26,7 @@ interface PublicationRow {
 
 const fromRow = (row: PublicationRow): PublicationView => ({
   dataset: row.dataset,
-  subject:
-    row.subject_kind === "asset"
-      ? { kind: "asset", symbol: row.subject_id }
-      : { kind: "portfolio", id: row.subject_id },
+  subject: subjectOf(row.subject_kind, row.subject_id),
   processingDate: row.processing_date,
   producer: {
     workflowId: row.workflow_id,
@@ -42,15 +41,13 @@ const fromRow = (row: PublicationRow): PublicationView => ({
   publishedAt: row.published_at,
 });
 
-const query = <A>(operation: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: operation,
-    catch: () =>
-      new DatasetError({
-        kind: "database",
-        message: "Could not access dataset publications",
-      }),
-  });
+const query = d1Query(
+  () =>
+    new DatasetError({
+      kind: "database",
+      message: "Could not access dataset publications",
+    }),
+);
 
 const SELECT = `SELECT p.*, r.workflow_name
   FROM dataset_publications p

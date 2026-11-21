@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 import { Hono } from "hono";
 import { createLocalJWKSet, type JWK } from "jose";
 
-import { D1AssetsLive } from "$/assets/d1";
+import { D1AssetStoreLive } from "$/assets/d1";
 import { requireManagementToken } from "$/auth";
 import { DatasetError } from "$/datasets/contracts";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
@@ -156,7 +156,7 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
     const layer = Layer.mergeAll(
       D1WorkflowRunsLive(db),
       StepRegistryLive,
-      D1AssetsLive(db),
+      D1AssetStoreLive(db),
       D1PortfoliosLive(db),
       MarketDataSourcesLayer(fixtureSources(env.SMOKE_SYMBOL_PREFIX)),
       R2RunArtifactsLive(env.MARKET_DATA_BUCKET),

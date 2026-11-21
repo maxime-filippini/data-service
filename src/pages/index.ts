@@ -1,7 +1,7 @@
 import { Effect, type Layer, Result, Schema } from "effect";
 
 import { AssetSymbolSchema } from "$/assets/contracts";
-import { Assets } from "$/assets/store";
+import { AssetStore } from "$/assets/store";
 import { DatasetPublicationStore } from "$/datasets/store";
 import {
   type Dependencies,
@@ -10,17 +10,14 @@ import {
 import { PortfolioIdSchema } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
-import {
-  inspectWorkflowById,
-  subjectAssignments,
-} from "$/workflows/operations";
+import { getWorkflowDetail, subjectAssignments } from "$/workflows/operations";
 import {
   RunIdSchema,
   RunStatusSchema,
   RunTriggerSchema,
 } from "$/workflows/runs/contracts";
 import { WorkflowRuns } from "$/workflows/runs/store";
-import { Workflows } from "$/workflows/store";
+import { WorkflowStore } from "$/workflows/store";
 
 import type * as Facade from "./app";
 import type { PageData } from "./views";
@@ -81,9 +78,9 @@ export const pageData = (
   const workflowRuns = runWith(dependencies.workflowRunsFor(env));
   const datasets = runWith(dependencies.datasetsFor(env));
 
-  const listAssets = () => assets(Assets.use((a) => a.list()));
+  const listAssets = () => assets(AssetStore.use((a) => a.list()));
   const listPortfolios = () => portfolios(Portfolios.use((p) => p.list()));
-  const listWorkflows = () => workflows(Workflows.use((w) => w.list()));
+  const listWorkflows = () => workflows(WorkflowStore.use((w) => w.list()));
   const listPublications = () =>
     datasets(DatasetPublicationStore.use((p) => p.list({})));
   const getPortfolio = async (id: string) => {
@@ -133,7 +130,7 @@ export const pageData = (
       if (!Schema.is(AssetSymbolSchema)(symbol))
         throw new PageDataError(404, "Asset not found");
       const [asset, assignments, runs, publications] = await Promise.all([
-        assets(Assets.use((a) => a.get(symbol))),
+        assets(AssetStore.use((a) => a.get(symbol))),
         workflows(subjectAssignments({ kind: "asset", symbol })),
         workflowRuns(
           WorkflowRuns.use((r) =>
@@ -179,14 +176,15 @@ export const pageData = (
 
     workflows: listWorkflows,
 
-    workflowDefaults: () => workflows(Workflows.use((w) => w.listDefaults())),
+    workflowDefaults: () =>
+      workflows(WorkflowStore.use((w) => w.listDefaults())),
 
     workflow: async (id) => {
       if (!isUuid(WorkflowIdSchema, id))
         throw new PageDataError(404, "Workflow not found");
-      const [inspected, defaults, runs] = await Promise.all([
-        workflows(inspectWorkflowById(id)),
-        workflows(Workflows.use((w) => w.listDefaults())),
+      const [detailed, defaults, runs] = await Promise.all([
+        workflows(getWorkflowDetail(id)),
+        workflows(WorkflowStore.use((w) => w.listDefaults())),
         workflowRuns(
           WorkflowRuns.use((r) =>
             r.list({ workflowId: id, limit: RECENT_RUNS }),
@@ -194,7 +192,7 @@ export const pageData = (
         ),
       ]);
       return {
-        ...inspected,
+        ...detailed,
         isDefault: defaults.some((entry) => entry.workflowId === id),
         runs,
       };

@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import { D1AssetsLive } from "$/assets/d1";
+import { D1AssetStoreLive } from "$/assets/d1";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import type { DatasetObjectStore } from "$/datasets/store";
 import type { Dependencies } from "$/dependencies";
@@ -8,7 +8,7 @@ import { MarketDataSourcesLayer, type SourceFor } from "$/market-data/sources";
 import { OperationError, PythonOperations } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import type { RunArtifacts } from "$/workflows/artifacts";
-import { D1WorkflowsLive } from "$/workflows/d1";
+import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { executeWorkflowRun } from "$/workflows/executor";
 import {
   builtInStepTypes,
@@ -74,7 +74,7 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
   const executorLayer = Layer.mergeAll(
     D1WorkflowRunsLive(options.db),
     registry,
-    D1AssetsLive(options.db),
+    D1AssetStoreLive(options.db),
     D1PortfoliosLive(options.db),
     MarketDataSourcesLayer(options.sourceFor),
     options.artifacts,
@@ -93,9 +93,9 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     options.platform,
   );
   const dependencies = {
-    assetsFor: () => D1AssetsLive(options.db),
+    assetsFor: () => D1AssetStoreLive(options.db),
     portfoliosFor: () => D1PortfoliosLive(options.db),
-    workflowsFor: () => Layer.merge(D1WorkflowsLive(options.db), registry),
+    workflowsFor: () => Layer.merge(D1WorkflowStoreLive(options.db), registry),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(options.db), options.artifacts),
     runPlatformFor: () => platform,

@@ -6,7 +6,7 @@ import {
 import { NonRetryableError } from "cloudflare:workflows";
 import { Effect, Layer } from "effect";
 
-import { D1AssetsLive } from "$/assets/d1";
+import { D1AssetStoreLive } from "$/assets/d1";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { R2DatasetObjectStoreLive } from "$/datasets/r2";
 import { MarketDataSourcesLayer, liveSourceFor } from "$/market-data/sources";
@@ -39,7 +39,7 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
     const layer = Layer.mergeAll(
       D1WorkflowRunsLive(db),
       StepRegistryLive,
-      D1AssetsLive(db),
+      D1AssetStoreLive(db),
       D1PortfoliosLive(db),
       MarketDataSourcesLayer(liveSourceFor(this.env)),
       R2RunArtifactsLive(this.env.MARKET_DATA_BUCKET),
