@@ -17,10 +17,6 @@ export default {
   fetch: app.fetch,
 
   async scheduled(controller, env) {
-    await runScheduledHandlers(
-      new Date(controller.scheduledTime),
-      env,
-      dependencies,
-    );
+    await runScheduledHandlers(new Date(controller.scheduledTime), env);
   },
 } satisfies ExportedHandler<CloudflareBindings>;
