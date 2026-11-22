@@ -309,3 +309,23 @@ The local Workflow binding and Steps adapter follow the platform's rules
 (checkpoints by step name, retries within the step's policy, no retry after a
 terminal failure), but they are stand-ins. They are not evidence of
 Cloudflare's durability; that needs a run on the dev environment.
+
+### Tracing checkpoints and replay
+
+```sh
+pnpm workflow:trace
+```
+
+Uses the same setup to show how a portfolio run waits for an asset run. The
+portfolio run starts first, so its first dependency check finds nothing. Each
+durable sleep then works like an eviction: the execution stops, a minute of
+virtual time passes, and the next execution replays the body from the top.
+The trace prints every checkpoint as it runs, is stored or is replayed, every
+D1 statement and Python call in between, and the run's D1 rows and stored
+checkpoint names after each execution.
+
+`--scenario timeout` never runs the asset, so the wait fails at a
+2.5-minute deadline. `--flaky` fails the first Python call to show a retry
+inside one checkpoint. `--sql writes` or `--sql none` hides D1 reads or all
+statements. The trace is also written without colours to
+`.local/workflow-trace/trace.log`.
