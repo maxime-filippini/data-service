@@ -21,6 +21,11 @@ import { HttpPythonOperationsLive } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
 import { R2RunArtifactsLive } from "$/workflows/artifacts";
+import type { Checkpointer } from "$/workflows/checkpointer";
+import {
+  CloudflareCheckpointerLive,
+  runInstanceBody,
+} from "$/workflows/cloudflare";
 import { executeWorkflowRun } from "$/workflows/executor";
 import { StepRegistryLive } from "$/workflows/registry";
 import type {
@@ -29,7 +34,6 @@ import type {
 } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
-import { type Steps, workflowSteps } from "$/workflows/steps";
 
 // @ts-expect-error -- built SvelteKit adapter, as in the main Worker.
 import sveltekit from "../../app/.svelte-kit/cloudflare/_worker.js";
@@ -154,6 +158,10 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
       },
     };
     const layer = Layer.mergeAll(
+      CloudflareCheckpointerLive(
+        step,
+        (message) => new NonRetryableError(message),
+      ),
       D1WorkflowRunsLive(db),
       StepRegistryLive,
       D1AssetStoreLive(db),
@@ -164,10 +172,8 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
       publicationsWithFault(db),
       R2DatasetObjectStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
     );
-    return executeWorkflowRun(
-      event.payload,
-      workflowSteps(step, (error) => new NonRetryableError(error.message)),
-      (program) => program.pipe(Effect.provide(layer), Effect.runPromise),
+    return runInstanceBody(
+      executeWorkflowRun(event.payload).pipe(Effect.provide(layer)),
     );
   }
 }
@@ -176,7 +182,10 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
  * Runs the dispatch body inside the request or cron invocation: the smoke
  * exercises recovery of the runs it launches, not of the dispatcher itself.
  */
-const inlineSteps: Steps = { do: (_name, run) => run() };
+const inlineCheckpointer: typeof Checkpointer.Service = {
+  checkpoint: (_name, body) => body,
+  sleepUntil: () => Effect.void,
+};
 
 control.use("/__smoke/*", requireManagementToken);
 control.post("/__smoke/tick", async (c) => {
@@ -190,7 +199,7 @@ control.post("/__smoke/tick", async (c) => {
     fault === undefined
       ? dependencies
       : { ...dependencies, runPlatformFor: () => platform(env, fault) };
-  return c.json(await scheduledWorkflowTick(deps, env, at, inlineSteps));
+  return c.json(await scheduledWorkflowTick(deps, env, at, inlineCheckpointer));
 });
 control.get("/__smoke/instances/:id", async (c) => {
   const id = c.req.param("id");
@@ -227,7 +236,7 @@ export default {
       dependencies,
       env,
       new Date(controller.scheduledTime),
-      inlineSteps,
+      inlineCheckpointer,
     );
   },
 } satisfies ExportedHandler<SmokeBindings>;

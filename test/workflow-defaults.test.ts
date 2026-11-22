@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { WorkflowAssignment, WorkflowDefault } from "$/workflows/views";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
-import { localSteps } from "$/local/steps";
+import { localCheckpointer } from "$/local/checkpointer";
 
 import { assetPricesSpec, workflowService } from "./support/workflow-service";
 
@@ -246,7 +246,7 @@ test("the app's pages read the defaults, assigned schedules and scheduled outcom
     dependencies,
     env,
     new Date("2024-01-10T06:00:00Z"),
-    localSteps(new Map(), { delayScale: 0 }),
+    localCheckpointer(new Map(), { delayScale: 0 }),
   );
   await json(
     api("/runs", "POST", {

@@ -3,16 +3,17 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import { Effect } from "effect";
 
 import { WorkerLoggerLive } from "$/logging";
+import { cloudflareCheckpointer } from "$/workflows/cloudflare";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import {
   scheduledWorkflowTick,
   type WorkflowDispatchParams,
 } from "$/workflows/runs/dispatch";
 import { reportDispatch } from "$/workflows/runs/report";
-import { workflowSteps } from "$/workflows/steps";
 
 export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
   CloudflareBindings,
@@ -29,7 +30,7 @@ export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
       },
       this.env,
       new Date(event.payload.scheduledTime),
-      workflowSteps(step),
+      cloudflareCheckpointer(step, (message) => new NonRetryableError(message)),
     );
     return reportDispatch(report).pipe(
       Effect.provide(WorkerLoggerLive),

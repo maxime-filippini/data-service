@@ -9,6 +9,7 @@ import { MarketDataSourcesLayer, type SourceFor } from "$/market-data/sources";
 import { OperationError, PythonOperations } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import type { RunArtifacts } from "$/workflows/artifacts";
+import { Checkpointer, type StepPolicy } from "$/workflows/checkpointer";
 import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { executeWorkflowRun } from "$/workflows/executor";
 import {
@@ -17,7 +18,6 @@ import {
   type StepType,
 } from "$/workflows/registry";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import type { StepPolicy } from "$/workflows/steps";
 
 import { type LocalPlatformOptions, localRunPlatform } from "./platform";
 import { memoryDatasetObjectStore } from "./published";
@@ -86,21 +86,19 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     datasets,
   );
   const platform = localRunPlatform(
-    (params, steps) =>
+    (params, checkpointer) =>
       executeWorkflowRun(
         params,
-        steps,
-        (program) =>
-          program.pipe(
-            Effect.provide(executorLayer),
-            options.now === undefined
-              ? (effect) => effect
-              : Effect.provideService(Clock.Clock, clockAt(options.now)),
-            Effect.runPromise,
-          ),
         options.stepPolicy === undefined
           ? {}
           : { stepPolicy: options.stepPolicy },
+      ).pipe(
+        Effect.provide(executorLayer),
+        Effect.provideService(Checkpointer, checkpointer),
+        (effect) =>
+          options.now === undefined
+            ? effect
+            : Effect.provideService(effect, Clock.Clock, clockAt(options.now)),
       ),
     options.platform,
   );

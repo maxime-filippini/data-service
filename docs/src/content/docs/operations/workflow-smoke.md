@@ -4,7 +4,7 @@ description: Exercise durable workflow recovery in an isolated deployment.
 ---
 
 The smoke test deploys a separate Worker, Workflow, container app and D1
-database. It uses the real Cloudflare Steps adapter, Python engine, application
+database. It uses the real Cloudflare Checkpointer, Python engine, application
 API and SvelteKit run pages. Its test adapter serves fixture prices through
 the EODHD client and injects failures around real platform operations. The
 regular fixture command and the production Worker do not load these adapters.

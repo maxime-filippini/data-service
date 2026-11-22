@@ -24,7 +24,7 @@ import {
 } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { applyMigrations, makeSqliteD1 } from "$/local/sqlite-d1";
-import { localSteps } from "$/local/steps";
+import { localCheckpointer } from "$/local/checkpointer";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
@@ -320,7 +320,7 @@ const makeFullService = (
       ? {}
       : { published: options.published }),
     platform: {
-      steps: { delayScale: 0 },
+      checkpointer: { delayScale: 0 },
       ...(options.autoStart === undefined
         ? {}
         : { autoStart: options.autoStart }),
@@ -399,7 +399,7 @@ const makeFullService = (
           local.dependencies,
           tickEnv,
           new Date(params.scheduledTime),
-          localSteps(new Map(), { delayScale: 0 }),
+          localCheckpointer(new Map(), { delayScale: 0 }),
         ),
       );
     },

@@ -13,16 +13,19 @@ import { MarketDataSourcesLayer, liveSourceFor } from "$/market-data/sources";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { R2RunArtifactsLive } from "$/workflows/artifacts";
+import {
+  CloudflareCheckpointerLive,
+  runInstanceBody,
+} from "$/workflows/cloudflare";
 import { executeWorkflowRun } from "$/workflows/executor";
 import { StepRegistryLive } from "$/workflows/registry";
 import type { WorkflowRunParams } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import { workflowSteps } from "$/workflows/steps";
 
 /**
  * One run of a workflow definition for one subject. The instance ID is the
  * run ID. The logic lives in `executeWorkflowRun`; this class only wires the
- * Worker's adapters: D1 records, the step registry, live provider
+ * Worker's adapters: the instance's `step` as the Checkpointer, D1 records, the step registry, live provider
  * integrations, R2 run artifacts (in the raw bucket, under `runs/`), the
  * Python operations in the engine container, and published datasets (in the
  * processed bucket, with their metadata in D1).
@@ -37,6 +40,10 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
   ) {
     const db = this.env.MARKET_DATA_DB;
     const layer = Layer.mergeAll(
+      CloudflareCheckpointerLive(
+        step,
+        (message) => new NonRetryableError(message),
+      ),
       D1WorkflowRunsLive(db),
       StepRegistryLive,
       D1AssetStoreLive(db),
@@ -51,10 +58,8 @@ export class DefinitionRunWorkflow extends WorkflowEntrypoint<
       D1DatasetPublicationStoreLive(db),
       R2DatasetObjectStoreLive(this.env.PROCESSED_MARKET_DATA_BUCKET),
     );
-    return executeWorkflowRun(
-      event.payload,
-      workflowSteps(step, (error) => new NonRetryableError(error.message)),
-      (program) => program.pipe(Effect.provide(layer), Effect.runPromise),
+    return runInstanceBody(
+      executeWorkflowRun(event.payload).pipe(Effect.provide(layer)),
     );
   }
 }

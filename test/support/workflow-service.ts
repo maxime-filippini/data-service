@@ -68,7 +68,7 @@ export const workflowService = (
     ...(options.extraStepTypes === undefined
       ? {}
       : { extraStepTypes: options.extraStepTypes }),
-    platform: { steps: { delayScale: 0 }, ...options.platform },
+    platform: { checkpointer: { delayScale: 0 }, ...options.platform },
   });
   const platform = service.platform;
 

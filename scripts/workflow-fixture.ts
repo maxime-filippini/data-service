@@ -49,7 +49,7 @@ import { FileDatasetObjectStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
-import { localSteps } from "$/local/steps";
+import { localCheckpointer } from "$/local/checkpointer";
 import { HttpManagementApiLive, ManagementApi } from "$/management-api/client";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import type { Portfolio } from "$/portfolios/views";
@@ -130,7 +130,7 @@ const command = Command.make(
         sourceFor: fixtureSourceFor(fixtures),
         python: HttpPythonOperationsLive({ fetch }, python.url),
         published: FileDatasetObjectStoreLive(processedBucket),
-        platform: { steps: { delayScale: 0 } },
+        platform: { checkpointer: { delayScale: 0 } },
       });
       const routes = createRoutes(service.dependencies, {
         fetch: () => new Response("No app locally", { status: 404 }),
@@ -213,7 +213,7 @@ const command = Command.make(
               service.dependencies,
               env,
               new Date(at),
-              localSteps(new Map(), { delayScale: 0 }),
+              localCheckpointer(new Map(), { delayScale: 0 }),
             ),
           );
           if (tick.status !== "dispatched")

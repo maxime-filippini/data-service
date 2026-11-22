@@ -189,7 +189,7 @@ describe(
         published: options.published ?? FileDatasetObjectStoreLive(processed),
         platform: {
           ...options.platform,
-          steps: { delayScale: 0, ...options.platform?.steps },
+          checkpointer: { delayScale: 0, ...options.platform?.checkpointer },
         },
         ...(options.now === undefined ? {} : { now: options.now }),
       });
@@ -545,7 +545,7 @@ describe(
         platform: {
           interruptBefore: (instance, name) =>
             name === "wait dependencies 1" && instance.executions === 1,
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = Math.max(now, timestamp);
             },
@@ -605,7 +605,7 @@ describe(
         platform: {
           interruptBefore: (instance, name) =>
             name === "wait dependencies 1" && instance.executions === 1,
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = Math.max(timestamp, now);
             },
@@ -644,7 +644,7 @@ describe(
       const service = setup({
         now: () => now,
         platform: {
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = timestamp;
             },
@@ -680,7 +680,7 @@ describe(
       const service = setup({
         now: () => now,
         platform: {
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = timestamp;
             },

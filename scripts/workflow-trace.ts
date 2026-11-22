@@ -40,7 +40,7 @@ import { FileDatasetObjectStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
-import type { LocalStepEvent } from "$/local/steps";
+import type { LocalCheckpointEvent } from "$/local/checkpointer";
 import { HttpManagementApiLive, ManagementApi } from "$/management-api/client";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import type { Portfolio } from "$/portfolios/views";
@@ -243,7 +243,7 @@ const command = Command.make(
       const evicted = new Set<string>();
       const onEvent = (
         instance: LocalInstance,
-        event: LocalStepEvent | { readonly type: "execution" },
+        event: LocalCheckpointEvent | { readonly type: "execution" },
       ) => {
         const label = labels.get(instance.id) ?? instance.id.slice(0, 8);
         actor = label;
@@ -304,7 +304,7 @@ const command = Command.make(
             return true;
           },
           onEvent,
-          steps: {
+          checkpointer: {
             delayScale: 0,
             sleepUntil: async (timestamp) => {
               now = Math.max(now, timestamp);

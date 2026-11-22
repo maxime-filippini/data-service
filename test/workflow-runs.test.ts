@@ -23,7 +23,7 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
-import type { StepPolicy } from "$/workflows/steps";
+import type { StepPolicy } from "$/workflows/checkpointer";
 
 import { makeTestDatabase } from "./support/d1";
 
@@ -113,7 +113,7 @@ const setup = (
       oversized,
       ...(options.extraStepTypes ?? []),
     ],
-    platform: { steps: { delayScale: 0 }, ...options.platform },
+    platform: { checkpointer: { delayScale: 0 }, ...options.platform },
     ...(options.stepPolicy === undefined
       ? {}
       : { stepPolicy: options.stepPolicy }),
