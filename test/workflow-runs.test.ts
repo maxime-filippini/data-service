@@ -18,7 +18,7 @@ import {
   rawPricesEodContract,
   type StepType,
 } from "$/workflows/registry";
-import type { RunPlatform } from "$/workflows/runs/contracts";
+import type { RunWorkflowBinding } from "$/workflows/runs/contracts";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
@@ -108,7 +108,7 @@ const setup = (
     getUnavailable: false,
   };
   const service = localWorkflowService({
-    wrapBinding: (binding): RunPlatform => ({
+    wrapBinding: (binding): RunWorkflowBinding => ({
       create: async (create) => {
         if (faults.create === "failed") throw new Error("network error");
         const instance = await binding.create(create);

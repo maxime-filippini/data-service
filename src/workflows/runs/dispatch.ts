@@ -7,7 +7,7 @@ import { asTransient } from "$/workflows/registry";
 
 import type { WorkflowRunStatus, WorkflowRunSummary } from "./contracts";
 import { claimAndLaunch, reconcileRun } from "./operations";
-import { type DueAssignment, WorkflowRuns } from "./store";
+import { type DueAssignment, WorkflowRunStore } from "./store";
 
 /**
  * Scheduled dispatch: the hourly tick runs each enabled assignment once per
@@ -136,7 +136,7 @@ export const dispatchScheduledRuns = Effect.fn(
     const active = yield* checkpointer.checkpoint(
       `select active batch ${page}`,
       asTransient(
-        WorkflowRuns.use((runs) => runs.allActive(batchSize, afterActive)),
+        WorkflowRunStore.use((runs) => runs.allActive(batchSize, afterActive)),
       ),
     );
     if (active.length === 0) break;
@@ -168,7 +168,7 @@ export const dispatchScheduledRuns = Effect.fn(
     const assignments = yield* checkpointer.checkpoint(
       `select due batch ${page}`,
       asTransient(
-        WorkflowRuns.use((runs) =>
+        WorkflowRunStore.use((runs) =>
           runs.due(occurrenceByHour, batchSize, afterDue),
         ),
       ),

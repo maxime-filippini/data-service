@@ -2,7 +2,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import type { Checkpointer } from "$/workflows/checkpointer";
 import type {
-  RunPlatform,
+  RunWorkflowBinding,
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
 
@@ -60,7 +60,7 @@ export interface LocalPlatformOptions {
 }
 
 /** The local Workflow binding plus controls for tests and the fixture run. */
-export interface LocalRunPlatform extends RunPlatform {
+export interface LocalRunPlatform extends RunWorkflowBinding {
   readonly instances: ReadonlyMap<string, LocalInstance>;
   /** Start a held instance. */
   readonly start: (id: string) => void;

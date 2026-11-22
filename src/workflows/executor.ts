@@ -16,7 +16,7 @@ import {
   terminal,
 } from "$/workflows/registry";
 import type { WorkflowRunParams } from "$/workflows/runs/contracts";
-import { type CapturedRun, WorkflowRuns } from "$/workflows/runs/store";
+import { type CapturedRun, WorkflowRunStore } from "$/workflows/runs/store";
 import {
   Checkpointer,
   DEFAULT_STEP_POLICY,
@@ -35,7 +35,7 @@ const DEPENDENCY_CHECK_INTERVAL_MS = 60_000;
 
 /** The services a run's execution needs. */
 export type ExecutorServices =
-  Checkpointer | WorkflowRuns | StepRegistry | StepServices;
+  Checkpointer | WorkflowRunStore | StepRegistry | StepServices;
 
 /** A completed step's outputs, by output name. */
 type StepOutputs = { readonly [name: string]: Json };
@@ -171,7 +171,7 @@ const attemptStep = Effect.fn("Workflows.attemptStep")(function* (
   stepType: StepType | undefined,
 ) {
   const spec = run.steps[index]!;
-  const runs = yield* WorkflowRuns;
+  const runs = yield* WorkflowRunStore;
   const ids = { runId: run.runId, stepId: spec.id };
   yield* asTransient(
     runs.stepStarted({
@@ -220,7 +220,7 @@ const waitForStep = Effect.fn("Workflows.waitForStep")(function* (
   const startWait = Effect.gen(function* () {
     const startedAt = yield* Clock.currentTimeMillis;
     yield* asTransient(
-      WorkflowRuns.use((runs) =>
+      WorkflowRunStore.use((runs) =>
         runs.stepStarted({
           ...ids,
           position: index + 1,
@@ -241,7 +241,7 @@ const waitForStep = Effect.fn("Workflows.waitForStep")(function* (
 
   const checkOnce = Effect.gen(function* () {
     const request = yield* resolveRequest(run, spec, prior, stepType);
-    const runs = yield* WorkflowRuns;
+    const runs = yield* WorkflowRunStore;
     const result = yield* defectsAsTransient(wait.check(request, deadline));
     if (result.ready) {
       const outputs = yield* validateOutputs(stepType, result.outputs);
@@ -296,7 +296,7 @@ export interface ExecuteOptions {
 /** Record a run's outcome; a store failure is retried within the checkpoint. */
 const recordOutcome = <A extends Json, E extends { readonly message: string }>(
   name: string,
-  record: (now: string) => Effect.Effect<A, E, WorkflowRuns>,
+  record: (now: string) => Effect.Effect<A, E, WorkflowRunStore>,
 ) =>
   Effect.flatMap(Checkpointer, (checkpointer) =>
     checkpointer.checkpoint(name, asTransient(Effect.flatMap(nowIso, record))),
@@ -317,7 +317,7 @@ export const executeWorkflowRun = Effect.fn("Workflows.executeRun")(function* (
 ) {
   const checkpointer = yield* Checkpointer;
   const captured = yield* recordOutcome("start run", (now) =>
-    WorkflowRuns.use((runs) => runs.start(params.runId, now)),
+    WorkflowRunStore.use((runs) => runs.start(params.runId, now)),
   );
   if (captured === null) return { status: "inactive" } as ExecutionResult;
   const execution = captured as unknown as CapturedRun;
@@ -351,7 +351,7 @@ export const executeWorkflowRun = Effect.fn("Workflows.executeRun")(function* (
     }
     current = undefined;
     yield* recordOutcome("complete run", (now) =>
-      WorkflowRuns.use((runs) => runs.complete(params.runId, now)),
+      WorkflowRunStore.use((runs) => runs.complete(params.runId, now)),
     );
   });
 
@@ -359,7 +359,7 @@ export const executeWorkflowRun = Effect.fn("Workflows.executeRun")(function* (
     Effect.catch((failure) => {
       const failed = current;
       return recordOutcome("record failure", (now) =>
-        WorkflowRuns.use((runs) =>
+        WorkflowRunStore.use((runs) =>
           runs.fail({
             runId: params.runId,
             error:

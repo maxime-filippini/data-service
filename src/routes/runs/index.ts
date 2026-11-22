@@ -4,7 +4,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { utcDay } from "$/datetime";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
-import type { RunArtifacts } from "$/workflows/artifacts";
+import type { RunArtifactStore } from "$/workflows/artifacts";
 import { StepIdSchema, type WorkflowError } from "$/workflows/contracts";
 import {
   RunIdSchema,
@@ -13,10 +13,10 @@ import {
 } from "$/workflows/runs/contracts";
 import { RunCoordinator } from "$/workflows/runs/coordinator";
 import { getRunArtifact } from "$/workflows/runs/operations";
-import { WorkflowRuns } from "$/workflows/runs/store";
+import { WorkflowRunStore } from "$/workflows/runs/store";
 
 /** The services run routes need. */
-export type RunServices = WorkflowRuns | RunArtifacts | RunCoordinator;
+export type RunServices = WorkflowRunStore | RunArtifactStore | RunCoordinator;
 
 /** Selects the run routes' services from request bindings. */
 export type RunServicesFor = (
@@ -81,7 +81,7 @@ export const createRunRoutes = (
       const query = c.req.valid("query");
       const runs = await run(
         c.env,
-        WorkflowRuns.use((store) =>
+        WorkflowRunStore.use((store) =>
           store.list({
             ...(query.workflowId === undefined
               ? {}
@@ -114,7 +114,7 @@ export const createRunRoutes = (
     return c.json(
       await run(
         c.env,
-        WorkflowRuns.use((store) => store.get(runId)),
+        WorkflowRunStore.use((store) => store.get(runId)),
       ),
     );
   });

@@ -2,10 +2,10 @@ import { Effect, Schema } from "effect";
 
 import { AssetStore } from "$/assets/store";
 import { nowIso } from "$/clock";
-import { type MarketDataError, MarketDataSource } from "$/market-data";
+import { type MarketDataError, PriceProvider } from "$/market-data";
 import { MarketDateSchema } from "$/market-data/schemas";
-import { MarketDataSources } from "$/market-data/sources";
-import { RunArtifacts, runArtifactId } from "$/workflows/artifacts";
+import { PriceProviders } from "$/market-data/sources";
+import { RunArtifactStore, runArtifactId } from "$/workflows/artifacts";
 
 import {
   assetSubjectContract,
@@ -83,8 +83,8 @@ export const downloadPrices = defineStepType({
           `The start date ${range.from} is after the through date ${range.to}`,
         );
 
-      const sources = yield* MarketDataSources;
-      const entries = yield* MarketDataSource.use((source) =>
+      const sources = yield* PriceProviders;
+      const entries = yield* PriceProvider.use((source) =>
         source.retrieveDaily(symbol, range),
       ).pipe(
         Effect.provide(sources.sourceFor(asset.provider)),
@@ -112,7 +112,7 @@ export const downloadPrices = defineStepType({
         receivedAt,
         entries,
       };
-      yield* RunArtifacts.use((artifacts) =>
+      yield* RunArtifactStore.use((artifacts) =>
         artifacts.put(raw.id, JSON.stringify(envelope), "application/json"),
       ).pipe(
         Effect.mapError((error) =>

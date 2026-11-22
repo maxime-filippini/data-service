@@ -6,7 +6,7 @@ import {
   HttpClientResponse,
 } from "effect/http";
 
-import { MarketDataError, MarketDataSource } from "$/market-data";
+import { MarketDataError, PriceProvider } from "$/market-data";
 import { type DateRange, EodEntriesSchema } from "$/market-data/schemas";
 
 const ROOT_URL = "https://eodhd.com/api/eod";
@@ -83,7 +83,7 @@ const makeEodhd = (apiToken: unknown) =>
 
     const dependencies = { client, token } satisfies EodhdDependencies;
 
-    return MarketDataSource.of({
+    return PriceProvider.of({
       provider: "eodhd",
       retrieveDaily: (symbol, range) =>
         fetchSymbolRange(dependencies, symbol, range),
@@ -93,11 +93,11 @@ const makeEodhd = (apiToken: unknown) =>
 /** Builds the EODHD adapter while leaving its HTTP client injectable. */
 export const EodhdMarketDataSource = (
   apiToken: unknown,
-): Layer.Layer<MarketDataSource, MarketDataError, HttpClient.HttpClient> =>
-  Layer.effect(MarketDataSource, makeEodhd(apiToken));
+): Layer.Layer<PriceProvider, MarketDataError, HttpClient.HttpClient> =>
+  Layer.effect(PriceProvider, makeEodhd(apiToken));
 
 /** EODHD adapter backed by Cloudflare's global fetch implementation. */
-export const EodhdMarketDataSourceLive = (
+export const EodhdPriceProviderLive = (
   apiToken: unknown,
-): Layer.Layer<MarketDataSource, MarketDataError> =>
+): Layer.Layer<PriceProvider, MarketDataError> =>
   EodhdMarketDataSource(apiToken).pipe(Layer.provide(FetchHttpClient.layer));

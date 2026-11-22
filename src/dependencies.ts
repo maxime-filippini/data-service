@@ -2,16 +2,13 @@ import { Layer } from "effect";
 
 import { D1AssetStoreLive } from "$/assets/d1";
 import type { AssetStore } from "$/assets/store";
-import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
-import { R2DatasetObjectStoreLive } from "$/datasets/r2";
-import type {
-  DatasetObjectStore,
-  DatasetPublicationStore,
-} from "$/datasets/store";
+import { D1PublicationStoreLive } from "$/datasets/d1";
+import { R2PublishedFileStoreLive } from "$/datasets/r2";
+import type { PublishedFileStore, PublicationStore } from "$/datasets/store";
 import {
   liveSourceFor,
-  type MarketDataSources,
-  MarketDataSourcesLayer,
+  type PriceProviders,
+  PriceProvidersLayer,
 } from "$/market-data/sources";
 import {
   HttpPythonOperationsLive,
@@ -19,16 +16,19 @@ import {
 } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import type { Portfolios } from "$/portfolios/store";
-import { type RunArtifacts, R2RunArtifactsLive } from "$/workflows/artifacts";
+import {
+  type RunArtifactStore,
+  R2RunArtifactStoreLive,
+} from "$/workflows/artifacts";
 import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { type StepRegistry, StepRegistryLive } from "$/workflows/registry";
 import {
   type RunCoordinator,
   RunCoordinatorLive,
 } from "$/workflows/runs/coordinator";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import { D1WorkflowRunStoreLive } from "$/workflows/runs/d1";
 import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
-import type { WorkflowRuns } from "$/workflows/runs/store";
+import type { WorkflowRunStore } from "$/workflows/runs/store";
 import type { WorkflowStore } from "$/workflows/store";
 
 /**
@@ -41,13 +41,13 @@ export type AppServices =
   | Portfolios
   | WorkflowStore
   | StepRegistry
-  | WorkflowRuns
-  | RunArtifacts
+  | WorkflowRunStore
+  | RunArtifactStore
   | RunCoordinator
-  | MarketDataSources
+  | PriceProviders
   | PythonOperations
-  | DatasetPublicationStore
-  | DatasetObjectStore;
+  | PublicationStore
+  | PublishedFileStore;
 
 /**
  * A host's services for one request or instance, from the Worker's
@@ -69,17 +69,17 @@ export const cloudflareServices: ServicesFor = (env) => {
     D1PortfoliosLive(db),
     D1WorkflowStoreLive(db),
     StepRegistryLive,
-    D1WorkflowRunsLive(db),
-    R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
+    D1WorkflowRunStoreLive(db),
+    R2RunArtifactStoreLive(env.MARKET_DATA_BUCKET),
     BindingRunLauncherLive(env.WORKFLOW_RUNS),
-    MarketDataSourcesLayer(liveSourceFor(env)),
+    PriceProvidersLayer(liveSourceFor(env)),
     // One named container instance for Python operations.
     HttpPythonOperationsLive(
       env.CALCULATION_ENGINE.getByName("engine"),
       "http://engine",
     ),
-    D1DatasetPublicationStoreLive(db),
-    R2DatasetObjectStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
+    D1PublicationStoreLive(db),
+    R2PublishedFileStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
   );
   return Layer.provideMerge(RunCoordinatorLive, adapters);
 };

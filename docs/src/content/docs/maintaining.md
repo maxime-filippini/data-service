@@ -110,7 +110,7 @@ The root package pins Effect **4.0.0-rc.118** (see
   obtains an injected service; `yield* store.create(...)` executes a step on it.
 - **Services and Layers:** `Context.Service` keys live in `store.ts` or
   `client.ts`; real Cloudflare adapters end in `Live` (`D1WorkflowStoreLive`,
-  `R2RunArtifactsLive`, `HttpPythonOperationsLive`). Each host builds one Layer
+  `R2RunArtifactStoreLive`, `HttpPythonOperationsLive`). Each host builds one Layer
   with every service: `cloudflareServices(env)` in `src/dependencies.ts` from
   `CloudflareBindings`, and `localWorkflowService(...).servicesFor` in
   `src/local/runs.ts` from local adapters. Entry points provide that Layer, plus
@@ -177,7 +177,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
    `inputs` and `outputs` with explicit contract identities, and
    `implementation`.
 3. Use existing `Context.Service` interfaces (`AssetStore`, `Portfolios`,
-   `DatasetPublicationStore`, `RunArtifacts`, `MarketDataSources`) and map errors to
+   `PublicationStore`, `RunArtifactStore`, `PriceProviders`) and map errors to
    `terminalStepError` or `transientStepError`.
 4. Register it in `builtInStepTypes` in `src/workflows/registry/index.ts` and
    cover validation and execution through the `/api/workflows` and `/api/runs`

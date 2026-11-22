@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { Cause, Effect, Exit, Fiber, Result, Schema } from "effect";
 
-import { RunArtifacts, type ArtifactContent } from "$/workflows/artifacts";
+import { RunArtifactStore, type ArtifactContent } from "$/workflows/artifacts";
 import { readJsonArtifact } from "$/workflows/registry/json-artifact";
 
 const reference = {
@@ -14,7 +14,7 @@ const reference = {
 
 const read = (body: ArtifactContent["body"]) =>
   readJsonArtifact(reference, Schema.Struct({ message: Schema.String })).pipe(
-    Effect.provideService(RunArtifacts, {
+    Effect.provideService(RunArtifactStore, {
       get: () => Effect.succeed({ body, contentType: "application/json" }),
       put: () => Effect.void,
     }),

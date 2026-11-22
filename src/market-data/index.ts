@@ -30,8 +30,8 @@ export class MarketDataError extends Schema.TaggedError<MarketDataError>()(
  * rows for one symbol/range. The caller selects an adapter for the registered
  * provider; this interface fetches data without changing D1 run state or R2 storage.
  */
-export class MarketDataSource extends Context.Service<
-  MarketDataSource,
+export class PriceProvider extends Context.Service<
+  PriceProvider,
   {
     readonly provider: Provider;
     readonly retrieveDaily: (
@@ -39,4 +39,4 @@ export class MarketDataSource extends Context.Service<
       range: DateRange,
     ) => Effect.Effect<readonly DatedEntry[], MarketDataError>;
   }
->()("data-service/MarketDataSource") {}
+>()("data-service/PriceProvider") {}

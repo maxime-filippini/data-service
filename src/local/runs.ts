@@ -2,13 +2,13 @@ import { Clock, Effect, Layer } from "effect";
 
 import { clockAt } from "$/clock";
 import { D1AssetStoreLive } from "$/assets/d1";
-import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
-import type { DatasetObjectStore } from "$/datasets/store";
+import { D1PublicationStoreLive } from "$/datasets/d1";
+import type { PublishedFileStore } from "$/datasets/store";
 import type { ServicesFor } from "$/dependencies";
-import { MarketDataSourcesLayer, type SourceFor } from "$/market-data/sources";
+import { PriceProvidersLayer, type SourceFor } from "$/market-data/sources";
 import { OperationError, PythonOperations } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
-import type { RunArtifacts } from "$/workflows/artifacts";
+import type { RunArtifactStore } from "$/workflows/artifacts";
 import { Checkpointer, type StepPolicy } from "$/workflows/checkpointer";
 import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { executeWorkflowRun } from "$/workflows/executor";
@@ -17,19 +17,19 @@ import {
   StepRegistryLayer,
   type StepType,
 } from "$/workflows/registry";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import type { RunPlatform } from "$/workflows/runs/contracts";
+import { D1WorkflowRunStoreLive } from "$/workflows/runs/d1";
+import type { RunWorkflowBinding } from "$/workflows/runs/contracts";
 import { RunCoordinatorLive } from "$/workflows/runs/coordinator";
 import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 import { type LocalPlatformOptions, localRunPlatform } from "./platform";
-import { memoryDatasetObjectStore } from "./published";
+import { memoryPublishedFileStore } from "./published";
 
 /** What a local composition of the workflow service runs against. */
 export interface LocalServiceOptions {
   readonly db: D1Database;
   /** Where run artifacts go: files or memory. */
-  readonly artifacts: Layer.Layer<RunArtifacts>;
+  readonly artifacts: Layer.Layer<RunArtifactStore>;
   /** Provider adapters, normally answering from fixtures. */
   readonly sourceFor: SourceFor;
   /**
@@ -38,7 +38,7 @@ export interface LocalServiceOptions {
    */
   readonly python?: Layer.Layer<PythonOperations>;
   /** Where published datasets go: files or memory (default). */
-  readonly published?: Layer.Layer<DatasetObjectStore>;
+  readonly published?: Layer.Layer<PublishedFileStore>;
   /** Step types besides the built-in ones (test-only types). */
   readonly extraStepTypes?: readonly StepType[];
   readonly platform?: LocalPlatformOptions;
@@ -50,7 +50,7 @@ export interface LocalServiceOptions {
    * Wraps the in-process Workflow binding the RunLauncher uses, so tests can
    * lose or fail creates and lookups the way the platform can.
    */
-  readonly wrapBinding?: (binding: RunPlatform) => RunPlatform;
+  readonly wrapBinding?: (binding: RunWorkflowBinding) => RunWorkflowBinding;
 }
 
 /** No Python service: every call fails terminally, saying so. */
@@ -103,13 +103,13 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     D1PortfoliosLive(db),
     D1WorkflowStoreLive(db),
     StepRegistryLayer([...builtInStepTypes, ...(options.extraStepTypes ?? [])]),
-    D1WorkflowRunsLive(db),
+    D1WorkflowRunStoreLive(db),
     options.artifacts,
     BindingRunLauncherLive(options.wrapBinding?.(platform) ?? platform),
-    MarketDataSourcesLayer(options.sourceFor),
+    PriceProvidersLayer(options.sourceFor),
     options.python ?? noPython,
-    D1DatasetPublicationStoreLive(db),
-    options.published ?? memoryDatasetObjectStore().layer,
+    D1PublicationStoreLive(db),
+    options.published ?? memoryPublishedFileStore().layer,
   );
   const services = Layer.provideMerge(RunCoordinatorLive, adapters);
   const servicesFor: ServicesFor = () => services;

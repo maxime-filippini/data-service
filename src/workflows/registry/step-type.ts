@@ -1,14 +1,11 @@
 import { Effect, Schema } from "effect";
 
 import type { AssetStore } from "$/assets/store";
-import type {
-  DatasetPublicationStore,
-  DatasetObjectStore,
-} from "$/datasets/store";
-import type { MarketDataSources } from "$/market-data/sources";
+import type { PublicationStore, PublishedFileStore } from "$/datasets/store";
+import type { PriceProviders } from "$/market-data/sources";
 import type { PythonOperations } from "$/operations/client";
 import type { Portfolios } from "$/portfolios/store";
-import type { RunArtifacts } from "$/workflows/artifacts";
+import type { RunArtifactStore } from "$/workflows/artifacts";
 import type { StepSpec, Subject, SubjectKind } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
 import { type Contract, dateContract, subjectContracts } from "./contract";
@@ -102,11 +99,11 @@ export class StepFailure extends Schema.TaggedError<StepFailure>()(
 export type StepServices =
   | AssetStore
   | Portfolios
-  | MarketDataSources
-  | RunArtifacts
+  | PriceProviders
+  | RunArtifactStore
   | PythonOperations
-  | DatasetPublicationStore
-  | DatasetObjectStore;
+  | PublicationStore
+  | PublishedFileStore;
 
 /** A durable check is either ready to produce outputs or waiting for inputs. */
 export type WaitCheck<O> =

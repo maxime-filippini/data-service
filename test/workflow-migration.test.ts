@@ -14,9 +14,12 @@ import {
   type PublicationView,
   publishedDatasetKey,
 } from "$/datasets/contracts";
-import { FileRunArtifactsLive, memoryRunArtifacts } from "$/local/artifacts";
+import {
+  FileRunArtifactStoreLive,
+  memoryRunArtifacts,
+} from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
-import { FileDatasetObjectStoreLive } from "$/local/published";
+import { FilePublishedFileStoreLive } from "$/local/published";
 import {
   type LocalPythonService,
   startPythonService,
@@ -308,7 +311,7 @@ const makeFullService = (
     readonly autoStart?: boolean;
     readonly artifacts?: ReturnType<typeof memoryRunArtifacts>["layer"];
     readonly python?: ReturnType<typeof HttpPythonOperationsLive>;
-    readonly published?: ReturnType<typeof FileDatasetObjectStoreLive>;
+    readonly published?: ReturnType<typeof FilePublishedFileStoreLive>;
   } = {},
 ) => {
   const local = localWorkflowService({
@@ -1062,9 +1065,9 @@ describe(
 
       const service = makeFullService(db, {
         dispatch: "on",
-        artifacts: FileRunArtifactsLive(rawDir),
+        artifacts: FileRunArtifactStoreLive(rawDir),
         python: HttpPythonOperationsLive({ fetch }, python.url),
-        published: FileDatasetObjectStoreLive(processedDir),
+        published: FilePublishedFileStoreLive(processedDir),
       });
 
       const outcome = await runScheduledHandlers(

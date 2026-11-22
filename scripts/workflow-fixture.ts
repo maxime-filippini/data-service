@@ -43,9 +43,9 @@ import {
   publishedDatasetKey,
 } from "$/datasets/contracts";
 import { previousDay } from "$/datetime";
-import { FileRunArtifactsLive } from "$/local/artifacts";
+import { FileRunArtifactStoreLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
-import { FileDatasetObjectStoreLive } from "$/local/published";
+import { FilePublishedFileStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
@@ -126,10 +126,10 @@ const command = Command.make(
       const { db } = makeSqliteD1(path.join(out, "d1.sqlite"));
       const service = localWorkflowService({
         db,
-        artifacts: FileRunArtifactsLive(rawBucket),
+        artifacts: FileRunArtifactStoreLive(rawBucket),
         sourceFor: fixtureSourceFor(fixtures),
         python: HttpPythonOperationsLive({ fetch }, python.url),
-        published: FileDatasetObjectStoreLive(processedBucket),
+        published: FilePublishedFileStoreLive(processedBucket),
         platform: { checkpointer: { delayScale: 0 } },
       });
       const routes = createRoutes(service.servicesFor, {

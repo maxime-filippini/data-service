@@ -33,10 +33,10 @@ import { appendFileSync } from "node:fs";
 import { Console, Effect, FileSystem, Path } from "effect";
 import { Command, Flag } from "effect/cli";
 
-import { FileRunArtifactsLive } from "$/local/artifacts";
+import { FileRunArtifactStoreLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import type { LocalInstance } from "$/local/platform";
-import { FileDatasetObjectStoreLive } from "$/local/published";
+import { FilePublishedFileStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
@@ -285,12 +285,12 @@ const command = Command.make(
 
       const service = localWorkflowService({
         db,
-        artifacts: FileRunArtifactsLive(rawBucket),
+        artifacts: FileRunArtifactStoreLive(rawBucket),
         sourceFor: fixtureSourceFor(
           loadEodhdFixtures(path.resolve(options.fixtures)),
         ),
         python: HttpPythonOperationsLive({ fetch: pythonFetch }, python.url),
-        published: FileDatasetObjectStoreLive(processedBucket),
+        published: FilePublishedFileStoreLive(processedBucket),
         now: () => now,
         platform: {
           autoStart: false,

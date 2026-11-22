@@ -11,16 +11,16 @@ import { createLocalJWKSet, type JWK } from "jose";
 import { D1AssetStoreLive } from "$/assets/d1";
 import { requireManagementToken } from "$/auth";
 import { DatasetError } from "$/datasets/contracts";
-import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
-import { R2DatasetObjectStoreLive } from "$/datasets/r2";
-import { DatasetPublicationStore } from "$/datasets/store";
+import { D1PublicationStoreLive } from "$/datasets/d1";
+import { R2PublishedFileStoreLive } from "$/datasets/r2";
+import { PublicationStore } from "$/datasets/store";
 import { cloudflareServices } from "$/dependencies";
 import { fixtureSourceFor } from "$/local/eodhd-fixtures";
-import { MarketDataSourcesLayer } from "$/market-data/sources";
+import { PriceProvidersLayer } from "$/market-data/sources";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
-import { R2RunArtifactsLive } from "$/workflows/artifacts";
+import { R2RunArtifactStoreLive } from "$/workflows/artifacts";
 import type { Checkpointer } from "$/workflows/checkpointer";
 import {
   CloudflareCheckpointerLive,
@@ -29,10 +29,10 @@ import {
 import { executeWorkflowRun } from "$/workflows/executor";
 import { StepRegistryLive } from "$/workflows/registry";
 import type {
-  RunPlatform,
+  RunWorkflowBinding,
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import { D1WorkflowRunStoreLive } from "$/workflows/runs/d1";
 import {
   RunCoordinatorLive,
   scheduledWorkflowTick,
@@ -87,7 +87,7 @@ function fixtureSources(prefix: string) {
   });
 }
 
-function platform(env: SmokeBindings, fault: LaunchFault): RunPlatform {
+function platform(env: SmokeBindings, fault: LaunchFault): RunWorkflowBinding {
   return {
     create: async (options) => {
       const instance = await env.WORKFLOW_RUNS.create(options);
@@ -108,10 +108,10 @@ function platform(env: SmokeBindings, fault: LaunchFault): RunPlatform {
 
 function publicationsWithFault(db: D1Database) {
   return Layer.effect(
-    DatasetPublicationStore,
+    PublicationStore,
     Effect.gen(function* () {
-      const store = yield* DatasetPublicationStore;
-      return DatasetPublicationStore.of({
+      const store = yield* PublicationStore;
+      return PublicationStore.of({
         ...store,
         record: (publication) =>
           Effect.gen(function* () {
@@ -133,7 +133,7 @@ function publicationsWithFault(db: D1Database) {
           }),
       });
     }),
-  ).pipe(Layer.provide(D1DatasetPublicationStoreLive(db)));
+  ).pipe(Layer.provide(D1PublicationStoreLive(db)));
 }
 
 /** Only this Worker wraps the production adapters with injected faults. */
@@ -166,15 +166,15 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
         step,
         (message) => new NonRetryableError(message),
       ),
-      D1WorkflowRunsLive(db),
+      D1WorkflowRunStoreLive(db),
       StepRegistryLive,
       D1AssetStoreLive(db),
       D1PortfoliosLive(db),
-      MarketDataSourcesLayer(fixtureSources(env.SMOKE_SYMBOL_PREFIX)),
-      R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
+      PriceProvidersLayer(fixtureSources(env.SMOKE_SYMBOL_PREFIX)),
+      R2RunArtifactStoreLive(env.MARKET_DATA_BUCKET),
       HttpPythonOperationsLive(fetcher, "http://engine"),
       publicationsWithFault(db),
-      R2DatasetObjectStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
+      R2PublishedFileStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
     );
     return runInstanceBody(
       executeWorkflowRun(event.payload).pipe(Effect.provide(layer)),

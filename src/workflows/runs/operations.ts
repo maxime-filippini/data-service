@@ -1,12 +1,12 @@
 import { Effect, Result, Schema } from "effect";
 
-import { RunArtifacts } from "$/workflows/artifacts";
+import { RunArtifactStore } from "$/workflows/artifacts";
 import { type Subject, WorkflowError } from "$/workflows/contracts";
 import { ArtifactReferenceSchema } from "$/workflows/registry";
 
 import type { RunTrigger, WorkflowRunSummary } from "./contracts";
 import { RunLauncher } from "./launcher";
-import { WorkflowRuns } from "./store";
+import { WorkflowRunStore } from "./store";
 
 /**
  * Application operations for runs, shared by the management API, the app's
@@ -33,7 +33,7 @@ export const reconcileRun = Effect.fn("WorkflowRuns.reconcile")(function* (
   run: WorkflowRunSummary,
   now: Date,
 ) {
-  const runs = yield* WorkflowRuns;
+  const runs = yield* WorkflowRunStore;
   const launcher = yield* RunLauncher;
   const status = yield* launcher.status(run.id);
   if (status === undefined) {
@@ -72,7 +72,7 @@ export interface StartRun {
  */
 export const claimAndLaunch = Effect.fn("WorkflowRuns.claimAndLaunch")(
   function* (input: StartRun, now: Date) {
-    const runs = yield* WorkflowRuns;
+    const runs = yield* WorkflowRunStore;
     for (const active of yield* runs.active(input.workflowId, input.subject))
       yield* reconcileRun(active, now);
 
@@ -107,7 +107,7 @@ export const rerun = Effect.fn("WorkflowRuns.rerun")(function* (
   runId: string,
   now: Date,
 ) {
-  const runs = yield* WorkflowRuns;
+  const runs = yield* WorkflowRunStore;
   const previous = yield* runs.get(runId);
   return yield* startRun(
     {
@@ -134,7 +134,7 @@ export const getRunArtifact = Effect.fn("WorkflowRuns.getArtifact")(function* (
   stepId: string,
   output: string,
 ) {
-  const run = yield* WorkflowRuns.use((runs) => runs.get(runId));
+  const run = yield* WorkflowRunStore.use((runs) => runs.get(runId));
   const step = run.steps.find((candidate) => candidate.id === stepId);
   if (step === undefined)
     return yield* notFound(`The run has no step "${stepId}"`);
@@ -149,7 +149,7 @@ export const getRunArtifact = Effect.fn("WorkflowRuns.getArtifact")(function* (
     return yield* notFound(
       `Output "${output}" of step "${stepId}" is not an artifact reference`,
     );
-  const content = yield* RunArtifacts.use((artifacts) =>
+  const content = yield* RunArtifactStore.use((artifacts) =>
     artifacts.get(reference.success.id),
   ).pipe(
     Effect.mapError(

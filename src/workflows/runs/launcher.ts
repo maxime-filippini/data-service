@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import type { RunPlatform } from "./contracts";
+import type { RunWorkflowBinding } from "./contracts";
 
 /** What a launch attempt established. */
 export type LaunchOutcome = "launched" | "uncertain";
@@ -33,7 +33,7 @@ export class RunLauncher extends Context.Service<
  * the local in-process stand-in with the same create and get semantics.
  */
 export const bindingRunLauncher = (
-  binding: RunPlatform,
+  binding: RunWorkflowBinding,
 ): typeof RunLauncher.Service =>
   RunLauncher.of({
     launch: (runId) =>
@@ -63,6 +63,6 @@ export const bindingRunLauncher = (
 
 /** `bindingRunLauncher` as a Layer. */
 export const BindingRunLauncherLive = (
-  binding: RunPlatform,
+  binding: RunWorkflowBinding,
 ): Layer.Layer<RunLauncher> =>
   Layer.succeed(RunLauncher, bindingRunLauncher(binding));

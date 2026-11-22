@@ -149,4 +149,7 @@ export interface WorkflowRunParams {
  * deterministic ID and look one up to reconcile an uncertain launch. Tests
  * and the local fixture command supply an in-process stand-in.
  */
-export type RunPlatform = Pick<Workflow<WorkflowRunParams>, "create" | "get">;
+export type RunWorkflowBinding = Pick<
+  Workflow<WorkflowRunParams>,
+  "create" | "get"
+>;

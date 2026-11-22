@@ -23,12 +23,12 @@ import { promisify } from "node:util";
 import type { Layer } from "effect";
 
 import type { PublicationView } from "$/datasets/contracts";
-import type { DatasetObjectStore } from "$/datasets/store";
-import { FileRunArtifactsLive } from "$/local/artifacts";
+import type { PublishedFileStore } from "$/datasets/store";
+import { FileRunArtifactStoreLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import {
-  FileDatasetObjectStoreLive,
-  memoryDatasetObjectStore,
+  FilePublishedFileStoreLive,
+  memoryPublishedFileStore,
 } from "$/local/published";
 import {
   type LocalPythonService,
@@ -125,7 +125,7 @@ describe(
 
     const setup = (
       options: {
-        readonly published?: Layer.Layer<DatasetObjectStore>;
+        readonly published?: Layer.Layer<PublishedFileStore>;
         readonly platform?: LocalPlatformOptions;
         readonly now?: () => number;
         readonly processed?: string;
@@ -180,13 +180,13 @@ describe(
       };
       const service = localWorkflowService({
         db: faultyDb,
-        artifacts: FileRunArtifactsLive(join(root, "raw")),
+        artifacts: FileRunArtifactStoreLive(join(root, "raw")),
         sourceFor: fixtureSourceFor(fixtures, (url) => provider.respond(url)),
         python: HttpPythonOperationsLive(
           fetcher,
           options.pythonUrl ?? python.url,
         ),
-        published: options.published ?? FileDatasetObjectStoreLive(processed),
+        published: options.published ?? FilePublishedFileStoreLive(processed),
         platform: {
           ...options.platform,
           checkpointer: { delayScale: 0, ...options.platform?.checkpointer },
@@ -969,7 +969,7 @@ describe(
     });
 
     test("publication metadata is recorded only after the object write succeeds", async () => {
-      const storage = memoryDatasetObjectStore();
+      const storage = memoryPublishedFileStore();
       const { configure, runFor, publication } = setup({
         published: storage.layer,
       });

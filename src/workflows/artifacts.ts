@@ -38,8 +38,8 @@ export interface ArtifactContent {
 }
 
 /** Injectable artifact storage: R2 in the Worker, files locally. */
-export class RunArtifacts extends Context.Service<
-  RunArtifacts,
+export class RunArtifactStore extends Context.Service<
+  RunArtifactStore,
   {
     /** Write (or replace) an artifact. */
     readonly put: (
@@ -52,7 +52,7 @@ export class RunArtifacts extends Context.Service<
       id: string,
     ) => Effect.Effect<ArtifactContent | null, ArtifactError>;
   }
->()("data-service/RunArtifacts") {}
+>()("data-service/RunArtifactStore") {}
 
 /** Fail unless the ID is in the run namespace. */
 export const requireArtifactId = (id: string) =>
@@ -69,12 +69,12 @@ const storageError = (message: string) =>
   new ArtifactError({ kind: "storage", message });
 
 /** Run artifacts in an R2 bucket, under its `runs/` prefix. */
-export const R2RunArtifactsLive = (
+export const R2RunArtifactStoreLive = (
   bucket: R2Bucket,
-): Layer.Layer<RunArtifacts> =>
+): Layer.Layer<RunArtifactStore> =>
   Layer.succeed(
-    RunArtifacts,
-    RunArtifacts.of({
+    RunArtifactStore,
+    RunArtifactStore.of({
       put: (id, body, contentType) =>
         requireArtifactId(id).pipe(
           Effect.andThen(

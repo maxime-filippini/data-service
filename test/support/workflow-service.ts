@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Layer } from "effect";
 
-import type { DatasetObjectStore } from "$/datasets/store";
+import type { PublishedFileStore } from "$/datasets/store";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import type { LocalPlatformOptions } from "$/local/platform";
@@ -11,7 +11,7 @@ import { localWorkflowService } from "$/local/runs";
 import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
 import type { StepType } from "$/workflows/registry";
-import type { RunPlatform } from "$/workflows/runs/contracts";
+import type { RunWorkflowBinding } from "$/workflows/runs/contracts";
 
 import { makeTestDatabase } from "./d1";
 
@@ -51,7 +51,7 @@ export const workflowService = (
   options: {
     readonly platform?: LocalPlatformOptions;
     readonly extraStepTypes?: readonly StepType[];
-    readonly published?: Layer.Layer<DatasetObjectStore>;
+    readonly published?: Layer.Layer<PublishedFileStore>;
     /** Worker vars, such as `WORKFLOW_DISPATCH`. */
     readonly env?: Readonly<Record<string, string>>;
   } = {},
@@ -65,7 +65,7 @@ export const workflowService = (
     getUnavailable: false,
   };
   const service = localWorkflowService({
-    wrapBinding: (binding): RunPlatform => ({
+    wrapBinding: (binding): RunWorkflowBinding => ({
       create: async (create) => {
         if (faults.create === "failed") throw new Error("network error");
         const instance = await binding.create(create);

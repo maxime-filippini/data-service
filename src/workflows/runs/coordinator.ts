@@ -13,7 +13,7 @@ import {
 } from "./dispatch";
 import { RunLauncher } from "./launcher";
 import { rerun, type StartRun, startRun } from "./operations";
-import { WorkflowRuns } from "./store";
+import { WorkflowRunStore } from "./store";
 
 /**
  * Starts runs: the one entry for manual starts, reruns and scheduled
@@ -53,11 +53,11 @@ const now = Effect.map(Clock.currentTimeMillis, (ms) => new Date(ms));
 export const RunCoordinatorLive: Layer.Layer<
   RunCoordinator,
   never,
-  WorkflowRuns | RunLauncher
+  WorkflowRunStore | RunLauncher
 > = Layer.effect(
   RunCoordinator,
   Effect.gen(function* () {
-    const services = yield* Effect.context<WorkflowRuns | RunLauncher>();
+    const services = yield* Effect.context<WorkflowRunStore | RunLauncher>();
     return RunCoordinator.of({
       start: (input) =>
         Effect.flatMap(now, (at) => startRun(input, at)).pipe(

@@ -1,18 +1,18 @@
 import { Effect, Layer } from "effect";
 
 import { DatasetError } from "./contracts";
-import { DatasetObjectStore } from "./store";
+import { PublishedFileStore } from "./store";
 
 const storageError = (message: string) =>
   new DatasetError({ kind: "storage", message });
 
 /** Published dataset objects in the processed R2 bucket. */
-export const R2DatasetObjectStoreLive = (
+export const R2PublishedFileStoreLive = (
   bucket: R2Bucket,
-): Layer.Layer<DatasetObjectStore> =>
+): Layer.Layer<PublishedFileStore> =>
   Layer.succeed(
-    DatasetObjectStore,
-    DatasetObjectStore.of({
+    PublishedFileStore,
+    PublishedFileStore.of({
       put: (key, body, contentType) =>
         Effect.tryPromise({
           try: () => bucket.put(key, body, { httpMetadata: { contentType } }),

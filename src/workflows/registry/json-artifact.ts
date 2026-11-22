@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import {
-  RunArtifacts,
+  RunArtifactStore,
   runArtifactId,
   type ArtifactError,
 } from "$/workflows/artifacts";
@@ -44,7 +44,7 @@ export const writeJsonArtifact = <A>(
       return yield* terminal(
         `JSON artifact exceeds ${MAX_JSON_ARTIFACT_BYTES} bytes`,
       );
-    yield* RunArtifacts.use((artifacts) =>
+    yield* RunArtifactStore.use((artifacts) =>
       artifacts.put(reference.id, body, "application/json"),
     ).pipe(Effect.mapError(artifactFailure));
   });
@@ -74,7 +74,7 @@ export const readJsonArtifact = <A>(
   schema: Schema.Codec<A, unknown>,
 ) =>
   Effect.gen(function* () {
-    const content = yield* RunArtifacts.use((artifacts) =>
+    const content = yield* RunArtifactStore.use((artifacts) =>
       artifacts.get(reference.id),
     ).pipe(Effect.mapError(artifactFailure));
     if (content === null) return null;
