@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { AssetStore } from "$/assets/store";
+import { nowIso } from "$/clock";
 import { type MarketDataError, MarketDataSource } from "$/market-data";
 import { MarketDateSchema } from "$/market-data/schemas";
 import { MarketDataSources } from "$/market-data/sources";
@@ -100,6 +101,7 @@ export const downloadPrices = defineStepType({
         format: "json",
         schema: "raw-prices-eod/v1",
       } as const;
+      const receivedAt = yield* nowIso;
       const envelope = {
         version: RAW_ENVELOPE_VERSION,
         runId: execution.runId,
@@ -107,7 +109,7 @@ export const downloadPrices = defineStepType({
         provider: asset.provider,
         symbol,
         requestedRange: range,
-        receivedAt: new Date().toISOString(),
+        receivedAt,
         entries,
       };
       yield* RunArtifacts.use((artifacts) =>

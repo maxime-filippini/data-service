@@ -1,5 +1,6 @@
-import { Effect, Layer } from "effect";
+import { Clock, Effect, Layer } from "effect";
 
+import { clockAt } from "$/clock";
 import { D1AssetStoreLive } from "$/assets/d1";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import type { DatasetObjectStore } from "$/datasets/store";
@@ -90,13 +91,16 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
         params,
         steps,
         (program) =>
-          program.pipe(Effect.provide(executorLayer), Effect.runPromise),
-        {
-          ...(options.now === undefined ? {} : { clock: options.now }),
-          ...(options.stepPolicy === undefined
-            ? {}
-            : { stepPolicy: options.stepPolicy }),
-        },
+          program.pipe(
+            Effect.provide(executorLayer),
+            options.now === undefined
+              ? (effect) => effect
+              : Effect.provideService(Clock.Clock, clockAt(options.now)),
+            Effect.runPromise,
+          ),
+        options.stepPolicy === undefined
+          ? {}
+          : { stepPolicy: options.stepPolicy },
       ),
     options.platform,
   );

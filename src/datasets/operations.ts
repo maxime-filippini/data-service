@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { nowIso } from "$/clock";
 import { RunArtifacts } from "$/workflows/artifacts";
 import type { Subject } from "$/workflows/contracts";
 
@@ -65,6 +66,7 @@ export const publishDataset = Effect.fn("Datasets.publish")(function* (
       PARQUET,
     ),
   );
+  const publishedAt = yield* nowIso;
   yield* DatasetPublicationStore.use((publications) =>
     publications.record({
       dataset: request.dataset,
@@ -76,7 +78,7 @@ export const publishDataset = Effect.fn("Datasets.publish")(function* (
       schema: request.artifact.schema,
       etag: stored.etag,
       size: stored.size,
-      publishedAt: new Date().toISOString(),
+      publishedAt,
     }),
   );
 });

@@ -1,5 +1,6 @@
-import { Effect, Result } from "effect";
+import { Clock, Effect, Result } from "effect";
 
+import { nowIso } from "$/clock";
 import { validateValueDescribed } from "$/schema";
 import type { StepSpec } from "$/workflows/contracts";
 import { outputReference, parseReference } from "$/workflows/references";
@@ -56,8 +57,6 @@ type StepOutputs = { readonly [name: string]: Json };
 /** How a run ended, as the Workflow instance's result. */
 export type ExecutionResult =
   { readonly status: "completed" } | { readonly status: "inactive" };
-
-const now = () => new Date().toISOString();
 
 /**
  * Resolve one input binding: a literal as given, a run-context field, or a
@@ -193,22 +192,24 @@ const attemptStep = Effect.fn("Workflows.attemptStep")(function* (
       ...ids,
       position: index + 1,
       type: spec.type,
-      now: now(),
+      now: yield* nowIso,
     }),
   );
   const outputs = yield* runImplementation(run, spec, prior, stepType).pipe(
     Effect.tapError((failure) =>
-      runs
-        .stepFailed({
+      Effect.flatMap(nowIso, (now) =>
+        runs.stepFailed({
           ...ids,
           error: failure.message,
           final: !failure.retry,
-          now: now(),
-        })
-        .pipe(Effect.ignore),
+          now,
+        }),
+      ).pipe(Effect.ignore),
     ),
   );
-  yield* asTransient(runs.stepCompleted({ ...ids, outputs, now: now() }));
+  yield* asTransient(
+    runs.stepCompleted({ ...ids, outputs, now: yield* nowIso }),
+  );
   return outputs;
 });
 
@@ -225,25 +226,25 @@ const waitForStep = async (
   wait: NonNullable<StepType["wait"]>,
   steps: WorkflowSteps,
   body: RunStepBody,
-  clock: () => number,
   policy: StepPolicy,
 ): Promise<StepOutputs> => {
   const spec = run.steps[index]!;
   const ids = { runId: run.runId, stepId: spec.id };
 
   const startWait = Effect.gen(function* () {
+    const startedAt = yield* Clock.currentTimeMillis;
     yield* asTransient(
       WorkflowRuns.use((runs) =>
         runs.stepStarted({
           ...ids,
           position: index + 1,
           type: spec.type,
-          now: now(),
+          now: new Date(startedAt).toISOString(),
         }),
       ),
     );
     const request = yield* resolveRequest(run, spec, prior, stepType);
-    return new Date(clock() + wait.timeoutMs(request.params)).toISOString();
+    return new Date(startedAt + wait.timeoutMs(request.params)).toISOString();
   });
   const deadline = await steps.do(
     `start wait ${spec.id}`,
@@ -262,7 +263,7 @@ const waitForStep = async (
         runs.stepCompleted({
           ...ids,
           outputs,
-          now: now(),
+          now: yield* nowIso,
           resumesRun: true,
         }),
       );
@@ -274,7 +275,7 @@ const waitForStep = async (
         waiting: { deadline, missing: result.missing },
       }),
     );
-    const observedAt = clock();
+    const observedAt = yield* Clock.currentTimeMillis;
     if (observedAt >= deadlineMs) {
       const symbols = result.missing.map(({ symbol }) => symbol);
       return yield* terminal(
@@ -309,8 +310,6 @@ const errorMessage = (cause: unknown) =>
 
 /** How an execution environment runs the executor. */
 export interface ExecuteOptions {
-  /** The clock wait deadlines are measured against. */
-  readonly clock?: () => number;
   /**
    * Retries and timeout for each step's attempts; `DEFAULT_STEP_POLICY`
    * when omitted. The Steps adapter applies it as its runtime can.
@@ -331,7 +330,7 @@ export const executeWorkflowRun = async (
   params: WorkflowRunParams,
   steps: WorkflowSteps,
   run: Runner,
-  { clock = Date.now, stepPolicy = DEFAULT_STEP_POLICY }: ExecuteOptions = {},
+  { stepPolicy = DEFAULT_STEP_POLICY }: ExecuteOptions = {},
 ): Promise<ExecutionResult> => {
   /** Run a step body; a failure becomes the error its retry needs. */
   const body = async <A>(
@@ -345,7 +344,9 @@ export const executeWorkflowRun = async (
   };
 
   const startRun = asTransient(
-    WorkflowRuns.use((runs) => runs.start(params.runId, now())),
+    Effect.flatMap(nowIso, (now) =>
+      WorkflowRuns.use((runs) => runs.start(params.runId, now)),
+    ),
   ) as Effect.Effect<Json, StepFailure, ExecutorServices>;
   const captured = await steps.do("start run", () => body(startRun));
   if (captured === null) return { status: "inactive" };
@@ -381,7 +382,6 @@ export const executeWorkflowRun = async (
           stepType.wait,
           steps,
           body,
-          clock,
           stepPolicy,
         );
       }
@@ -389,7 +389,9 @@ export const executeWorkflowRun = async (
     }
     current = undefined;
     const completeRun = asTransient(
-      WorkflowRuns.use((runs) => runs.complete(params.runId, now())),
+      Effect.flatMap(nowIso, (now) =>
+        WorkflowRuns.use((runs) => runs.complete(params.runId, now)),
+      ),
     );
     await steps.do("complete run", () => body(completeRun));
     return { status: "completed" };
@@ -397,16 +399,18 @@ export const executeWorkflowRun = async (
     const message = errorMessage(cause);
     const failed = current;
     const recordFailure = asTransient(
-      WorkflowRuns.use((runs) =>
-        runs.fail({
-          runId: params.runId,
-          error:
-            failed === undefined
-              ? message
-              : `Step "${failed.id}" failed: ${message}`,
-          ...(failed === undefined ? {} : { stepId: failed.id }),
-          now: now(),
-        }),
+      Effect.flatMap(nowIso, (now) =>
+        WorkflowRuns.use((runs) =>
+          runs.fail({
+            runId: params.runId,
+            error:
+              failed === undefined
+                ? message
+                : `Step "${failed.id}" failed: ${message}`,
+            ...(failed === undefined ? {} : { stepId: failed.id }),
+            now,
+          }),
+        ),
       ),
     );
     await steps.do("record failure", () => body(recordFailure));

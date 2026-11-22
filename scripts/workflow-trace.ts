@@ -137,9 +137,8 @@ const command = Command.make(
       yield* fs.makeDirectory(out, { recursive: true });
       const trace = makeTracer(path.join(out, "trace.log"));
 
-      // Virtual time: sleeps move it forward instantly. It starts at the
-      // real time because run records are stamped with the real time and
-      // the dependency check compares those stamps with the wait's deadline.
+      // Virtual time: sleeps move it forward instantly. Run records, wait
+      // deadlines and publications all read it through the Clock service.
       const start = Date.now();
       let now = start;
       const elapsed = (at = now) => {
