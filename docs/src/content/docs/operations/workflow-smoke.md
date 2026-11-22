@@ -61,6 +61,52 @@ publication to an `evidence-*` subdirectory. Keep the adjacent secret and
 private key files private. Use a fresh smoke database for a new scenario, so
 earlier enabled fixtures do not receive the fixed scheduled occurrence.
 
+## Run locally
+
+The same suite runs against a `wrangler dev` session: workerd's local
+Workflows, D1 and Durable Objects, with the two dev R2 buckets as remote
+bindings. They stay remote because the Python engine reads and writes R2 over
+S3 itself. This exercises the Cloudflare Checkpointer, the Workflow entry
+points and `cloudflareServices` without deploying anything. It does not
+show durability on Cloudflare's infrastructure (eviction across machines,
+real retry timing, container cold starts), so a deployed run is still due
+before a production cutover.
+
+Prepare the directory as above, then write a local config. Local D1 needs no
+`wrangler d1 create`.
+
+```sh
+setup=$(node --import tsx scripts/cloudflare-smoke/prepare.ts .dev.vars)
+smoke_dir=$(jq -r .directory <<< "$setup")
+smoke_name=$(jq -r .resource <<< "$setup")
+node --import tsx scripts/cloudflare-smoke/configure.ts "$smoke_dir" --local \
+  --engine-url http://localhost:8790
+smoke_config="$smoke_dir/wrangler.smoke.json"
+state="$smoke_dir/state"
+pnpm exec wrangler d1 migrations apply "$smoke_name" --local --config "$smoke_config" --persist-to "$state"
+pnpm exec wrangler d1 execute "$smoke_name" --local --config "$smoke_config" --persist-to "$state" \
+  --file scripts/cloudflare-smoke/setup.sql
+pnpm --filter app build
+```
+
+`--engine-url` calls the engine as a local process instead of the container.
+Leave it out to use the container through Docker, where `wrangler dev` can
+start one. On the yoloagent VM, workerd's container sidecar timed out, so the
+engine runs with `uv` on the same dev buckets:
+
+```sh
+(set -a; . "$smoke_dir/.dev.vars"; set +a
+ ARTIFACT_BUCKET=raw-market-data-dev PROCESSED_BUCKET=processed-market-data-dev \
+   uv run --directory containers/engine uvicorn data_service_engine.app:app --port 8790) &
+pnpm exec wrangler dev --config "$smoke_config" --env-file "$smoke_dir/.dev.vars" \
+  --persist-to "$state" --port 8787 --tsconfig "$PWD/tsconfig.json" --enable-containers=false &
+node --import tsx scripts/cloudflare-smoke/run.ts "$smoke_dir" http://localhost:8787
+```
+
+With a `localhost` URL, the runner sends its pause, resume and describe
+commands to the local session (`wrangler workflows instances … --local`).
+Use a fresh directory for each run.
+
 ## Retention
 
 List the two dev bucket configurations. The only object expiry should be
@@ -112,6 +158,15 @@ Cloudflare reported a 2,592,000-second age transition for prefix `runs/`
 on the dev raw bucket and no object deletion rule on the dev processed
 bucket. The raw prefix was empty before the smoke scenario. Production
 configuration was outside the deployment.
+
+On 2026-11-22 the full suite also passed locally (see [Run locally](#run-locally)),
+after run execution moved to platform-neutral services (#57): the
+Checkpointer, RunLauncher, RunCoordinator and per-host service layers. The
+engine ran as a local process. The scheduled portfolio paused while waiting,
+resumed and published 2,882 bytes, with two attempts each for volatility and
+publication. The timeout failed at its dependency step, the rerun completed
+the edited definition, the terminal input failed on attempt 1, and the
+transient outage used all 4 attempts.
 
 After removing the superseded download, calculation, queue, and processor
 paths (issue #39), the contracted Worker and single Python container were

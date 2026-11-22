@@ -6,6 +6,10 @@
  *
  *   node --import tsx scripts/cloudflare-smoke/run.ts <dir> <worker-url>
  *
+ * The URL is the deployed workers.dev URL, or http://localhost:<port> for a
+ * `wrangler dev` session of the local smoke config (configure.ts --local);
+ * platform controls then talk to that local session.
+ *
  * Evidence is written to <dir>/evidence-<suffix>/.
  */
 
@@ -25,6 +29,13 @@ import type { TickReport } from "$/workflows/runs/dispatch";
 import { runProcess, runScript, ScriptError } from "../cli";
 
 const processingDate = "2024-01-05";
+
+/** Python rejects indented top-level code, so inline scripts are dedented. */
+const dedent = (code: string) => {
+  const lines = code.split("\n").filter((line) => line.trim() !== "");
+  const indent = Math.min(...lines.map((line) => line.search(/\S/u)));
+  return lines.map((line) => line.slice(indent)).join("\n");
+};
 const scheduledAt = `${processingDate}T05:00:00Z`;
 
 interface InstanceView {
@@ -123,7 +134,9 @@ const command = Command.make(
       Argument.withDescription("The directory prepare.ts printed"),
     ),
     workerUrl: Argument.String("smoke-worker-url").pipe(
-      Argument.withDescription("The deployed smoke Worker's workers.dev URL"),
+      Argument.withDescription(
+        "The deployed smoke Worker's workers.dev URL, or http://localhost:<port>",
+      ),
     ),
   },
   ({ directory, workerUrl }) =>
@@ -142,11 +155,15 @@ const command = Command.make(
         fixtureSymbolPrefix: string;
       }>("resources.json");
       const base = new URL(workerUrl);
-      assert.equal(base.protocol, "https:");
-      assert.ok(
-        base.hostname.startsWith(`${resource}.`) &&
-          base.hostname.endsWith(".workers.dev"),
-      );
+      const local = base.hostname === "localhost";
+      if (local) assert.equal(base.protocol, "http:");
+      else {
+        assert.equal(base.protocol, "https:");
+        assert.ok(
+          base.hostname.startsWith(`${resource}.`) &&
+            base.hostname.endsWith(".workers.dev"),
+        );
+      }
       const secrets = yield* readJson<Record<string, string>>("secrets.json");
       const accessJwk = yield* readJson<JWK>("access-private.jwk.json");
       const accessToken = yield* Effect.promise(async () =>
@@ -279,6 +296,7 @@ const command = Command.make(
             resource,
             id,
             ...(action === "describe" ? ["--json"] : []),
+            ...(local ? ["--local", "--port", base.port || "80"] : []),
             "--config",
             path.resolve(directory, "wrangler.smoke.json"),
           ],
@@ -525,7 +543,7 @@ const command = Command.make(
           "containers/engine",
           "python",
           "-c",
-          `
+          dedent(`
       import datetime as dt
       import math
       import sys
@@ -538,7 +556,7 @@ const command = Command.make(
       assert row["as_of"] == dt.date.fromisoformat(sys.argv[3])
       assert row["observations"] == 3
       assert math.isclose(row["volatility"], 0.16655193949753938, abs_tol=1e-12)
-      `,
+      `),
           parquet,
           portfolio.id,
           processingDate,

@@ -51,6 +51,11 @@ const control = new Hono<{ Bindings: SmokeBindings }>();
 type SmokeBindings = CloudflareBindings & {
   SMOKE_SYMBOL_PREFIX: string;
   SMOKE_ACCESS_JWK: string;
+  /**
+   * Local runs only: the engine as a local process at this URL instead of
+   * the container, for hosts where `wrangler dev` cannot start containers.
+   */
+  SMOKE_ENGINE_URL?: string;
 };
 
 type LaunchFault = "lose-create-and-lookup" | "lose-lookup";
@@ -147,7 +152,11 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
   ) {
     const env = this.env;
     const db = env.MARKET_DATA_DB;
-    const engine = env.CALCULATION_ENGINE.getByName("engine");
+    const engineUrl = env.SMOKE_ENGINE_URL ?? "http://engine";
+    const engine =
+      env.SMOKE_ENGINE_URL === undefined
+        ? env.CALCULATION_ENGINE.getByName("engine")
+        : { fetch: (url: string, init: RequestInit) => fetch(url, init) };
     const fetcher = {
       async fetch(url: string, init: RequestInit) {
         const response = await engine.fetch(url, init);
@@ -172,7 +181,7 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
       D1PortfoliosLive(db),
       PriceProvidersLayer(fixtureSources(env.SMOKE_SYMBOL_PREFIX)),
       R2RunArtifactStoreLive(env.MARKET_DATA_BUCKET),
-      HttpPythonOperationsLive(fetcher, "http://engine"),
+      HttpPythonOperationsLive(fetcher, engineUrl),
       publicationsWithFault(db),
       R2PublishedFileStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
     );
