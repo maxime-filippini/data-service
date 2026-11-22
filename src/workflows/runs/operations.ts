@@ -4,14 +4,15 @@ import { RunArtifacts } from "$/workflows/artifacts";
 import { type Subject, WorkflowError } from "$/workflows/contracts";
 import { ArtifactReferenceSchema } from "$/workflows/registry";
 
-import type { RunPlatform, RunTrigger, WorkflowRunSummary } from "./contracts";
+import type { RunTrigger, WorkflowRunSummary } from "./contracts";
+import { RunLauncher } from "./launcher";
 import { WorkflowRuns } from "./store";
 
 /**
  * Application operations for runs, shared by the management API, the app's
  * API and the scheduled dispatcher (`dispatch.ts`): claim an assignment,
- * launch its Workflow instance under the run's ID, and reconcile launches
- * whose outcome is uncertain.
+ * launch its instance under the run's ID through the RunLauncher, and
+ * reconcile launches whose outcome is uncertain.
  */
 
 /** Instance statuses after which a run can no longer record its outcome. */
@@ -22,55 +23,21 @@ const STOPPED: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The run's instance status, or undefined when it cannot be determined: the
- * lookup failed because the instance is absent or the platform unreachable.
- */
-const instanceStatus = (platform: RunPlatform, runId: string) =>
-  Effect.promise(() =>
-    platform
-      .get(runId)
-      .then((instance) => instance.status())
-      .then(
-        (status): string | undefined => status.status,
-        () => undefined,
-      ),
-  );
-
-/**
- * Launch the run's Workflow instance, whose ID is the run ID. If creating it
- * fails but the instance exists (this or an earlier attempt went through),
- * it is launched. Otherwise the outcome is uncertain and the run stays
- * queued for reconciliation: creating the same ID again cannot duplicate it.
- */
-export const launchRun = (platform: RunPlatform, runId: string) =>
-  Effect.promise(async (): Promise<"launched" | "uncertain"> => {
-    try {
-      await platform.create({ id: runId, params: { runId } });
-      return "launched";
-    } catch {
-      return platform.get(runId).then(
-        () => "launched" as const,
-        () => "uncertain" as const,
-      );
-    }
-  });
-
-/**
- * Bring an active run's record in line with its Workflow instance. A run
- * whose instance stopped without recording an outcome fails, releasing the
+ * Bring an active run's record in line with its instance. A run whose
+ * instance stopped without recording an outcome fails, releasing the
  * assignment. An instance whose status cannot be read is not evidence that
  * it is absent, so the claim is kept; a queued run is launched again under
  * the same ID in case it never launched.
  */
 export const reconcileRun = Effect.fn("WorkflowRuns.reconcile")(function* (
-  platform: RunPlatform,
   run: WorkflowRunSummary,
   now: Date,
 ) {
   const runs = yield* WorkflowRuns;
-  const status = yield* instanceStatus(platform, run.id);
+  const launcher = yield* RunLauncher;
+  const status = yield* launcher.status(run.id);
   if (status === undefined) {
-    if (run.status === "queued") yield* launchRun(platform, run.id);
+    if (run.status === "queued") yield* launcher.launch(run.id);
     return "kept" as const;
   }
   if (!STOPPED.has(status)) return "kept" as const;
@@ -104,10 +71,10 @@ export interface StartRun {
  * Requires an enabled definition, assignment and (for an asset) asset.
  */
 export const claimAndLaunch = Effect.fn("WorkflowRuns.claimAndLaunch")(
-  function* (input: StartRun, now: Date, platform: RunPlatform) {
+  function* (input: StartRun, now: Date) {
     const runs = yield* WorkflowRuns;
     for (const active of yield* runs.active(input.workflowId, input.subject))
-      yield* reconcileRun(platform, active, now);
+      yield* reconcileRun(active, now);
 
     const outcome = yield* runs.claim({
       runId: crypto.randomUUID(),
@@ -120,7 +87,7 @@ export const claimAndLaunch = Effect.fn("WorkflowRuns.claimAndLaunch")(
       now: now.toISOString(),
     });
     if (outcome.claimed && outcome.run.status === "queued")
-      yield* launchRun(platform, outcome.run.id);
+      yield* RunLauncher.use((launcher) => launcher.launch(outcome.run.id));
     return outcome;
   },
 );
@@ -129,8 +96,8 @@ export const claimAndLaunch = Effect.fn("WorkflowRuns.claimAndLaunch")(
  * Start an assignment for a processing date and return its run straight
  * away (see `claimAndLaunch`).
  */
-export const startRun = (input: StartRun, now: Date, platform: RunPlatform) =>
-  Effect.map(claimAndLaunch(input, now, platform), (outcome) => outcome.run);
+export const startRun = (input: StartRun, now: Date) =>
+  Effect.map(claimAndLaunch(input, now), (outcome) => outcome.run);
 
 /**
  * Run a run's assignment and processing date again as a new run from the
@@ -139,7 +106,6 @@ export const startRun = (input: StartRun, now: Date, platform: RunPlatform) =>
 export const rerun = Effect.fn("WorkflowRuns.rerun")(function* (
   runId: string,
   now: Date,
-  platform: RunPlatform,
 ) {
   const runs = yield* WorkflowRuns;
   const previous = yield* runs.get(runId);
@@ -152,7 +118,6 @@ export const rerun = Effect.fn("WorkflowRuns.rerun")(function* (
       rerunOf: previous.id,
     },
     now,
-    platform,
   );
 });
 

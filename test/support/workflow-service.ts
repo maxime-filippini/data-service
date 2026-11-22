@@ -12,6 +12,7 @@ import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
 import type { StepType } from "$/workflows/registry";
 import type { RunPlatform } from "$/workflows/runs/contracts";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 import { makeTestDatabase } from "./d1";
 
@@ -93,7 +94,7 @@ export const workflowService = (
 
   const dependencies = {
     ...service.dependencies,
-    runPlatformFor: () => runPlatform,
+    runLauncherFor: () => BindingRunLauncherLive(runPlatform),
   };
   const routes = createRoutes(dependencies, {
     fetch: () => new Response("app"),

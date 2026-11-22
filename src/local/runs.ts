@@ -18,6 +18,7 @@ import {
   type StepType,
 } from "$/workflows/registry";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 import { type LocalPlatformOptions, localRunPlatform } from "./platform";
 import { memoryDatasetObjectStore } from "./published";
@@ -108,7 +109,7 @@ export const localWorkflowService = (options: LocalServiceOptions) => {
     workflowsFor: () => Layer.merge(D1WorkflowStoreLive(options.db), registry),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(options.db), options.artifacts),
-    runPlatformFor: () => platform,
+    runLauncherFor: () => BindingRunLauncherLive(platform),
     datasetsFor: () => datasets,
   } satisfies Dependencies;
   return { dependencies, platform };

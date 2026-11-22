@@ -13,6 +13,7 @@ import {
   scheduledWorkflowTick,
   type WorkflowDispatchParams,
 } from "$/workflows/runs/dispatch";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 import { reportDispatch } from "$/workflows/runs/report";
 
 export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
@@ -26,7 +27,7 @@ export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
     const report = await scheduledWorkflowTick(
       {
         workflowRunsFor: (env) => D1WorkflowRunsLive(env.MARKET_DATA_DB),
-        runPlatformFor: (env) => env.WORKFLOW_RUNS,
+        runLauncherFor: (env) => BindingRunLauncherLive(env.WORKFLOW_RUNS),
       },
       this.env,
       new Date(event.payload.scheduledTime),

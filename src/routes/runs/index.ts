@@ -1,4 +1,4 @@
-import { type Effect, type Layer, Schema } from "effect";
+import { type Effect, Layer, Schema } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
 
 import { utcDay } from "$/datetime";
@@ -8,22 +8,24 @@ import type { RunArtifacts } from "$/workflows/artifacts";
 import { StepIdSchema, type WorkflowError } from "$/workflows/contracts";
 import {
   RunIdSchema,
-  type RunPlatform,
   RunsQuerySchema,
   StartRunSchema,
 } from "$/workflows/runs/contracts";
+import type { RunLauncher } from "$/workflows/runs/launcher";
 import { getRunArtifact, rerun, startRun } from "$/workflows/runs/operations";
 import { WorkflowRuns } from "$/workflows/runs/store";
 
 /** The services run routes need. */
-export type RunServices = WorkflowRuns | RunArtifacts;
+export type RunServices = WorkflowRuns | RunArtifacts | RunLauncher;
 
 /** What run routes select from request bindings. */
 export interface RunDependencies {
   readonly workflowRunsFor: (
     env: CloudflareBindings,
-  ) => Layer.Layer<RunServices>;
-  readonly runPlatformFor: (env: CloudflareBindings) => RunPlatform;
+  ) => Layer.Layer<WorkflowRuns | RunArtifacts>;
+  readonly runLauncherFor: (
+    env: CloudflareBindings,
+  ) => Layer.Layer<RunLauncher>;
 }
 
 /** Most runs a list returns when no limit is given. */
@@ -53,7 +55,14 @@ export const createRunRoutes = (
   const run = <A>(
     env: CloudflareBindings,
     program: Effect.Effect<A, WorkflowError, RunServices>,
-  ) => runHttp(program, dependencies.workflowRunsFor(env));
+  ) =>
+    runHttp(
+      program,
+      Layer.merge(
+        dependencies.workflowRunsFor(env),
+        dependencies.runLauncherFor(env),
+      ),
+    );
 
   // The processing date defaults to today's UTC date. A `skipped` run means
   // another run of the assignment was still active.
@@ -73,7 +82,6 @@ export const createRunRoutes = (
             trigger: "manual",
           },
           now,
-          dependencies.runPlatformFor(c.env),
         ),
       );
       return c.json(started, 202);
@@ -131,10 +139,7 @@ export const createRunRoutes = (
     effectValidator("param", RunParamSchema),
     async (c) => {
       const { runId } = c.req.valid("param");
-      const started = await run(
-        c.env,
-        rerun(runId, new Date(), dependencies.runPlatformFor(c.env)),
-      );
+      const started = await run(c.env, rerun(runId, new Date()));
       return c.json(started, 202);
     },
   );

@@ -19,6 +19,7 @@ import {
   type StepType,
 } from "$/workflows/registry";
 import type { RunPlatform } from "$/workflows/runs/contracts";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
@@ -141,7 +142,7 @@ const setup = (
 
   const dependencies = {
     ...service.dependencies,
-    runPlatformFor: () => runPlatform,
+    runLauncherFor: () => BindingRunLauncherLive(runPlatform),
   };
   const routes = createRoutes(dependencies, {
     fetch: () => new Response("app"),

@@ -7,8 +7,8 @@ import { D1PortfoliosLive } from "$/portfolios/d1";
 import { R2RunArtifactsLive } from "$/workflows/artifacts";
 import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { StepRegistryLive } from "$/workflows/registry";
-import type { RunPlatform } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 /**
  * Select real adapters using the current request's Cloudflare bindings.
@@ -28,7 +28,9 @@ export const dependencies = {
       D1WorkflowRunsLive(env.MARKET_DATA_DB),
       R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
     ),
-  runPlatformFor: (env: CloudflareBindings): RunPlatform => env.WORKFLOW_RUNS,
+  // Runs execute in instances of the run Workflow, launched by run ID.
+  runLauncherFor: (env: CloudflareBindings) =>
+    BindingRunLauncherLive(env.WORKFLOW_RUNS),
   // Publication metadata in D1; published objects in the processed bucket.
   datasetsFor: (env: CloudflareBindings) =>
     Layer.merge(

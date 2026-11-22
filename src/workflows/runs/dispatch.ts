@@ -5,11 +5,8 @@ import type { Subject } from "$/workflows/contracts";
 import { Checkpointer } from "$/workflows/checkpointer";
 import { asTransient } from "$/workflows/registry";
 
-import type {
-  RunPlatform,
-  WorkflowRunStatus,
-  WorkflowRunSummary,
-} from "./contracts";
+import type { WorkflowRunStatus, WorkflowRunSummary } from "./contracts";
+import type { RunLauncher } from "./launcher";
 import { claimAndLaunch, reconcileRun } from "./operations";
 import { type DueAssignment, WorkflowRuns } from "./store";
 
@@ -82,7 +79,6 @@ export interface DispatchOptions {
 const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
   assignments: readonly DueAssignment[],
   now: Date,
-  platform: RunPlatform,
 ) {
   const dispatched: DispatchedRun[] = [];
   const failures: DispatchFailure[] = [];
@@ -98,7 +94,6 @@ const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
           scheduledFor: due.scheduledFor,
         },
         now,
-        platform,
       ),
     );
     if (outcome._tag === "Failure")
@@ -122,7 +117,7 @@ const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
  */
 export const dispatchScheduledRuns = Effect.fn(
   "WorkflowRuns.dispatchScheduled",
-)(function* (now: Date, platform: RunPlatform, options: DispatchOptions = {}) {
+)(function* (now: Date, options: DispatchOptions = {}) {
   const batchSize = options.batchSize ?? DISPATCH_BATCH_SIZE;
   if (
     !Number.isInteger(batchSize) ||
@@ -152,7 +147,7 @@ export const dispatchScheduledRuns = Effect.fn(
         Effect.gen(function* () {
           const counts = { kept: 0, failed: 0 };
           for (const current of active)
-            counts[yield* reconcileRun(platform, current, now)] += 1;
+            counts[yield* reconcileRun(current, now)] += 1;
           return counts;
         }),
       ),
@@ -182,7 +177,7 @@ export const dispatchScheduledRuns = Effect.fn(
     if (assignments.length === 0) break;
     const batch = yield* checkpointer.checkpoint(
       `dispatch due batch ${page}`,
-      dispatchBatch(assignments, now, platform),
+      dispatchBatch(assignments, now),
     );
     dispatched.push(...batch.runs);
     failures.push(...batch.failures);
@@ -203,7 +198,9 @@ export interface DispatchDependencies {
   readonly workflowRunsFor: (
     env: CloudflareBindings,
   ) => Layer.Layer<WorkflowRuns, never, never>;
-  readonly runPlatformFor: (env: CloudflareBindings) => RunPlatform;
+  readonly runLauncherFor: (
+    env: CloudflareBindings,
+  ) => Layer.Layer<RunLauncher>;
 }
 
 /**
@@ -229,12 +226,9 @@ export const scheduledWorkflowTick = (
   options: DispatchOptions = {},
 ): Promise<TickReport> =>
   workflowDispatchEnabled(env)
-    ? dispatchScheduledRuns(
-        now,
-        dependencies.runPlatformFor(env),
-        options,
-      ).pipe(
+    ? dispatchScheduledRuns(now, options).pipe(
         Effect.provide(dependencies.workflowRunsFor(env)),
+        Effect.provide(dependencies.runLauncherFor(env)),
         Effect.provideService(Checkpointer, checkpointer),
         Effect.runPromise,
       )

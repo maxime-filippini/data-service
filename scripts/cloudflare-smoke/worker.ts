@@ -34,6 +34,7 @@ import type {
 } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 // @ts-expect-error -- built SvelteKit adapter, as in the main Worker.
 import sveltekit from "../../app/.svelte-kit/cloudflare/_worker.js";
@@ -198,7 +199,10 @@ control.post("/__smoke/tick", async (c) => {
   const deps =
     fault === undefined
       ? dependencies
-      : { ...dependencies, runPlatformFor: () => platform(env, fault) };
+      : {
+          ...dependencies,
+          runLauncherFor: () => BindingRunLauncherLive(platform(env, fault)),
+        };
   return c.json(await scheduledWorkflowTick(deps, env, at, inlineCheckpointer));
 });
 control.get("/__smoke/instances/:id", async (c) => {

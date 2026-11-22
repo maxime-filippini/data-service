@@ -13,6 +13,7 @@ import { D1PortfoliosLive } from "$/portfolios/d1";
 import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { StepRegistryLive } from "$/workflows/registry";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 import { makeTestDatabase } from "./support/d1";
 
@@ -32,10 +33,11 @@ const setup = () => {
     workflowsFor: () => Layer.merge(D1WorkflowStoreLive(db), StepRegistryLive),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
-    runPlatformFor: () => ({
-      create: async () => ({ id: "unused" }) as WorkflowInstance,
-      get: async (id: string) => ({ id }) as WorkflowInstance,
-    }),
+    runLauncherFor: () =>
+      BindingRunLauncherLive({
+        create: async () => ({ id: "unused" }) as WorkflowInstance,
+        get: async (id: string) => ({ id }) as WorkflowInstance,
+      }),
     datasetsFor: () =>
       Layer.merge(
         D1DatasetPublicationStoreLive(db),
