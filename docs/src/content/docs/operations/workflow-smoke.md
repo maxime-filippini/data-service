@@ -72,40 +72,36 @@ show durability on Cloudflare's infrastructure (eviction across machines,
 real retry timing, container cold starts), so a deployed run is still due
 before a production cutover.
 
-Prepare the directory as above, then write a local config. Local D1 needs no
-`wrangler d1 create`.
+Run it with one command. Docker isn't needed. The env file needs the dev R2
+S3 credentials, and Wrangler must be logged in, because the buckets are remote
+bindings.
 
 ```sh
-setup=$(node --import tsx scripts/cloudflare-smoke/prepare.ts .dev.vars)
-smoke_dir=$(jq -r .directory <<< "$setup")
-smoke_name=$(jq -r .resource <<< "$setup")
-node --import tsx scripts/cloudflare-smoke/configure.ts "$smoke_dir" --local \
-  --engine-url http://localhost:8790
-smoke_config="$smoke_dir/wrangler.smoke.json"
-state="$smoke_dir/state"
-pnpm exec wrangler d1 migrations apply "$smoke_name" --local --config "$smoke_config" --persist-to "$state"
-pnpm exec wrangler d1 execute "$smoke_name" --local --config "$smoke_config" --persist-to "$state" \
-  --file scripts/cloudflare-smoke/setup.sql
-pnpm --filter app build
+pnpm smoke:local                 # uses .dev.vars
+pnpm smoke:local --container     # the engine container through Docker
 ```
 
-`--engine-url` calls the engine as a local process instead of the container.
-Leave it out to use the container through Docker, where `wrangler dev` can
-start one. On the yoloagent VM, workerd's container sidecar timed out, so the
-engine runs with `uv` on the same dev buckets:
+`pnpm smoke:local` runs these steps:
 
-```sh
-(set -a; . "$smoke_dir/.dev.vars"; set +a
- ARTIFACT_BUCKET=raw-market-data-dev PROCESSED_BUCKET=processed-market-data-dev \
-   uv run --directory containers/engine uvicorn data_service_engine.app:app --port 8790) &
-pnpm exec wrangler dev --config "$smoke_config" --env-file "$smoke_dir/.dev.vars" \
-  --persist-to "$state" --port 8787 --tsconfig "$PWD/tsconfig.json" --enable-containers=false &
-node --import tsx scripts/cloudflare-smoke/run.ts "$smoke_dir" http://localhost:8787
-```
+1. Prepare a fresh private directory and write a local config
+   (`configure.ts --local`).
+2. Apply the migrations and the fault table to local D1, and build the app.
+3. Start the engine as a local `uv` process on the dev buckets, and the smoke
+   Worker under `wrangler dev`.
+4. Run `run.ts` against `http://localhost:8787`.
+5. Stop everything.
 
+The engine and Wrangler logs and the evidence stay in the printed directory.
 With a `localhost` URL, the runner sends its pause, resume and describe
 commands to the local session (`wrangler workflows instances … --local`).
-Use a fresh directory for each run.
+
+Use `--container` to start the engine container instead, where `wrangler dev`
+can start containers. On the yoloagent VM, workerd's container sidecar timed
+out before the engine started.
+
+Run it before merging changes to the Cloudflare adapters
+(`src/workflows/cloudflare.ts`, the Workflow entry points,
+`src/dependencies.ts`, the R2 adapters) or to the smoke itself.
 
 ## Retention
 

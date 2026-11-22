@@ -213,8 +213,15 @@ pnpm engine:test            # Python pytest (needs uv)
 pnpm engine:lint            # Python ruff check + format (needs uv)
 pnpm app:check              # svelte-check (0 errors, 0 warnings)
 pnpm --filter app build     # Cloudflare SvelteKit build
+pnpm deploy:check           # bundle the Worker as both deploys would (dry run; after the app build)
 pnpm docs:build             # Starlight docs build
 ```
+
+CI runs all of these except `workflow:fixture`. Before merging a change to the
+Cloudflare adapters or wiring, also run `pnpm smoke:local`. It runs the
+recovery smoke in a local `wrangler dev` session. Unlike the commands above,
+it needs a Wrangler login and the dev R2 credentials in `.dev.vars`; see
+[the smoke test](/docs/operations/workflow-smoke/#run-locally).
 
 On CPUs without AVX2, run Python tests with Polars' compatibility runtime:
 

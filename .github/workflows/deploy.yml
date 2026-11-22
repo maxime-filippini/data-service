@@ -42,6 +42,9 @@ jobs:
       - run: pnpm test
       - run: pnpm app:check
       - run: pnpm --filter app build
+      # Bundle the Worker as both deploys would, without credentials or a
+      # container build, so CI catches what doesn't bundle or resolve.
+      - run: pnpm deploy:check
       - run: pnpm docs:build
 
   check-engine:
