@@ -75,24 +75,14 @@ export const RunCoordinatorLive: Layer.Layer<
   }),
 );
 
-/** What the tick selects from the Worker's bindings. */
-export interface DispatchDependencies {
-  readonly workflowRunsFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<WorkflowRuns>;
-  readonly runLauncherFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<RunLauncher>;
-}
-
 /**
  * The dispatch Workflow's body, gated by `WORKFLOW_DISPATCH`: the
  * coordinator's `dispatchDue` at the trigger's scheduled time, with the
- * instance's Checkpointer. Tests and the fixture command call the same body
+ * host's services and the instance's Checkpointer. Tests and the fixture command call the same body
  * with a controlled time and a local Checkpointer.
  */
 export const scheduledWorkflowTick = (
-  dependencies: DispatchDependencies,
+  services: Layer.Layer<RunCoordinator>,
   env: CloudflareBindings,
   scheduledAt: Date,
   checkpointer: typeof Checkpointer.Service,
@@ -100,9 +90,7 @@ export const scheduledWorkflowTick = (
 ): Promise<TickReport> =>
   workflowDispatchEnabled(env)
     ? RunCoordinator.use((runs) => runs.dispatchDue(scheduledAt, options)).pipe(
-        Effect.provide(RunCoordinatorLive),
-        Effect.provide(dependencies.workflowRunsFor(env)),
-        Effect.provide(dependencies.runLauncherFor(env)),
+        Effect.provide(services),
         Effect.provideService(Checkpointer, checkpointer),
         Effect.runPromise,
       )

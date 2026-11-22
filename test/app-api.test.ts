@@ -58,7 +58,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
     published: published.layer,
     platform: { autoStart: false },
   });
-  const api = createAppApiRoutes(local.dependencies, () => keys);
+  const api = createAppApiRoutes(local.servicesFor, () => keys);
   // Mounted as in src/routes/index.ts.
   const app = new Hono().route("/app-api", api);
   const env = {
@@ -108,7 +108,7 @@ const setup = (envOverrides: Record<string, unknown> = {}) => {
       },
       env,
     );
-  return { sqlite, request, send, dependencies: local.dependencies, env };
+  return { sqlite, request, send, servicesFor: local.servicesFor, env };
 };
 
 test("an allowlisted Access user can use the API", async () => {
@@ -412,7 +412,7 @@ test("the app starts and lists workflow runs behind Access", async () => {
 });
 
 test("the app reads published dataset metadata and streams Parquet with ETag revalidation", async () => {
-  const { request, dependencies } = setup();
+  const { request, servicesFor } = setup();
   const token = await signToken();
   assert.equal((await request("/app-api/publications")).status, 401);
 
@@ -461,7 +461,10 @@ test("the app reads published dataset metadata and streams Parquet with ETag rev
       size: portfolioWritten.size,
       publishedAt: "2026-10-18T04:00:00.000Z",
     });
-  }).pipe(Effect.provide(dependencies.datasetsFor()), Effect.runPromise);
+  }).pipe(
+    Effect.provide(servicesFor({} as CloudflareBindings)),
+    Effect.runPromise,
+  );
 
   const listed = await request("/app-api/publications", token);
   assert.equal(listed.status, 200);

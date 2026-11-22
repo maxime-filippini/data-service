@@ -213,7 +213,7 @@ test("removing a definition removes it from the defaults", async () => {
 });
 
 test("the app's pages read the defaults, assigned schedules and scheduled outcomes", async () => {
-  const { api, json, pages, createAsset, createWorkflow, dependencies, env } =
+  const { api, json, pages, createAsset, createWorkflow, servicesFor, env } =
     workflowService({
       platform: { autoStart: false },
       env: { WORKFLOW_DISPATCH: "on" },
@@ -243,7 +243,7 @@ test("the app's pages read the defaults, assigned schedules and scheduled outcom
 
   // A dispatched occurrence and a manual run, told apart by trigger.
   await scheduledWorkflowTick(
-    dependencies,
+    servicesFor(env),
     env,
     new Date("2024-01-10T06:00:00Z"),
     localCheckpointer(new Map(), { delayScale: 0 }),

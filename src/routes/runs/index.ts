@@ -1,4 +1,4 @@
-import { type Effect, Layer, Schema } from "effect";
+import { type Effect, type Layer, Schema } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
 
 import { utcDay } from "$/datetime";
@@ -11,26 +11,17 @@ import {
   RunsQuerySchema,
   StartRunSchema,
 } from "$/workflows/runs/contracts";
-import {
-  RunCoordinator,
-  RunCoordinatorLive,
-} from "$/workflows/runs/coordinator";
-import type { RunLauncher } from "$/workflows/runs/launcher";
+import { RunCoordinator } from "$/workflows/runs/coordinator";
 import { getRunArtifact } from "$/workflows/runs/operations";
 import { WorkflowRuns } from "$/workflows/runs/store";
 
 /** The services run routes need. */
 export type RunServices = WorkflowRuns | RunArtifacts | RunCoordinator;
 
-/** What run routes select from request bindings. */
-export interface RunDependencies {
-  readonly workflowRunsFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<WorkflowRuns | RunArtifacts>;
-  readonly runLauncherFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<RunLauncher>;
-}
+/** Selects the run routes' services from request bindings. */
+export type RunServicesFor = (
+  env: CloudflareBindings,
+) => Layer.Layer<RunServices>;
 
 /** Most runs a list returns when no limit is given. */
 const DEFAULT_RUN_LIST = 50;
@@ -50,7 +41,7 @@ const ArtifactParamSchema = Schema.Struct({
  * Served by the management API and the app, each with its own auth.
  */
 export const createRunRoutes = (
-  dependencies: RunDependencies,
+  servicesFor: RunServicesFor,
   auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
 ) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -59,17 +50,7 @@ export const createRunRoutes = (
   const run = <A>(
     env: CloudflareBindings,
     program: Effect.Effect<A, WorkflowError, RunServices>,
-  ) =>
-    runHttp(
-      program,
-      Layer.provideMerge(
-        RunCoordinatorLive,
-        Layer.merge(
-          dependencies.workflowRunsFor(env),
-          dependencies.runLauncherFor(env),
-        ),
-      ),
-    );
+  ) => runHttp(program, servicesFor(env));
 
   // The processing date defaults to today's UTC date. A `skipped` run means
   // another run of the assignment was still active.

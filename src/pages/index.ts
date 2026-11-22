@@ -3,10 +3,7 @@ import { Effect, type Layer, Result, Schema } from "effect";
 import { AssetSymbolSchema } from "$/assets/contracts";
 import { AssetStore } from "$/assets/store";
 import { DatasetPublicationStore } from "$/datasets/store";
-import {
-  type Dependencies,
-  dependencies as liveDependencies,
-} from "$/dependencies";
+import { cloudflareServices, type ServicesFor } from "$/dependencies";
 import { PortfolioIdSchema } from "$/portfolios/contracts";
 import { Portfolios } from "$/portfolios/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
@@ -70,23 +67,19 @@ const runWith =
 /** The page data (see `PageData`) on a request's bindings. */
 export const pageData = (
   env: CloudflareBindings,
-  dependencies: Dependencies = liveDependencies,
+  servicesFor: ServicesFor = cloudflareServices,
 ): PageData => {
-  const assets = runWith(dependencies.assetsFor(env));
-  const portfolios = runWith(dependencies.portfoliosFor(env));
-  const workflows = runWith(dependencies.workflowsFor(env));
-  const workflowRuns = runWith(dependencies.workflowRunsFor(env));
-  const datasets = runWith(dependencies.datasetsFor(env));
+  const run = runWith(servicesFor(env));
 
-  const listAssets = () => assets(AssetStore.use((a) => a.list()));
-  const listPortfolios = () => portfolios(Portfolios.use((p) => p.list()));
-  const listWorkflows = () => workflows(WorkflowStore.use((w) => w.list()));
+  const listAssets = () => run(AssetStore.use((a) => a.list()));
+  const listPortfolios = () => run(Portfolios.use((p) => p.list()));
+  const listWorkflows = () => run(WorkflowStore.use((w) => w.list()));
   const listPublications = () =>
-    datasets(DatasetPublicationStore.use((p) => p.list({})));
+    run(DatasetPublicationStore.use((p) => p.list({})));
   const getPortfolio = async (id: string) => {
     if (!isUuid(PortfolioIdSchema, id))
       throw new PageDataError(404, "Portfolio not found");
-    return portfolios(Portfolios.use((p) => p.get(id)));
+    return run(Portfolios.use((p) => p.get(id)));
   };
 
   return {
@@ -96,9 +89,7 @@ export const pageData = (
           listAssets(),
           listPortfolios(),
           listWorkflows(),
-          workflowRuns(
-            WorkflowRuns.use((r) => r.list({ limit: HOME_LIST_SIZE })),
-          ),
+          run(WorkflowRuns.use((r) => r.list({ limit: HOME_LIST_SIZE }))),
           listPublications(),
         ]);
       const recentPublications = [...allPublications]
@@ -130,9 +121,9 @@ export const pageData = (
       if (!Schema.is(AssetSymbolSchema)(symbol))
         throw new PageDataError(404, "Asset not found");
       const [asset, assignments, runs, publications] = await Promise.all([
-        assets(AssetStore.use((a) => a.get(symbol))),
-        workflows(subjectAssignments({ kind: "asset", symbol })),
-        workflowRuns(
+        run(AssetStore.use((a) => a.get(symbol))),
+        run(subjectAssignments({ kind: "asset", symbol })),
+        run(
           WorkflowRuns.use((r) =>
             r.list({
               subject: { kind: "asset", id: symbol },
@@ -140,7 +131,7 @@ export const pageData = (
             }),
           ),
         ),
-        datasets(
+        run(
           DatasetPublicationStore.use((p) =>
             p.list({ subject: { kind: "asset", id: symbol } }),
           ),
@@ -156,8 +147,8 @@ export const pageData = (
     portfolioDetail: async (id) => {
       const portfolio = await getPortfolio(id);
       const [assignments, runs, publications] = await Promise.all([
-        workflows(subjectAssignments({ kind: "portfolio", id })),
-        workflowRuns(
+        run(subjectAssignments({ kind: "portfolio", id })),
+        run(
           WorkflowRuns.use((r) =>
             r.list({
               subject: { kind: "portfolio", id },
@@ -165,7 +156,7 @@ export const pageData = (
             }),
           ),
         ),
-        datasets(
+        run(
           DatasetPublicationStore.use((p) =>
             p.list({ subject: { kind: "portfolio", id } }),
           ),
@@ -176,16 +167,15 @@ export const pageData = (
 
     workflows: listWorkflows,
 
-    workflowDefaults: () =>
-      workflows(WorkflowStore.use((w) => w.listDefaults())),
+    workflowDefaults: () => run(WorkflowStore.use((w) => w.listDefaults())),
 
     workflow: async (id) => {
       if (!isUuid(WorkflowIdSchema, id))
         throw new PageDataError(404, "Workflow not found");
       const [detailed, defaults, runs] = await Promise.all([
-        workflows(getWorkflowDetail(id)),
-        workflows(WorkflowStore.use((w) => w.listDefaults())),
-        workflowRuns(
+        run(getWorkflowDetail(id)),
+        run(WorkflowStore.use((w) => w.listDefaults())),
+        run(
           WorkflowRuns.use((r) =>
             r.list({ workflowId: id, limit: RECENT_RUNS }),
           ),
@@ -206,7 +196,7 @@ export const pageData = (
         ? filter.trigger
         : undefined;
       const symbol = filter.symbol?.trim().toUpperCase();
-      return workflowRuns(
+      return run(
         WorkflowRuns.use((r) =>
           r.list({
             ...(status === undefined ? {} : { status }),
@@ -221,7 +211,7 @@ export const pageData = (
     workflowRun: async (id) => {
       if (!isUuid(RunIdSchema, id))
         throw new PageDataError(404, "Run not found");
-      return workflowRuns(WorkflowRuns.use((r) => r.get(id)));
+      return run(WorkflowRuns.use((r) => r.get(id)));
     },
 
     publications: listPublications,

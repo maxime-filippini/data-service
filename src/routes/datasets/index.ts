@@ -22,11 +22,10 @@ import type { SubjectKind } from "$/workflows/subjects";
 export type DatasetServices = DatasetPublicationStore | DatasetObjectStore;
 
 /** What dataset routes select from request bindings. */
-export interface DatasetDependencies {
-  readonly datasetsFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<DatasetServices>;
-}
+/** Selects the dataset routes' services from request bindings. */
+export type DatasetServicesFor = (
+  env: CloudflareBindings,
+) => Layer.Layer<DatasetServices>;
 
 /** The subject a path names, or a 404 for one that cannot exist. */
 const subjectOf = (
@@ -55,7 +54,7 @@ const subjectOf = (
  * management API (`/api/datasets`) and the app (`/app-api/publications`).
  */
 export const createDatasetRoutes = (
-  dependencies: DatasetDependencies,
+  servicesFor: DatasetServicesFor,
   auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
 ) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -64,7 +63,7 @@ export const createDatasetRoutes = (
   const run = <A>(
     env: CloudflareBindings,
     program: Effect.Effect<A, DatasetError, DatasetServices>,
-  ) => runHttp(program, dependencies.datasetsFor(env));
+  ) => runHttp(program, servicesFor(env));
 
   app.get(
     "/",

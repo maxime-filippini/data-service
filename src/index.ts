@@ -1,4 +1,4 @@
-import { dependencies } from "$/dependencies";
+import { cloudflareServices } from "$/dependencies";
 import { createRoutes } from "$/routes";
 import { runScheduledHandlers } from "$/scheduled";
 // SvelteKit's handler, built by `pnpm --filter app build` (wrangler's build
@@ -11,7 +11,7 @@ export { CalculationEngine } from "./engine-container";
 export { WorkflowDispatchWorkflow } from "./workflow-dispatch-workflow";
 export { runScheduledHandlers } from "$/scheduled";
 
-const app = createRoutes(dependencies, sveltekit);
+const app = createRoutes(cloudflareServices, sveltekit);
 
 export default {
   fetch: app.fetch,

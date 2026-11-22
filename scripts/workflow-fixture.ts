@@ -132,7 +132,7 @@ const command = Command.make(
         published: FileDatasetObjectStoreLive(processedBucket),
         platform: { checkpointer: { delayScale: 0 } },
       });
-      const routes = createRoutes(service.dependencies, {
+      const routes = createRoutes(service.servicesFor, {
         fetch: () => new Response("No app locally", { status: 404 }),
       });
       const idle = Effect.promise(() => service.platform.idle());
@@ -210,7 +210,7 @@ const command = Command.make(
           const at = `${options.date}T03:00:00Z`;
           const tick = yield* Effect.promise(() =>
             scheduledWorkflowTick(
-              service.dependencies,
+              service.servicesFor(env),
               env,
               new Date(at),
               localCheckpointer(new Map(), { delayScale: 0 }),

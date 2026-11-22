@@ -19,7 +19,6 @@ import {
   type StepType,
 } from "$/workflows/registry";
 import type { RunPlatform } from "$/workflows/runs/contracts";
-import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
@@ -102,7 +101,25 @@ const setup = (
     respond: () => undefined,
   };
   const artifacts = memoryRunArtifacts();
+  /** Faults injected between the API and the Workflow binding. */
+  const faults = {
+    /** "lost": the instance is created but the response is lost. */
+    create: "none" as "none" | "lost" | "failed",
+    getUnavailable: false,
+  };
   const service = localWorkflowService({
+    wrapBinding: (binding): RunPlatform => ({
+      create: async (create) => {
+        if (faults.create === "failed") throw new Error("network error");
+        const instance = await binding.create(create);
+        if (faults.create === "lost") throw new Error("response lost");
+        return instance;
+      },
+      get: async (id) => {
+        if (faults.getUnavailable) throw new Error("platform unavailable");
+        return binding.get(id);
+      },
+    }),
     db,
     artifacts: artifacts.layer,
     sourceFor: fixtureSourceFor(fixtures, (url) => {
@@ -121,30 +138,7 @@ const setup = (
   });
   const platform = service.platform;
 
-  /** Faults injected between the API and the Workflow binding. */
-  const faults = {
-    /** "lost": the instance is created but the response is lost. */
-    create: "none" as "none" | "lost" | "failed",
-    getUnavailable: false,
-  };
-  const runPlatform: RunPlatform = {
-    create: async (create) => {
-      if (faults.create === "failed") throw new Error("network error");
-      const instance = await platform.create(create);
-      if (faults.create === "lost") throw new Error("response lost");
-      return instance;
-    },
-    get: async (id) => {
-      if (faults.getUnavailable) throw new Error("platform unavailable");
-      return platform.get(id);
-    },
-  };
-
-  const dependencies = {
-    ...service.dependencies,
-    runLauncherFor: () => BindingRunLauncherLive(runPlatform),
-  };
-  const routes = createRoutes(dependencies, {
+  const routes = createRoutes(service.servicesFor, {
     fetch: () => new Response("app"),
   });
   const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
@@ -239,7 +233,7 @@ const setup = (
     provider,
     requests,
     artifacts,
-    pages: pageData({} as CloudflareBindings, dependencies),
+    pages: pageData({} as CloudflareBindings, service.servicesFor),
   };
 };
 

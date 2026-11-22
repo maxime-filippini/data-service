@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 
-import type { Dependencies } from "$/dependencies";
+import type { ServicesFor } from "$/dependencies";
 import { createRoutes } from "$/routes";
 
 const TEAM = "https://team.cloudflareaccess.com";
@@ -39,7 +39,9 @@ const env = {
 
 // The dependencies aren't reached by these requests.
 const routes = createRoutes(
-  {} as Dependencies,
+  (() => {
+    throw new Error("No services are reached by these requests");
+  }) as ServicesFor,
   {
     fetch: async (request) => {
       appRequests.push(request);

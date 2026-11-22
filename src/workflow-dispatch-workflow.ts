@@ -6,12 +6,11 @@ import {
 import { NonRetryableError } from "cloudflare:workflows";
 import { Effect } from "effect";
 
+import { cloudflareServices } from "$/dependencies";
 import { WorkerLoggerLive } from "$/logging";
 import { cloudflareCheckpointer } from "$/workflows/cloudflare";
 import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 import type { WorkflowDispatchParams } from "$/workflows/runs/dispatch";
-import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 import { reportDispatch } from "$/workflows/runs/report";
 
 export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
@@ -23,10 +22,7 @@ export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
     step: WorkflowStep,
   ) {
     const report = await scheduledWorkflowTick(
-      {
-        workflowRunsFor: (env) => D1WorkflowRunsLive(env.MARKET_DATA_DB),
-        runLauncherFor: (env) => BindingRunLauncherLive(env.WORKFLOW_RUNS),
-      },
+      cloudflareServices(this.env),
       this.env,
       new Date(event.payload.scheduledTime),
       cloudflareCheckpointer(step, (message) => new NonRetryableError(message)),

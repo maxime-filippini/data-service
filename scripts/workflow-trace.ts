@@ -314,7 +314,7 @@ const command = Command.make(
       });
       const { platform } = service;
 
-      const routes = createRoutes(service.dependencies, {
+      const routes = createRoutes(service.servicesFor, {
         fetch: () => new Response("No app locally", { status: 404 }),
       });
       const managementApi = HttpManagementApiLive({

@@ -193,7 +193,7 @@ describe(
         },
         ...(options.now === undefined ? {} : { now: options.now }),
       });
-      const routes = createRoutes(service.dependencies, {
+      const routes = createRoutes(service.servicesFor, {
         fetch: () => new Response("app"),
       });
       const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
@@ -289,7 +289,7 @@ describe(
       return {
         api,
         json,
-        pages: pageData({} as CloudflareBindings, service.dependencies),
+        pages: pageData({} as CloudflareBindings, service.servicesFor),
         configure,
         startRun,
         runDetail,

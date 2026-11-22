@@ -33,7 +33,7 @@ const setup = (
     ...(options.platform === undefined ? {} : { platform: options.platform }),
     env: { WORKFLOW_DISPATCH: options.dispatch ?? "on" },
   });
-  const { api, json, dependencies, env } = service;
+  const { api, json, servicesFor, env } = service;
 
   /** One hourly tick at the given instant. */
   const tick = (
@@ -43,7 +43,7 @@ const setup = (
     }),
   ) =>
     scheduledWorkflowTick(
-      dependencies,
+      servicesFor(env),
       env,
       new Date(at),
       checkpointer,

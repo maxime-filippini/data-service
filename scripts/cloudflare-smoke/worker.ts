@@ -14,7 +14,7 @@ import { DatasetError } from "$/datasets/contracts";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { R2DatasetObjectStoreLive } from "$/datasets/r2";
 import { DatasetPublicationStore } from "$/datasets/store";
-import { dependencies } from "$/dependencies";
+import { cloudflareServices } from "$/dependencies";
 import { fixtureSourceFor } from "$/local/eodhd-fixtures";
 import { MarketDataSourcesLayer } from "$/market-data/sources";
 import { HttpPythonOperationsLive } from "$/operations/client";
@@ -33,7 +33,10 @@ import type {
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
+import {
+  RunCoordinatorLive,
+  scheduledWorkflowTick,
+} from "$/workflows/runs/coordinator";
 import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 // @ts-expect-error -- built SvelteKit adapter, as in the main Worker.
@@ -196,14 +199,20 @@ control.post("/__smoke/tick", async (c) => {
     return c.json({ error: "Invalid tick" }, 400);
   const { env } = c;
   const { fault } = tick;
-  const deps =
+  // A fault replaces the launcher the coordinator launches runs with.
+  const services =
     fault === undefined
-      ? dependencies
-      : {
-          ...dependencies,
-          runLauncherFor: () => BindingRunLauncherLive(platform(env, fault)),
-        };
-  return c.json(await scheduledWorkflowTick(deps, env, at, inlineCheckpointer));
+      ? cloudflareServices(env)
+      : Layer.provideMerge(
+          RunCoordinatorLive,
+          Layer.merge(
+            cloudflareServices(env),
+            BindingRunLauncherLive(platform(env, fault)),
+          ),
+        );
+  return c.json(
+    await scheduledWorkflowTick(services, env, at, inlineCheckpointer),
+  );
 });
 control.get("/__smoke/instances/:id", async (c) => {
   const id = c.req.param("id");
@@ -229,7 +238,7 @@ export default {
     const keys = createLocalJWKSet({
       keys: [JSON.parse(env.SMOKE_ACCESS_JWK) as JWK],
     });
-    return createRoutes(dependencies, sveltekit, () => keys).fetch(
+    return createRoutes(cloudflareServices, sveltekit, () => keys).fetch(
       request,
       env,
       ctx,
@@ -237,7 +246,7 @@ export default {
   },
   async scheduled(controller, env) {
     await scheduledWorkflowTick(
-      dependencies,
+      cloudflareServices(env),
       env,
       new Date(controller.scheduledTime),
       inlineCheckpointer,

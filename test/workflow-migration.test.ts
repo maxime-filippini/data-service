@@ -327,10 +327,8 @@ const makeFullService = (
     },
   });
 
-  const { dependencies } = local;
-
   const routes = createRoutes(
-    dependencies,
+    local.servicesFor,
     { fetch: () => new Response("app") },
     () => accessKeys,
   );
@@ -396,7 +394,7 @@ const makeFullService = (
     create: async ({ params }: { params: WorkflowDispatchParams }) => {
       dispatches.push(
         await scheduledWorkflowTick(
-          local.dependencies,
+          local.servicesFor(tickEnv),
           tickEnv,
           new Date(params.scheduledTime),
           localCheckpointer(new Map(), { delayScale: 0 }),
@@ -407,17 +405,14 @@ const makeFullService = (
   });
 
   return {
-    dependencies: {
-      ...dependencies,
-      dispatchPlatformFor,
-    },
+    dependencies: { dispatchPlatformFor },
     env,
     api,
     appApi,
     json,
     dispatches,
     platform: local.platform,
-    pages: pageData(env, dependencies),
+    pages: pageData(env, local.servicesFor),
   };
 };
 

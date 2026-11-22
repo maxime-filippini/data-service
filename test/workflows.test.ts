@@ -3,22 +3,16 @@ import test from "node:test";
 
 import { Layer, Schema } from "effect";
 
-import { D1AssetStoreLive } from "$/assets/d1";
-import type { Dependencies } from "$/dependencies";
 import { pageData } from "$/pages";
-import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
-import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import { memoryRunArtifacts } from "$/local/artifacts";
-import { memoryDatasetObjectStore } from "$/local/published";
-import { D1WorkflowStoreLive } from "$/workflows/d1";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
+import { fixtureSourceFor } from "$/local/eodhd-fixtures";
+import { localWorkflowService } from "$/local/runs";
 import {
   builtInStepTypes,
   defineStepType,
   portfolioSubjectContract,
   rawPricesEodContract,
-  StepRegistryLayer,
   type StepType,
 } from "$/workflows/registry";
 
@@ -57,30 +51,14 @@ const notePortfolio = defineStepType({
 
 const setup = (extraStepTypes: readonly StepType[] = []) => {
   const { sqlite, db } = makeTestDatabase();
-  // Only the asset, portfolio and workflow factories are reached.
-  const unused = () => Layer.empty;
-  const dependencies = {
-    statusFor: unused,
-    registryFor: unused,
-    scheduleFor: unused,
-    calculationsFor: unused,
-    engineFor: unused,
-    assetsFor: () => D1AssetStoreLive(db),
-    portfoliosFor: () => D1PortfoliosLive(db),
-    workflowsFor: () =>
-      Layer.merge(
-        D1WorkflowStoreLive(db),
-        StepRegistryLayer([...builtInStepTypes, ...extraStepTypes]),
-      ),
-    workflowRunsFor: () =>
-      Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
-    datasetsFor: () =>
-      Layer.merge(
-        D1DatasetPublicationStoreLive(db),
-        memoryDatasetObjectStore().layer,
-      ),
-  } as unknown as Dependencies;
-  const routes = createRoutes(dependencies, {
+  const { servicesFor } = localWorkflowService({
+    db,
+    artifacts: memoryRunArtifacts().layer,
+    sourceFor: fixtureSourceFor(new Map()),
+    extraStepTypes,
+    platform: { autoStart: false },
+  });
+  const routes = createRoutes(servicesFor, {
     fetch: () => new Response("app"),
   });
   const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
@@ -130,7 +108,7 @@ const setup = (extraStepTypes: readonly StepType[] = []) => {
     createAsset,
     createWorkflow,
     count,
-    pages: pageData({} as CloudflareBindings, dependencies),
+    pages: pageData({} as CloudflareBindings, servicesFor),
   };
 };
 
