@@ -54,7 +54,7 @@ import { HttpManagementApiLive, ManagementApi } from "$/management-api/client";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import type { Portfolio } from "$/portfolios/views";
 import { createRoutes } from "$/routes";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 import { runScript, ScriptError } from "./cli";

@@ -1,12 +1,11 @@
-import { Effect, type Layer } from "effect";
+import { Effect } from "effect";
 
 import { addUtcDays, atUtcHour } from "$/datetime";
-import type { Subject } from "$/workflows/contracts";
 import { Checkpointer } from "$/workflows/checkpointer";
+import type { Subject } from "$/workflows/contracts";
 import { asTransient } from "$/workflows/registry";
 
 import type { WorkflowRunStatus, WorkflowRunSummary } from "./contracts";
-import type { RunLauncher } from "./launcher";
 import { claimAndLaunch, reconcileRun } from "./operations";
 import { type DueAssignment, WorkflowRuns } from "./store";
 
@@ -193,16 +192,6 @@ export const dispatchScheduledRuns = Effect.fn(
   } as Extract<TickReport, { status: "dispatched" }>;
 });
 
-/** What the tick selects from the Worker's bindings. */
-export interface DispatchDependencies {
-  readonly workflowRunsFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<WorkflowRuns, never, never>;
-  readonly runLauncherFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<RunLauncher>;
-}
-
 /**
  * Whether the hourly tick dispatches workflows: enabled when `WORKFLOW_DISPATCH`
  * is `on`. Set it to `off` in `wrangler.jsonc` to pause all scheduled dispatch
@@ -211,28 +200,6 @@ export interface DispatchDependencies {
 export const workflowDispatchEnabled = (
   env: Pick<CloudflareBindings, "WORKFLOW_DISPATCH">,
 ) => String(env.WORKFLOW_DISPATCH) === "on";
-
-/**
- * The dispatch Workflow's body, gated by `WORKFLOW_DISPATCH`, with the
- * trigger's scheduled time and the instance's Checkpointer. Tests and the
- * fixture command call the same body with a controlled time and a local
- * Checkpointer.
- */
-export const scheduledWorkflowTick = (
-  dependencies: DispatchDependencies,
-  env: CloudflareBindings,
-  now: Date,
-  checkpointer: typeof Checkpointer.Service,
-  options: DispatchOptions = {},
-): Promise<TickReport> =>
-  workflowDispatchEnabled(env)
-    ? dispatchScheduledRuns(now, options).pipe(
-        Effect.provide(dependencies.workflowRunsFor(env)),
-        Effect.provide(dependencies.runLauncherFor(env)),
-        Effect.provideService(Checkpointer, checkpointer),
-        Effect.runPromise,
-      )
-    : Promise.resolve({ status: "disabled" });
 
 export interface WorkflowDispatchParams {
   readonly scheduledTime: string;

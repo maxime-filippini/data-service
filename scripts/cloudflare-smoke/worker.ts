@@ -33,7 +33,7 @@ import type {
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 // @ts-expect-error -- built SvelteKit adapter, as in the main Worker.

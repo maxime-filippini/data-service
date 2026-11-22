@@ -41,9 +41,9 @@ import {
   renderRollbackSql,
   rollbackDownloads,
 } from "$/workflows/migration";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import {
   type DispatchPlatform,
-  scheduledWorkflowTick,
   type TickReport,
   type WorkflowDispatchParams,
 } from "$/workflows/runs/dispatch";

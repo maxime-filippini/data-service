@@ -11,12 +11,16 @@ import {
   RunsQuerySchema,
   StartRunSchema,
 } from "$/workflows/runs/contracts";
+import {
+  RunCoordinator,
+  RunCoordinatorLive,
+} from "$/workflows/runs/coordinator";
 import type { RunLauncher } from "$/workflows/runs/launcher";
-import { getRunArtifact, rerun, startRun } from "$/workflows/runs/operations";
+import { getRunArtifact } from "$/workflows/runs/operations";
 import { WorkflowRuns } from "$/workflows/runs/store";
 
 /** The services run routes need. */
-export type RunServices = WorkflowRuns | RunArtifacts | RunLauncher;
+export type RunServices = WorkflowRuns | RunArtifacts | RunCoordinator;
 
 /** What run routes select from request bindings. */
 export interface RunDependencies {
@@ -58,9 +62,12 @@ export const createRunRoutes = (
   ) =>
     runHttp(
       program,
-      Layer.merge(
-        dependencies.workflowRunsFor(env),
-        dependencies.runLauncherFor(env),
+      Layer.provideMerge(
+        RunCoordinatorLive,
+        Layer.merge(
+          dependencies.workflowRunsFor(env),
+          dependencies.runLauncherFor(env),
+        ),
       ),
     );
 
@@ -71,17 +78,15 @@ export const createRunRoutes = (
     effectValidator("json", StartRunSchema, { onExcessProperty: "error" }),
     async (c) => {
       const input = c.req.valid("json");
-      const now = new Date();
       const started = await run(
         c.env,
-        startRun(
-          {
+        RunCoordinator.use((runs) =>
+          runs.start({
             workflowId: input.workflowId,
             subject: input.subject,
-            processingDate: input.processingDate ?? utcDay(now),
+            processingDate: input.processingDate ?? utcDay(new Date()),
             trigger: "manual",
-          },
-          now,
+          }),
         ),
       );
       return c.json(started, 202);
@@ -139,7 +144,10 @@ export const createRunRoutes = (
     effectValidator("param", RunParamSchema),
     async (c) => {
       const { runId } = c.req.valid("param");
-      const started = await run(c.env, rerun(runId, new Date()));
+      const started = await run(
+        c.env,
+        RunCoordinator.use((runs) => runs.rerun(runId)),
+      );
       return c.json(started, 202);
     },
   );

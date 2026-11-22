@@ -10,9 +10,9 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import {
   DISPATCH_BATCH_SIZE,
-  scheduledWorkflowTick,
   startScheduledWorkflowTick,
 } from "$/workflows/runs/dispatch";
 

@@ -8,11 +8,9 @@ import { Effect } from "effect";
 
 import { WorkerLoggerLive } from "$/logging";
 import { cloudflareCheckpointer } from "$/workflows/cloudflare";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import {
-  scheduledWorkflowTick,
-  type WorkflowDispatchParams,
-} from "$/workflows/runs/dispatch";
+import type { WorkflowDispatchParams } from "$/workflows/runs/dispatch";
 import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 import { reportDispatch } from "$/workflows/runs/report";
 

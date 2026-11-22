@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { WorkflowAssignment, WorkflowDefault } from "$/workflows/views";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import { localCheckpointer } from "$/local/checkpointer";
 
 import { assetPricesSpec, workflowService } from "./support/workflow-service";
