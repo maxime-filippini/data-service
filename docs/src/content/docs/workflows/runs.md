@@ -229,9 +229,17 @@ scheduling and infrastructure retries can delay the final outcome. The
 step's attempt count tracks starts of the wait itself. Each dependency check
 is a separate platform checkpoint.
 
-The holdings and publication-reference lists are inline step outputs. They
-share the 32 KiB serialized output limit with other step outputs, so a large
-portfolio can exceed the workflow limit even when its holdings are valid.
+The resolved holdings and matching publication-reference lists are JSON run
+artifacts in R2. Only their small references are checkpointed and recorded as
+step outputs, keeping even a 5,000-asset portfolio below the application's
+32 KiB step-output limit. These JSON artifacts are validated against their
+versioned schema and capped at 8 MiB each to bound Worker memory use.
+The wait reads the holdings artifact on each check;
+editing the portfolio does not change the inputs of an existing wait. A retry
+after the holdings write reuses that snapshot too. Missing, expired or invalid
+holdings artifacts fail the run instead of re-reading the portfolio's live state.
+Both artifacts can be downloaded through the run-artifact API below and expire
+under the same 30-day lifecycle as other temporary run artifacts.
 
 ## Artifacts
 

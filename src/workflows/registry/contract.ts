@@ -96,37 +96,42 @@ export const datasetPublication = defineContract({
   }),
 });
 
-export const portfolioHoldings = defineContract({
-  id: "holdings",
-  description: "A portfolio's effective asset symbols and weights",
-  schema: HoldingsSchema,
+/** Contents of a run's resolved holdings artifact. */
+export const PortfolioHoldingsArtifactSchema = Schema.Struct({
+  portfolio: PortfolioSubjectSchema,
+  processingDate: MarketDateSchema,
+  holdingsDate: MarketDateSchema,
+  holdings: HoldingsSchema,
 });
 
-export const assetSubjects = defineContract({
-  id: "asset-subjects",
-  description: "Distinct asset subjects required by a portfolio",
-  schema: Schema.Array(AssetSubjectSchema).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS),
-    Schema.makeFilter(
-      (assets) =>
-        new Set(assets.map(({ symbol }) => symbol)).size === assets.length ||
-        "Each asset can appear only once",
-    ),
-  ),
+/** Contents of a run's ready publication-list artifact. */
+export const PublishedAssetPricesArtifactSchema = Schema.Array(
+  Schema.Struct({
+    dataset: Schema.Literal("prices_eod"),
+    subject: AssetSubjectSchema,
+    processingDate: MarketDateSchema,
+    workflowId: WorkflowIdSchema,
+    runId: RunIdSchema,
+  }),
+).check(Schema.isMinLength(1), Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS));
+
+export const portfolioHoldings = defineContract({
+  id: "holdings",
+  description: "A JSON artifact reference to the portfolio's resolved holdings",
+  schema: Schema.Struct({
+    id: Schema.NonEmptyString,
+    format: Schema.Literal("json"),
+    schema: Schema.Literal("portfolio-holdings/v1"),
+  }),
 });
 
 export const publishedAssetPrices = defineContract({
   id: "published-asset-prices",
   description:
-    "Current published prices for each required asset, with the matching processing date and upstream run",
-  schema: Schema.Array(
-    Schema.Struct({
-      dataset: Schema.Literal("prices_eod"),
-      subject: AssetSubjectSchema,
-      processingDate: MarketDateSchema,
-      workflowId: WorkflowIdSchema,
-      runId: RunIdSchema,
-    }),
-  ).check(Schema.isMinLength(1), Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS)),
+    "A JSON artifact reference to the matching current price publications",
+  schema: Schema.Struct({
+    id: Schema.NonEmptyString,
+    format: Schema.Literal("json"),
+    schema: Schema.Literal("published-asset-prices/v1"),
+  }),
 });

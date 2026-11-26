@@ -111,15 +111,40 @@ test(
         kind: "portfolio",
         id: portfolio.id,
       });
-      assert.deepEqual(portfolioRun.steps[1]?.outputs?.publications, [
+      const publications = portfolioRun.steps[1]?.outputs?.publications as {
+        id: string;
+      };
+      assert.deepEqual(
+        JSON.parse(
+          readFileSync(
+            join(out, "r2", "raw-market-data", publications.id),
+            "utf8",
+          ),
+        ),
+        [
+          {
+            dataset: "prices_eod",
+            subject: detail.subject,
+            processingDate: detail.processingDate,
+            workflowId: detail.workflowId,
+            runId: detail.id,
+          },
+        ],
+      );
+      const holdings = portfolioRun.steps[0]?.outputs?.holdings as {
+        id: string;
+      };
+      assert.deepEqual(
+        JSON.parse(
+          readFileSync(join(out, "r2", "raw-market-data", holdings.id), "utf8"),
+        ),
         {
-          dataset: "prices_eod",
-          subject: detail.subject,
+          portfolio: portfolioRun.subject,
           processingDate: detail.processingDate,
-          workflowId: detail.workflowId,
-          runId: detail.id,
+          holdingsDate: detail.processingDate,
+          holdings: [{ symbol: "MSFT.US", weight: 1.25 }],
         },
-      ]);
+      );
 
       assert.ok(existsSync(join(out, "d1.sqlite")));
       assert.match(

@@ -451,7 +451,7 @@ const command = Command.make(
                   ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
                 },
                 inputs: {
-                  assets: { ref: "steps.holdings.outputs.assets" },
+                  holdings: { ref: "steps.holdings.outputs.holdings" },
                   processingDate: { ref: "context.processingDate" },
                 },
               },

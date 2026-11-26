@@ -5,8 +5,19 @@ import { DatasetPublicationStore, DatasetObjectStore } from "$/datasets/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
 
-import { assetSubjects, date, publishedAssetPrices } from "./contract";
-import { defineStepType, transient } from "./step-type";
+import {
+  portfolioHoldings,
+  PortfolioHoldingsArtifactSchema,
+  date,
+  publishedAssetPrices,
+  PublishedAssetPricesArtifactSchema,
+} from "./contract";
+import {
+  jsonArtifactReference,
+  readJsonArtifact,
+  writeJsonArtifact,
+} from "./json-artifact";
+import { defineStepType, terminal, transient } from "./step-type";
 
 const DEFAULT_TIMEOUT_SECONDS = 2 * 60 * 60;
 
@@ -29,9 +40,9 @@ export const waitForAssetPublications = defineStepType({
     timeoutSeconds: Schema.optionalKey(timeoutSeconds),
   }),
   inputs: {
-    assets: {
-      contract: assetSubjects,
-      description: "All assets whose prices must be ready",
+    holdings: {
+      contract: portfolioHoldings,
+      description: "The resolved holdings artifact whose assets must be ready",
     },
     processingDate: {
       contract: date,
@@ -47,16 +58,32 @@ export const waitForAssetPublications = defineStepType({
   wait: {
     timeoutMs: (params) =>
       (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
-    check: ({ params, inputs }, deadline) =>
+    check: ({ params, inputs, context, execution }, deadline) =>
       Effect.gen(function* () {
+        const snapshot = yield* readJsonArtifact(
+          inputs.holdings,
+          PortfolioHoldingsArtifactSchema,
+        );
+        if (snapshot === null)
+          return yield* terminal(
+            "The holdings artifact no longer exists; temporary run artifacts expire",
+          );
+        if (
+          context.subject.kind !== "portfolio" ||
+          snapshot.portfolio.id !== context.subject.id ||
+          snapshot.processingDate !== inputs.processingDate
+        )
+          return yield* terminal(
+            "The holdings artifact does not match the portfolio and processing date",
+          );
         const checks = yield* DatasetPublicationStore.use((publications) =>
           publications.checkAssetPrices({
             workflowId: params.workflowId,
             processingDate: inputs.processingDate,
-            symbols: inputs.assets.map(({ symbol }) => symbol),
+            symbols: snapshot.holdings.map(({ symbol }) => symbol),
             deadline,
           }),
-        );
+        ).pipe(Effect.mapError((error) => transient(error.message)));
         const missing: MissingDependency[] = [];
         const publications = [];
         const objects = yield* DatasetObjectStore;
@@ -69,9 +96,9 @@ export const waitForAssetPublications = defineStepType({
           } else if (!publication.matches) {
             missing.push({ symbol, reason: "publication-does-not-match" });
           } else {
-            const etag = yield* objects.etag(
-              publishedDatasetKey("prices_eod", subject),
-            );
+            const etag = yield* objects
+              .etag(publishedDatasetKey("prices_eod", subject))
+              .pipe(Effect.mapError((error) => transient(error.message)));
             if (etag === null || etag !== publication.etag) {
               missing.push({
                 symbol,
@@ -88,9 +115,18 @@ export const waitForAssetPublications = defineStepType({
             }
           }
         }
-        return missing.length === 0
-          ? { ready: true as const, outputs: { publications } }
-          : { ready: false as const, missing };
-      }).pipe(Effect.mapError((error) => transient(error.message))),
+        if (missing.length !== 0) return { ready: false as const, missing };
+        const reference = jsonArtifactReference(
+          execution,
+          "publications",
+          "published-asset-prices/v1",
+        );
+        yield* writeJsonArtifact(
+          reference,
+          PublishedAssetPricesArtifactSchema,
+          publications,
+        );
+        return { ready: true as const, outputs: { publications: reference } };
+      }),
   },
 });

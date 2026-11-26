@@ -241,14 +241,10 @@ test("the step catalog exposes the registered step contracts", async () => {
   });
   assert.deepEqual(ports("portfolio-holdings"), {
     inputs: ["portfolio:portfolio-subject", "processingDate:date"],
-    outputs: [
-      "holdingsDate:date",
-      "holdings:holdings",
-      "assets:asset-subjects",
-    ],
+    outputs: ["holdingsDate:date", "holdings:holdings"],
   });
   assert.deepEqual(ports("wait-for-asset-publications"), {
-    inputs: ["assets:asset-subjects", "processingDate:date"],
+    inputs: ["holdings:holdings", "processingDate:date"],
     outputs: ["publications:published-asset-prices"],
   });
 
@@ -256,7 +252,6 @@ test("the step catalog exposes the registered step contracts", async () => {
     catalog.contracts.map((contract) => contract.id),
     [
       "asset-subject",
-      "asset-subjects",
       "dataset-publication",
       "date",
       "holdings",

@@ -254,7 +254,7 @@ const command = Command.make(
                   type: "wait-for-asset-publications",
                   params: { workflowId: workflow.id, timeoutSeconds: 1 },
                   inputs: {
-                    assets: { ref: "steps.holdings.outputs.assets" },
+                    holdings: { ref: "steps.holdings.outputs.holdings" },
                     processingDate: { ref: "context.processingDate" },
                   },
                 },

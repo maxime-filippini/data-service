@@ -3,11 +3,16 @@ import { Effect, Schema } from "effect";
 import { Portfolios } from "$/portfolios/store";
 
 import {
-  assetSubjects,
   date,
+  PortfolioHoldingsArtifactSchema,
   portfolioHoldings,
   portfolioSubject,
 } from "./contract";
+import {
+  jsonArtifactReference,
+  readJsonArtifact,
+  writeJsonArtifact,
+} from "./json-artifact";
 import { defineStepType, terminal, transient } from "./step-type";
 
 export const loadPortfolioHoldings = defineStepType({
@@ -32,29 +37,45 @@ export const loadPortfolioHoldings = defineStepType({
     },
     holdings: {
       contract: portfolioHoldings,
-      description: "Asset symbols and weights from the snapshot",
-    },
-    assets: {
-      contract: assetSubjects,
-      description: "The assets whose prices are required",
+      description: "The resolved snapshot, stored under the run as JSON",
     },
   },
-  implementation: ({ inputs }) =>
-    Portfolios.use((portfolios) =>
-      portfolios.holdingsAt(inputs.portfolio.id, inputs.processingDate),
-    ).pipe(
-      Effect.mapError((error) =>
-        error.kind === "database"
-          ? transient(error.message)
-          : terminal(error.message),
-      ),
-      Effect.map(({ holdingsDate, holdings }) => ({
+  implementation: ({ inputs, execution }) =>
+    Effect.gen(function* () {
+      const reference = jsonArtifactReference(
+        execution,
+        "holdings",
+        "portfolio-holdings/v1",
+      );
+      const stored = yield* readJsonArtifact(
+        reference,
+        PortfolioHoldingsArtifactSchema,
+      );
+      if (stored !== null) {
+        if (
+          stored.portfolio.id !== inputs.portfolio.id ||
+          stored.processingDate !== inputs.processingDate
+        )
+          return yield* terminal(
+            "The stored holdings do not match the portfolio and processing date",
+          );
+        return { holdingsDate: stored.holdingsDate, holdings: reference };
+      }
+      const { holdingsDate, holdings } = yield* Portfolios.use((portfolios) =>
+        portfolios.holdingsAt(inputs.portfolio.id, inputs.processingDate),
+      ).pipe(
+        Effect.mapError((error) =>
+          error.kind === "database"
+            ? transient(error.message)
+            : terminal(error.message),
+        ),
+      );
+      yield* writeJsonArtifact(reference, PortfolioHoldingsArtifactSchema, {
+        portfolio: inputs.portfolio,
+        processingDate: inputs.processingDate,
         holdingsDate,
         holdings,
-        assets: holdings.map(({ symbol }) => ({
-          kind: "asset" as const,
-          symbol,
-        })),
-      })),
-    ),
+      });
+      return { holdingsDate, holdings: reference };
+    }),
 });

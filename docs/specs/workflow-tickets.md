@@ -141,7 +141,7 @@ Run a portfolio workflow that resolves its holdings into an asset list and expli
 
 ### Acceptance criteria
 
-- [ ] Register a portfolio-holdings step that returns small JSON holdings/assets and a dependency step consuming that list through explicit references.
+- [ ] Register a portfolio-holdings step that stores resolved holdings as a JSON run artifact and a dependency step consuming that artifact through an explicit reference, returning its publication list as an artifact too.
 - [ ] Dependency checks require the requested upstream workflow and subject to have succeeded for the input processing date and have a matching current publication; a success record alone is insufficient.
 - [ ] Return named published-dataset references on success. Check only; never start upstream workflows or expose expired run artifacts as dependencies.
 - [ ] Durable waiting has a configurable bounded timeout, initially two hours, and a deadline stable across replay. Timeout fails the run with the missing subjects identified.

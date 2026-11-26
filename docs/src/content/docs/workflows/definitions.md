@@ -83,13 +83,13 @@ identity; there is no structural subtyping.
 JSON Schema and its ports, every contract with its JSON Schema, and the
 run-context fields with the contract each provides per scope.
 
-| Step type                     | Scopes    | Inputs                                                       | Outputs                                                                       |
-| ----------------------------- | --------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `download-prices`             | asset     | `asset` (`asset-subject`), `throughDate` (`date`)            | `raw` (`raw-prices-eod`)                                                      |
-| `normalize-prices`            | asset     | `raw` (`raw-prices-eod`)                                     | `prices` (`prices-eod`)                                                       |
-| `publish-dataset`             | asset     | `data` (`prices-eod`)                                        | `publication` (`dataset-publication`)                                         |
-| `portfolio-holdings`          | portfolio | `portfolio` (`portfolio-subject`), `processingDate` (`date`) | `holdingsDate` (`date`), `holdings` (`holdings`), `assets` (`asset-subjects`) |
-| `wait-for-asset-publications` | portfolio | `assets` (`asset-subjects`), `processingDate` (`date`)       | `publications` (`published-asset-prices`)                                     |
+| Step type                     | Scopes    | Inputs                                                       | Outputs                                          |
+| ----------------------------- | --------- | ------------------------------------------------------------ | ------------------------------------------------ |
+| `download-prices`             | asset     | `asset` (`asset-subject`), `throughDate` (`date`)            | `raw` (`raw-prices-eod`)                         |
+| `normalize-prices`            | asset     | `raw` (`raw-prices-eod`)                                     | `prices` (`prices-eod`)                          |
+| `publish-dataset`             | asset     | `data` (`prices-eod`)                                        | `publication` (`dataset-publication`)            |
+| `portfolio-holdings`          | portfolio | `portfolio` (`portfolio-subject`), `processingDate` (`date`) | `holdingsDate` (`date`), `holdings` (`holdings`) |
+| `wait-for-asset-publications` | portfolio | `holdings` (`holdings`), `processingDate` (`date`)           | `publications` (`published-asset-prices`)        |
 
 `download-prices` requests the asset's prices from its provider, from the
 asset's backfill start (or the optional `startDate` param) through
@@ -100,9 +100,12 @@ its reference. See [Workflow runs](/docs/workflows/runs/).
 [Python operations and published datasets](/docs/workflows/datasets/).
 
 `portfolio-holdings` reads the saved snapshot effective at the input date
-and returns its symbols and weights. Bind the `assets` output to
-`wait-for-asset-publications` to use those holdings as the list of required
-price publications. The wait's `workflowId` parameter names the required
+and stores its symbols and weights in a JSON run artifact (`portfolio-holdings/v1`),
+along with the portfolio, processing date and effective holdings date. The
+`holdings` output is its artifact reference. Bind it to the `holdings` input of
+`wait-for-asset-publications`; that step reads the artifact to determine the
+required assets and returns a JSON artifact reference (`published-asset-prices/v1`)
+containing their matching publication list. The wait's `workflowId` parameter names the required
 upstream workflow. Its optional `timeoutSeconds` can shorten the default
 two-hour deadline. See [Dependency waits](/docs/workflows/runs/#dependency-waits).
 

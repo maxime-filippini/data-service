@@ -261,6 +261,8 @@ describe(
         );
       const runDetail = (id: string) =>
         json<WorkflowRunDetail>(api(`/runs/${id}`));
+      const artifact = <T>(runId: string, stepId: string, output: string) =>
+        json<T>(api(`/runs/${runId}/steps/${stepId}/artifacts/${output}`));
       const runFor = async (
         workflowId: string,
         processingDate: string,
@@ -284,6 +286,7 @@ describe(
         configure,
         startRun,
         runDetail,
+        artifact,
         runFor,
         platform: service.platform,
         publication,
@@ -337,7 +340,7 @@ describe(
               type: "wait-for-asset-publications",
               params: { workflowId, timeoutSeconds },
               inputs: {
-                assets: { ref: "steps.holdings.outputs.assets" },
+                holdings: { ref: "steps.holdings.outputs.holdings" },
                 processingDate: { ref: "context.processingDate" },
               },
             },
@@ -367,11 +370,28 @@ describe(
       assert.equal(run.status, "completed", run.error ?? "");
       assert.deepEqual(run.steps[0]?.outputs, {
         holdingsDate: "2024-01-06",
+        holdings: {
+          id: `runs/${run.id}/holdings/holdings.json`,
+          format: "json",
+          schema: "portfolio-holdings/v1",
+        },
+      });
+      assert.deepEqual(await service.artifact(run.id, "holdings", "holdings"), {
+        portfolio: portfolio.subject,
+        processingDate: "2024-01-07",
+        holdingsDate: "2024-01-06",
         holdings: [{ symbol: "AAPL.US", weight: 1.5 }],
-        assets: [{ kind: "asset", symbol: "AAPL.US" }],
       });
       assert.deepEqual(run.steps[1]?.outputs, {
-        publications: [
+        publications: {
+          id: `runs/${run.id}/dependencies/publications.json`,
+          format: "json",
+          schema: "published-asset-prices/v1",
+        },
+      });
+      assert.deepEqual(
+        await service.artifact(run.id, "dependencies", "publications"),
+        [
           {
             dataset: "prices_eod",
             subject: { kind: "asset", symbol: "AAPL.US" },
@@ -380,7 +400,7 @@ describe(
             runId: upstream.id,
           },
         ],
-      });
+      );
       assert.equal(service.platform.instances.size, 2);
     });
 
@@ -435,6 +455,12 @@ describe(
       assert.equal(resumed.steps[0]?.attempts, 1);
       assert.equal(resumed.steps[1]?.attempts, 1);
       assert.equal(resumed.steps[1]?.waiting, null);
+      assert.deepEqual(await service.artifact(run.id, "holdings", "holdings"), {
+        portfolio: portfolio.subject,
+        processingDate: "2024-01-07",
+        holdingsDate: "2024-01-06",
+        holdings: [{ symbol: "AAPL.US", weight: 1.5 }],
+      });
       assert.equal(service.platform.instances.size, 2);
     });
 

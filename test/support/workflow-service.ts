@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
+import type { Layer } from "effect";
+
+import type { DatasetObjectStore } from "$/datasets/store";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import type { LocalPlatformOptions } from "$/local/platform";
@@ -48,6 +51,7 @@ export const workflowService = (
   options: {
     readonly platform?: LocalPlatformOptions;
     readonly extraStepTypes?: readonly StepType[];
+    readonly published?: Layer.Layer<DatasetObjectStore>;
     /** Worker vars, such as `WORKFLOW_DISPATCH`. */
     readonly env?: Readonly<Record<string, string>>;
   } = {},
@@ -58,6 +62,9 @@ export const workflowService = (
     db,
     artifacts: artifacts.layer,
     sourceFor: fixtureSourceFor(fixtures),
+    ...(options.published === undefined
+      ? {}
+      : { published: options.published }),
     ...(options.extraStepTypes === undefined
       ? {}
       : { extraStepTypes: options.extraStepTypes }),
@@ -133,6 +140,7 @@ export const workflowService = (
 
   return {
     sqlite,
+    artifacts,
     env,
     api,
     json,
