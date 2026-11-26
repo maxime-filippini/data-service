@@ -62,7 +62,13 @@ export const readJsonArtifact = <A>(
 
     const text = yield* Effect.acquireUseRelease(
       Effect.try({
-        try: () => new Response(content.body).body!.getReader(),
+        try: () =>
+          new Response(
+            // DOM BodyInit excludes views backed by SharedArrayBuffer.
+            content.body instanceof Uint8Array
+              ? new Uint8Array(content.body)
+              : content.body,
+          ).body!.getReader(),
         catch: () => transient("Could not read the JSON run artifact"),
       }),
       (reader) =>

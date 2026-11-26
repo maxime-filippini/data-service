@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { Cause, Effect, Exit, Fiber, Result, Schema } from "effect";
 
-import { RunArtifacts } from "$/workflows/artifacts";
+import { RunArtifacts, type ArtifactContent } from "$/workflows/artifacts";
 import { readJsonArtifact } from "$/workflows/registry/json-artifact";
 
 const reference = {
@@ -12,13 +12,23 @@ const reference = {
   schema: "test-message/v1",
 } as const;
 
-const read = (body: ReadableStream<Uint8Array>) =>
+const read = (body: ArtifactContent["body"]) =>
   readJsonArtifact(reference, Schema.Struct({ message: Schema.String })).pipe(
     Effect.provideService(RunArtifacts, {
       get: () => Effect.succeed({ body, contentType: "application/json" }),
       put: () => Effect.void,
     }),
   );
+
+test("artifact reading accepts a shared-buffer byte view without including bytes outside it", async () => {
+  const value = { message: "shared bytes" };
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const storage = new Uint8Array(new SharedArrayBuffer(bytes.byteLength + 2));
+  storage.fill(120);
+  storage.set(bytes, 1);
+  const body = storage.subarray(1, -1);
+  assert.deepEqual(await Effect.runPromise(read(body)), value);
+});
 
 test(
   "interrupting an artifact read cancels the pending stream and releases its lock",
