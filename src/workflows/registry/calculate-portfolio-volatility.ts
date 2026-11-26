@@ -6,10 +6,13 @@ import { PortfolioVolatilityParams } from "$/operations/contracts.generated";
 import {
   date,
   portfolioHoldings,
+  PortfolioHoldingsArtifactSchema,
   portfolioVolatilityData,
   portfolioVolatilitySummary,
   publishedAssetPrices,
+  PublishedAssetPricesArtifactSchema,
 } from "./contract";
+import { readJsonArtifact } from "./json-artifact";
 import { defineStepType, StepFailure, terminal } from "./step-type";
 
 export const calculatePortfolioVolatility = defineStepType({
@@ -22,7 +25,7 @@ export const calculatePortfolioVolatility = defineStepType({
     holdings: {
       contract: portfolioHoldings,
       description:
-        "The effective holdings snapshot's asset symbols and weights",
+        "The resolved holdings artifact with the snapshot's symbols and weights",
     },
     holdingsDate: {
       contract: date,
@@ -31,7 +34,7 @@ export const calculatePortfolioVolatility = defineStepType({
     publications: {
       contract: publishedAssetPrices,
       description:
-        "The current asset price publications for the processing date",
+        "The artifact listing the current asset price publications for the processing date",
     },
     processingDate: {
       contract: date,
@@ -48,28 +51,57 @@ export const calculatePortfolioVolatility = defineStepType({
       description: "The volatility value, return window and holdings date",
     },
   },
-  implementation: ({ params, inputs, context, execution }) => {
-    if (context.subject.kind !== "portfolio")
-      return Effect.fail(terminal("Volatility requires a portfolio subject"));
-    if (inputs.processingDate !== context.processingDate)
-      return Effect.fail(
-        terminal("Volatility must use the run's processing date"),
+  implementation: ({ params, inputs, context, execution }) =>
+    Effect.gen(function* () {
+      if (context.subject.kind !== "portfolio")
+        return yield* terminal("Volatility requires a portfolio subject");
+      if (inputs.processingDate !== context.processingDate)
+        return yield* terminal("Volatility must use the run's processing date");
+      const portfolioId = context.subject.id;
+      const snapshot = yield* readJsonArtifact(
+        inputs.holdings,
+        PortfolioHoldingsArtifactSchema,
       );
-    const portfolioId = context.subject.id;
-    return PythonOperations.use((python) =>
-      python.invoke("calculate-portfolio-volatility", {
-        execution: { runId: execution.runId, stepId: execution.stepId },
-        inputs: { ...inputs, portfolioId },
-        params,
-      }),
-    ).pipe(
-      Effect.mapError(
-        (error) =>
-          new StepFailure({
-            retry: error.kind === "transient",
-            message: error.message,
-          }),
-      ),
-    );
-  },
+      if (snapshot === null)
+        return yield* terminal(
+          "The holdings artifact no longer exists; temporary run artifacts expire",
+        );
+      if (
+        snapshot.portfolio.id !== portfolioId ||
+        snapshot.processingDate !== inputs.processingDate ||
+        snapshot.holdingsDate !== inputs.holdingsDate
+      )
+        return yield* terminal(
+          "The holdings artifact does not match the portfolio, processing date and holdings date",
+        );
+      const publications = yield* readJsonArtifact(
+        inputs.publications,
+        PublishedAssetPricesArtifactSchema,
+      );
+      if (publications === null)
+        return yield* terminal(
+          "The publications artifact no longer exists; temporary run artifacts expire",
+        );
+      return yield* PythonOperations.use((python) =>
+        python.invoke("calculate-portfolio-volatility", {
+          execution: { runId: execution.runId, stepId: execution.stepId },
+          inputs: {
+            portfolioId,
+            processingDate: inputs.processingDate,
+            holdingsDate: snapshot.holdingsDate,
+            holdings: snapshot.holdings,
+            publications,
+          },
+          params,
+        }),
+      ).pipe(
+        Effect.mapError(
+          (error) =>
+            new StepFailure({
+              retry: error.kind === "transient",
+              message: error.message,
+            }),
+        ),
+      );
+    }),
 });

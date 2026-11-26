@@ -110,8 +110,9 @@ containing their matching publication list. The wait's `workflowId` parameter na
 upstream workflow. Its optional `timeoutSeconds` can shorten the default
 two-hour deadline. See [Dependency waits](/docs/workflows/runs/#dependency-waits).
 
-`calculate-portfolio-volatility` uses the effective snapshot and the matching
-published prices to calculate ex-ante volatility. Pass its `data` output to
+`calculate-portfolio-volatility` reads the holdings and publication-list
+artifacts and uses the effective snapshot and the matching published prices to
+calculate ex-ante volatility. Pass its `data` output to
 `publish-dataset` with `dataset: "portfolio_volatility"`. The `summary` output
 shows the volatility, return window and effective holdings date in the run.
 
