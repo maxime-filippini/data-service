@@ -2,14 +2,18 @@ import type {
   RunPlatform,
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
-import type { Steps } from "$/workflows/steps";
+import type { WorkflowSteps } from "$/workflows/steps";
 
-import { type LocalStepsOptions, localSteps } from "./steps";
+import {
+  type LocalStepEvent,
+  type LocalStepsOptions,
+  localSteps,
+} from "./steps";
 
 /** Executes one run's Workflow body with the given steps adapter. */
 export type ExecuteRun = (
   params: WorkflowRunParams,
-  steps: Steps,
+  steps: WorkflowSteps,
 ) => Promise<unknown>;
 
 type LocalStatus = "queued" | "running" | "complete" | "errored";
@@ -30,13 +34,24 @@ export interface LocalInstance {
 export interface LocalPlatformOptions {
   /** Start instances when created (default). False holds them `queued`. */
   readonly autoStart?: boolean;
-  readonly steps?: Omit<LocalStepsOptions, "interruptBefore" | "onInterrupt">;
+  readonly steps?: Omit<
+    LocalStepsOptions,
+    "interruptBefore" | "onInterrupt" | "onEvent"
+  >;
   /**
    * Simulate eviction: stop an execution before the named step (see
    * `LocalStepsOptions.interruptBefore`). `instance.executions` counts the
    * current execution from 1.
    */
   readonly interruptBefore?: (instance: LocalInstance, step: string) => boolean;
+  /**
+   * Notified when an execution of an instance's body begins and of every
+   * checkpoint event in it, for tracing.
+   */
+  readonly onEvent?: (
+    instance: LocalInstance,
+    event: LocalStepEvent | { readonly type: "execution" },
+  ) => void;
 }
 
 /** The local Workflow binding plus controls for tests and the fixture run. */
@@ -85,6 +100,7 @@ export const localRunPlatform = (
   const run = (instance: LocalInstance) => {
     instance.status = "running";
     instance.executions += 1;
+    options.onEvent?.(instance, { type: "execution" });
     const settled = new Promise<void>((resolve) => {
       const steps = localSteps(instance.checkpoints, {
         ...options.steps,
@@ -92,6 +108,7 @@ export const localRunPlatform = (
           options.interruptBefore?.(instance, step) ?? false,
         // An evicted instance stays running until the platform replays it.
         onInterrupt: () => resolve(),
+        onEvent: (event) => options.onEvent?.(instance, event),
       });
       execute(instance.params, steps).then(
         () => {

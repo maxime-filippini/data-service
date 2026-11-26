@@ -14,6 +14,10 @@ export interface Steps {
   ) => Promise<T>;
 }
 
+export interface WorkflowSteps extends Steps {
+  readonly sleepUntil: (name: string, timestamp: number) => Promise<void>;
+}
+
 /**
  * Thrown by a step body when retrying cannot help. Adapters translate it to
  * their runtime's non-retryable failure (Cloudflare's `NonRetryableError`).
@@ -31,7 +35,7 @@ export class NonRetryableStepError extends Error {
 export const workflowSteps = (
   step: WorkflowStep,
   nonRetryable: (error: NonRetryableStepError) => Error = (error) => error,
-): Steps => ({
+): WorkflowSteps => ({
   do: (name, run, config) => {
     const body = () =>
       run().catch((error: unknown) => {
@@ -43,4 +47,5 @@ export const workflowSteps = (
       ? step.do(name, body)
       : step.do(name, config, body);
   },
+  sleepUntil: (name, timestamp) => step.sleepUntil(name, timestamp),
 });

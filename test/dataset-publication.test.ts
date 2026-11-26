@@ -43,6 +43,8 @@ import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
+import type { Subject } from "$/workflows/contracts";
+import type { LocalPlatformOptions } from "$/local/platform";
 
 import { makeTestDatabase } from "./support/d1";
 
@@ -122,7 +124,11 @@ describe(
     let counter = 0;
 
     const setup = (
-      options: { readonly published?: Layer.Layer<DatasetObjectStore> } = {},
+      options: {
+        readonly published?: Layer.Layer<DatasetObjectStore>;
+        readonly platform?: LocalPlatformOptions;
+        readonly now?: () => number;
+      } = {},
     ) => {
       // Each test gets its own processed-bucket directory and database; run
       // artifacts share the Python service's directory (run IDs are unique).
@@ -176,7 +182,11 @@ describe(
         sourceFor: fixtureSourceFor(fixtures, (url) => provider.respond(url)),
         python: HttpPythonOperationsLive(fetcher, python.url),
         published: options.published ?? FileDatasetObjectStoreLive(processed),
-        platform: { steps: { delayScale: 0 } },
+        platform: {
+          ...options.platform,
+          steps: { delayScale: 0, ...options.platform?.steps },
+        },
+        ...(options.now === undefined ? {} : { now: options.now }),
       });
       const routes = createRoutes(service.dependencies, {
         fetch: () => new Response("app"),
@@ -236,17 +246,31 @@ describe(
       };
 
       /** Start a run for the date and wait for it to finish. */
-      const runFor = async (workflowId: string, processingDate: string) => {
-        const started = await json<WorkflowRunSummary>(
+      const startRun = (
+        workflowId: string,
+        processingDate: string,
+        subject: Subject = { kind: "asset", symbol: "AAPL.US" },
+      ) =>
+        json<WorkflowRunSummary>(
           api("/runs", "POST", {
             workflowId,
-            subject: { kind: "asset", symbol: "AAPL.US" },
+            subject,
             processingDate,
           }),
           202,
         );
+      const runDetail = (id: string) =>
+        json<WorkflowRunDetail>(api(`/runs/${id}`));
+      const artifact = <T>(runId: string, stepId: string, output: string) =>
+        json<T>(api(`/runs/${runId}/steps/${stepId}/artifacts/${output}`));
+      const runFor = async (
+        workflowId: string,
+        processingDate: string,
+        subject?: Subject,
+      ) => {
+        const started = await startRun(workflowId, processingDate, subject);
         await service.platform.idle();
-        return json<WorkflowRunDetail>(api(`/runs/${started.id}`));
+        return runDetail(started.id);
       };
 
       const publication = (status = 200) =>
@@ -260,7 +284,11 @@ describe(
         json,
         pages: pageData({} as CloudflareBindings, service.dependencies),
         configure,
+        startRun,
+        runDetail,
+        artifact,
         runFor,
+        platform: service.platform,
         publication,
         faults,
         provider,
@@ -268,6 +296,291 @@ describe(
         processed,
       };
     };
+
+    const configurePortfolio = async (
+      service: ReturnType<typeof setup>,
+      workflowId: string,
+      timeoutSeconds?: number,
+    ) => {
+      const { api, json } = service;
+      const { id } = await json<{ id: string }>(
+        api("/portfolios", "POST", {
+          name: "Dated portfolio",
+          snapshot: {
+            holdingsDate: "2024-01-01",
+            holdings: [{ symbol: "AAPL.US", weight: 0.5 }],
+          },
+        }),
+        201,
+      );
+      await json(
+        api(`/portfolios/${id}/snapshots`, "POST", {
+          holdingsDate: "2024-01-06",
+          holdings: [{ symbol: "AAPL.US", weight: 1.5 }],
+        }),
+        201,
+      );
+      const { id: portfolioWorkflow } = await json<{ id: string }>(
+        api("/workflows", "POST", {
+          name: "Dated dependencies",
+          scope: "portfolio",
+          enabled: true,
+          schedule: { hourUtc: 4 },
+          steps: [
+            {
+              id: "holdings",
+              type: "portfolio-holdings",
+              inputs: {
+                portfolio: { ref: "context.subject" },
+                processingDate: { ref: "context.processingDate" },
+              },
+            },
+            {
+              id: "dependencies",
+              type: "wait-for-asset-publications",
+              params: { workflowId, timeoutSeconds },
+              inputs: {
+                holdings: { ref: "steps.holdings.outputs.holdings" },
+                processingDate: { ref: "context.processingDate" },
+              },
+            },
+          ],
+        }),
+        201,
+      );
+      const subject = { kind: "portfolio", id } as const;
+      await json(
+        api(`/workflows/${portfolioWorkflow}/assignments`, "POST", { subject }),
+        201,
+      );
+      return { workflowId: portfolioWorkflow, subject };
+    };
+
+    test("a portfolio on a non-trading date uses effective holdings and matching published prices", async () => {
+      const service = setup();
+      const assetWorkflow = await service.configure();
+      const upstream = await service.runFor(assetWorkflow, "2024-01-07");
+      assert.equal(upstream.status, "completed", upstream.error ?? "");
+      const portfolio = await configurePortfolio(service, assetWorkflow);
+      const run = await service.runFor(
+        portfolio.workflowId,
+        "2024-01-07",
+        portfolio.subject,
+      );
+      assert.equal(run.status, "completed", run.error ?? "");
+      assert.deepEqual(run.steps[0]?.outputs, {
+        holdingsDate: "2024-01-06",
+        holdings: {
+          id: `runs/${run.id}/holdings/holdings.json`,
+          format: "json",
+          schema: "portfolio-holdings/v1",
+        },
+      });
+      assert.deepEqual(await service.artifact(run.id, "holdings", "holdings"), {
+        portfolio: portfolio.subject,
+        processingDate: "2024-01-07",
+        holdingsDate: "2024-01-06",
+        holdings: [{ symbol: "AAPL.US", weight: 1.5 }],
+      });
+      assert.deepEqual(run.steps[1]?.outputs, {
+        publications: {
+          id: `runs/${run.id}/dependencies/publications.json`,
+          format: "json",
+          schema: "published-asset-prices/v1",
+        },
+      });
+      assert.deepEqual(
+        await service.artifact(run.id, "dependencies", "publications"),
+        [
+          {
+            dataset: "prices_eod",
+            subject: { kind: "asset", symbol: "AAPL.US" },
+            processingDate: "2024-01-07",
+            workflowId: assetWorkflow,
+            runId: upstream.id,
+          },
+        ],
+      );
+      assert.equal(service.platform.instances.size, 2);
+    });
+
+    test("a portfolio waits without starting an upstream run and resumes from the same holdings on replay", async () => {
+      let now = Date.now();
+      const service = setup({
+        now: () => now,
+        platform: {
+          interruptBefore: (instance, name) =>
+            name === "wait dependencies 1" && instance.executions === 1,
+          steps: {
+            sleepUntil: async (timestamp) => {
+              now = Math.max(now, timestamp);
+            },
+          },
+        },
+      });
+      const assetWorkflow = await service.configure();
+      const portfolio = await configurePortfolio(service, assetWorkflow);
+      const run = await service.startRun(
+        portfolio.workflowId,
+        "2024-01-07",
+        portfolio.subject,
+      );
+      await service.platform.idle();
+
+      const waiting = await service.runDetail(run.id);
+      assert.equal(waiting.status, "waiting");
+      assert.equal(waiting.steps[1]?.status, "waiting");
+      assert.deepEqual(waiting.steps[1]?.waiting, {
+        deadline: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
+        missing: [{ symbol: "AAPL.US", reason: "no-successful-run" }],
+      });
+      assert.deepEqual(await service.pages.workflowRun(run.id), waiting);
+      assert.equal(service.platform.instances.size, 1);
+
+      await service.json(
+        service.api(`/portfolios/${portfolio.subject.id}/snapshots`, "POST", {
+          holdingsDate: "2024-01-07",
+          holdings: [{ symbol: "AAPL.US", weight: 0.9 }],
+        }),
+        201,
+      );
+      const upstream = await service.runFor(assetWorkflow, "2024-01-07");
+      assert.equal(upstream.status, "completed", upstream.error ?? "");
+      service.platform.replay(run.id);
+      await service.platform.idle();
+
+      const resumed = await service.runDetail(run.id);
+      assert.equal(resumed.status, "completed", resumed.error ?? "");
+      assert.deepEqual(resumed.steps[0]?.outputs, waiting.steps[0]?.outputs);
+      assert.equal(resumed.steps[0]?.attempts, 1);
+      assert.equal(resumed.steps[1]?.attempts, 1);
+      assert.equal(resumed.steps[1]?.waiting, null);
+      assert.deepEqual(await service.artifact(run.id, "holdings", "holdings"), {
+        portfolio: portfolio.subject,
+        processingDate: "2024-01-07",
+        holdingsDate: "2024-01-06",
+        holdings: [{ symbol: "AAPL.US", weight: 1.5 }],
+      });
+      assert.equal(service.platform.instances.size, 2);
+    });
+
+    test("a publication for the wrong date cannot satisfy the wait or reset its deadline on replay", async () => {
+      let now = Date.now();
+      const service = setup({
+        now: () => now,
+        platform: {
+          interruptBefore: (instance, name) =>
+            name === "wait dependencies 1" && instance.executions === 1,
+          steps: {
+            sleepUntil: async (timestamp) => {
+              now = Math.max(timestamp, now);
+            },
+          },
+        },
+      });
+      const assetWorkflow = await service.configure();
+      const upstream = await service.runFor(assetWorkflow, "2024-01-05");
+      assert.equal(upstream.status, "completed", upstream.error ?? "");
+      const portfolio = await configurePortfolio(service, assetWorkflow, 30);
+      const run = await service.startRun(
+        portfolio.workflowId,
+        "2024-01-07",
+        portfolio.subject,
+      );
+      await service.platform.idle();
+      const waiting = await service.runDetail(run.id);
+      assert.deepEqual(waiting.steps[1]?.waiting, {
+        deadline: new Date(now + 30_000).toISOString(),
+        missing: [{ symbol: "AAPL.US", reason: "no-successful-run" }],
+      });
+
+      now += 120_000;
+      service.platform.replay(run.id);
+      await service.platform.idle();
+      const failed = await service.runDetail(run.id);
+      assert.equal(failed.status, "failed");
+      assert.match(failed.error ?? "", /timed out.*AAPL\.US/iu);
+      assert.equal(failed.steps[1]?.status, "failed");
+      assert.deepEqual(failed.steps[1]?.waiting, waiting.steps[1]?.waiting);
+      assert.equal(service.platform.instances.size, 2);
+    });
+
+    test("an upstream success without a current matching publication still times out", async () => {
+      let now = Date.now();
+      const service = setup({
+        now: () => now,
+        platform: {
+          steps: {
+            sleepUntil: async (timestamp) => {
+              now = timestamp;
+            },
+          },
+        },
+      });
+      const assetWorkflow = await service.configure();
+      await service.json(
+        service.api(`/workflows/${assetWorkflow}`, "PUT", {
+          ...assetPrices,
+          steps: assetPrices.steps.slice(0, 2),
+        }),
+      );
+      const upstream = await service.runFor(assetWorkflow, "2024-01-07");
+      assert.equal(upstream.status, "completed", upstream.error ?? "");
+      await service.publication(404);
+
+      const portfolio = await configurePortfolio(service, assetWorkflow, 30);
+      const failed = await service.runFor(
+        portfolio.workflowId,
+        "2024-01-07",
+        portfolio.subject,
+      );
+      assert.equal(failed.status, "failed");
+      assert.deepEqual(failed.steps[1]?.waiting?.missing, [
+        { symbol: "AAPL.US", reason: "no-publication" },
+      ]);
+      assert.equal(service.platform.instances.size, 2);
+    });
+
+    test("a later publication supersedes an earlier date and missing data cannot satisfy an otherwise matching record", async () => {
+      let now = Date.now();
+      const service = setup({
+        now: () => now,
+        platform: {
+          steps: {
+            sleepUntil: async (timestamp) => {
+              now = timestamp;
+            },
+          },
+        },
+      });
+      const assetWorkflow = await service.configure();
+      for (const date of ["2024-01-06", "2024-01-07"]) {
+        const upstream = await service.runFor(assetWorkflow, date);
+        assert.equal(upstream.status, "completed", upstream.error ?? "");
+      }
+      const portfolio = await configurePortfolio(service, assetWorkflow, 30);
+      const superseded = await service.runFor(
+        portfolio.workflowId,
+        "2024-01-06",
+        portfolio.subject,
+      );
+      assert.equal(superseded.status, "failed");
+      assert.deepEqual(superseded.steps[1]?.waiting?.missing, [
+        { symbol: "AAPL.US", reason: "publication-does-not-match" },
+      ]);
+
+      rmSync(join(service.processed, PRICES_KEY));
+      const deleted = await service.runFor(
+        portfolio.workflowId,
+        "2024-01-07",
+        portfolio.subject,
+      );
+      assert.equal(deleted.status, "failed");
+      assert.deepEqual(deleted.steps[1]?.waiting?.missing, [
+        { symbol: "AAPL.US", reason: "publication-object-does-not-match" },
+      ]);
+      assert.equal(service.platform.instances.size, 4);
+    });
 
     test("an asset workflow downloads, normalizes in Python and publishes end-of-day prices", async () => {
       const { api, json, pages, configure, runFor, publication, processed } =

@@ -8,8 +8,10 @@ import type {
 } from "$/datasets/store";
 import type { MarketDataSources } from "$/market-data/sources";
 import type { PythonOperations } from "$/operations/client";
+import type { Portfolios } from "$/portfolios/store";
 import type { RunArtifacts } from "$/workflows/artifacts";
 import type { Subject, SubjectKind } from "$/workflows/contracts";
+import type { MissingDependency } from "$/workflows/runs/contracts";
 import {
   assetSubject,
   type Contract,
@@ -93,17 +95,10 @@ export class StepFailure extends Schema.TaggedError<StepFailure>()(
   { retry: Schema.Boolean, message: Schema.String },
 ) {}
 
-/** A transient step failure, retried within the step's policy. */
-export const transient = (message: string) =>
-  new StepFailure({ retry: true, message });
-
-/** A terminal step failure, which stops the run. */
-export const terminal = (message: string) =>
-  new StepFailure({ retry: false, message });
-
 /** The services step implementations can use. */
 export type StepServices =
   | Assets
+  | Portfolios
   | MarketDataSources
   | RunArtifacts
   | PythonOperations
@@ -119,6 +114,11 @@ export const DEFAULT_STEP_POLICY = {
   retries: { limit: 3, delay: "10 seconds", backoff: "exponential" },
   timeout: "10 minutes",
 } as const satisfies WorkflowStepConfig;
+
+/** A durable check is either ready to produce outputs or waiting for inputs. */
+export type WaitCheck<O> =
+  | { readonly ready: true; readonly outputs: O }
+  | { readonly ready: false; readonly missing: readonly MissingDependency[] };
 
 /**
  * A registered, version-controlled operation a workflow step can use: its
@@ -144,7 +144,23 @@ export interface StepType<
   implementation?(
     request: StepRequest<P, PortValues<I>>,
   ): Effect.Effect<PortValues<O>, StepFailure, StepServices>;
+  /** The executor checkpoints each check and durably sleeps between checks. */
+  readonly wait?: {
+    timeoutMs(params: P): number;
+    check(
+      request: StepRequest<P, PortValues<I>>,
+      deadline: string,
+    ): Effect.Effect<WaitCheck<PortValues<O>>, StepFailure, StepServices>;
+  };
 }
+
+/** A transient step failure, retried within the step's policy. */
+export const transient = (message: string) =>
+  new StepFailure({ retry: true, message });
+
+/** A terminal step failure, which stops the run. */
+export const terminal = (message: string) =>
+  new StepFailure({ retry: false, message });
 
 /** Declare a step type, inferring its params, input and output types. */
 export const defineStepType = <P, I extends Ports, O extends Ports>(

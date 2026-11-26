@@ -100,7 +100,7 @@ when implementing publication.
         "waitTimeoutMinutes": 120
       },
       "inputs": {
-        "assets": { "ref": "steps.holdings.outputs.assets" },
+        "holdings": { "ref": "steps.holdings.outputs.holdings" },
         "processingDate": { "ref": "context.processingDate" }
       }
     },

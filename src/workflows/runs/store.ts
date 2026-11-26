@@ -4,6 +4,7 @@ import type { StepSpec, Subject, WorkflowError } from "$/workflows/contracts";
 import type { RunContext } from "$/workflows/registry";
 
 import type {
+  DependencyWait,
   RunFilter,
   RunTrigger,
   WorkflowRunDetail,
@@ -127,11 +128,17 @@ export class WorkflowRuns extends Context.Service<
       readonly final: boolean;
       readonly now: string;
     }) => Effect.Effect<void, WorkflowError>;
+    readonly stepWaiting: (input: {
+      readonly runId: string;
+      readonly stepId: string;
+      readonly waiting: DependencyWait;
+    }) => Effect.Effect<void, WorkflowError>;
     readonly stepCompleted: (input: {
       readonly runId: string;
       readonly stepId: string;
       readonly outputs: Readonly<Record<string, unknown>>;
       readonly now: string;
+      readonly resumesRun?: boolean;
     }) => Effect.Effect<void, WorkflowError>;
     /** Complete an active run. False when it was no longer active. */
     readonly complete: (

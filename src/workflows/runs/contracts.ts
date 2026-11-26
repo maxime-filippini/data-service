@@ -91,6 +91,23 @@ export interface WorkflowRunSummary {
   readonly finishedAt: string | null;
 }
 
+/** Why a dependency wait is still missing one asset's publication. */
+export interface MissingDependency {
+  readonly symbol: string;
+  readonly reason:
+    | "no-successful-run"
+    | "no-publication"
+    | "publication-does-not-match"
+    | "publication-object-does-not-match";
+}
+
+/** What a waiting step still needs, and until when it waits. */
+export interface DependencyWait {
+  /** An absolute UTC deadline that stays fixed during replay. */
+  readonly deadline: string;
+  readonly missing: readonly MissingDependency[];
+}
+
 export interface StepOutcome {
   readonly position: number;
   readonly id: string;
@@ -99,6 +116,8 @@ export interface StepOutcome {
   readonly attempts: number;
   readonly outputs: Readonly<Record<string, unknown>> | null;
   readonly error: string | null;
+  /** The latest missing dependencies while waiting or after a failed wait. */
+  readonly waiting: DependencyWait | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
 }

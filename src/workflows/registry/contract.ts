@@ -6,11 +6,14 @@ import {
   PricesEodReference,
   RawPricesEodReference,
 } from "$/operations/contracts.generated";
+import { HoldingsSchema, MAX_SNAPSHOT_HOLDINGS } from "$/portfolios/contracts";
 import {
   AssetSubjectSchema,
   PortfolioSubjectSchema,
   SubjectSchema,
+  WorkflowIdSchema,
 } from "$/workflows/contracts";
+import { RunIdSchema } from "$/workflows/runs/contracts";
 
 /**
  * A named data contract: the explicit identity two step ports must share to
@@ -90,5 +93,45 @@ export const datasetPublication = defineContract({
     dataset: PublishedDatasetSchema,
     subject: SubjectSchema,
     processingDate: MarketDateSchema,
+  }),
+});
+
+/** Contents of a run's resolved holdings artifact. */
+export const PortfolioHoldingsArtifactSchema = Schema.Struct({
+  portfolio: PortfolioSubjectSchema,
+  processingDate: MarketDateSchema,
+  holdingsDate: MarketDateSchema,
+  holdings: HoldingsSchema,
+});
+
+/** Contents of a run's ready publication-list artifact. */
+export const PublishedAssetPricesArtifactSchema = Schema.Array(
+  Schema.Struct({
+    dataset: Schema.Literal("prices_eod"),
+    subject: AssetSubjectSchema,
+    processingDate: MarketDateSchema,
+    workflowId: WorkflowIdSchema,
+    runId: RunIdSchema,
+  }),
+).check(Schema.isMinLength(1), Schema.isMaxLength(MAX_SNAPSHOT_HOLDINGS));
+
+export const portfolioHoldings = defineContract({
+  id: "holdings",
+  description: "A JSON artifact reference to the portfolio's resolved holdings",
+  schema: Schema.Struct({
+    id: Schema.NonEmptyString,
+    format: Schema.Literal("json"),
+    schema: Schema.Literal("portfolio-holdings/v1"),
+  }),
+});
+
+export const publishedAssetPrices = defineContract({
+  id: "published-asset-prices",
+  description:
+    "A JSON artifact reference to the matching current price publications",
+  schema: Schema.Struct({
+    id: Schema.NonEmptyString,
+    format: Schema.Literal("json"),
+    schema: Schema.Literal("published-asset-prices/v1"),
   }),
 });

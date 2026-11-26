@@ -150,5 +150,55 @@ export const D1DatasetPublicationStoreLive = (
               : Effect.succeed(fromRow(row)),
           ),
         ),
+
+      checkAssetPrices: ({ workflowId, symbols, processingDate, deadline }) =>
+        query(() =>
+          db
+            .prepare(
+              `SELECT j.value AS symbol, p.run_id, p.etag,
+                 EXISTS (
+                   SELECT 1 FROM workflow_runs r
+                   WHERE r.workflow_id = ?2 AND r.subject_kind = 'asset'
+                     AND r.subject_id = j.value AND r.processing_date = ?3
+                     AND r.status = 'completed' AND r.finished_at <= ?4
+                 ) AS succeeded,
+                 EXISTS (
+                   SELECT 1 FROM workflow_runs producer
+                   WHERE producer.run_id = p.run_id AND producer.workflow_id = ?2
+                     AND producer.subject_kind = 'asset' AND producer.subject_id = j.value
+                     AND producer.processing_date = ?3 AND producer.status = 'completed'
+                     AND p.workflow_id = ?2 AND p.processing_date = ?3
+                     AND producer.finished_at <= ?4 AND p.published_at <= ?4
+                 ) AS publication_matches
+               FROM json_each(?1) j
+               LEFT JOIN dataset_publications p
+                 ON p.dataset = 'prices_eod' AND p.subject_kind = 'asset'
+                 AND p.subject_id = j.value
+               ORDER BY j.key`,
+            )
+            .bind(JSON.stringify(symbols), workflowId, processingDate, deadline)
+            .all<{
+              symbol: string;
+              run_id: string | null;
+              etag: string;
+              succeeded: number;
+              publication_matches: number;
+            }>(),
+        ).pipe(
+          Effect.map(({ results }) =>
+            results.map((row) => ({
+              symbol: row.symbol,
+              succeeded: row.succeeded === 1,
+              publication:
+                row.run_id === null
+                  ? null
+                  : {
+                      runId: row.run_id,
+                      etag: row.etag,
+                      matches: row.publication_matches === 1,
+                    },
+            })),
+          ),
+        ),
     }),
   );

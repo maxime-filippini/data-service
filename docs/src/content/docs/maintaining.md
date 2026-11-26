@@ -28,24 +28,25 @@ The Worker owns state transitions in D1. Python reads and writes data in R2,
 and reports its outcome to the Worker. The app reads page data on the server
 and sends mutations through the Worker's JSON routes.
 
-| Location                 | Read it for                                                         |
-| ------------------------ | ------------------------------------------------------------------- |
-| `src/index.ts`           | Cloudflare fetch, cron and queue entry points                       |
-| `src/dependencies.ts`    | Concrete dependency wiring for HTTP routes and page reads           |
-| `src/routes/`            | Authentication, request validation, HTTP responses                  |
-| `src/http/run-effect.ts` | Shared execution of Effects and expected-error HTTP mapping         |
-| `src/calculations/`      | Calculation configuration, run execution, scheduling, engine client |
-| `src/portfolios/`        | Portfolio contracts, persistence interface and D1 implementation    |
-| `src/market-data/`       | Registry, ingestion, processing, download schedule and status reads |
-| `src/*-workflow.ts`      | Cloudflare Workflow entry points and dependency wiring              |
-| `src/workflows/steps.ts` | Adapter between orchestration and Cloudflare's step runner          |
-| `src/pages/`             | Read-only data supplied to SvelteKit pages                          |
-| `app/src/routes/`        | Pages and their server loads                                        |
-| `app/src/lib/api.ts`     | Browser requests to `/app-api`                                      |
-| `containers/processor/`  | Raw response validation and Parquet rebuilds                        |
-| `containers/engine/`     | Calculation types, execution and result storage                     |
-| `migrations/`            | Database schema and concurrency constraints                         |
-| `test/`                  | Worker behavior tests, usually using real SQL against SQLite        |
+| Location                    | Read it for                                                         |
+| --------------------------- | ------------------------------------------------------------------- |
+| `src/index.ts`              | Cloudflare fetch, cron and queue entry points                       |
+| `src/dependencies.ts`       | Concrete dependency wiring for HTTP routes and page reads           |
+| `src/routes/`               | Authentication, request validation, HTTP responses                  |
+| `src/http/run-effect.ts`    | Shared execution of Effects and expected-error HTTP mapping         |
+| `src/calculations/`         | Calculation configuration, run execution, scheduling, engine client |
+| `src/portfolios/`           | Portfolio contracts, persistence interface and D1 implementation    |
+| `src/market-data/`          | Registry, ingestion, processing, download schedule and status reads |
+| `src/*-workflow.ts`         | Cloudflare Workflow entry points and dependency wiring              |
+| `src/workflows/steps.ts`    | Adapter between orchestration and Cloudflare's step runner          |
+| `src/workflows/executor.ts` | Captured workflow execution and durable dependency waits            |
+| `src/pages/`                | Read-only data supplied to SvelteKit pages                          |
+| `app/src/routes/`           | Pages and their server loads                                        |
+| `app/src/lib/api.ts`        | Browser requests to `/app-api`                                      |
+| `containers/processor/`     | Raw response validation and Parquet rebuilds                        |
+| `containers/engine/`        | Calculation types, execution and result storage                     |
+| `migrations/`               | Database schema and concurrency constraints                         |
+| `test/`                     | Worker behavior tests, usually using real SQL against SQLite        |
 
 ### File roles inside a feature
 
@@ -249,6 +250,10 @@ in D1. Python never updates the run in D1 itself.
 results must be serializable. Successful results are durable, but a step body
 can run more than once when an attempt fails. Keep stable step names and make
 side effects safe to retry. Effect execution alone provides no durable replay.
+
+For definition runs, `src/workflows/executor.ts` owns the dependency deadline,
+checkpointed checks, and durable sleep between checks. The registered wait
+step owns the readiness condition and missing-input diagnostics.
 
 ## Recovery rules to know before changing orchestration
 

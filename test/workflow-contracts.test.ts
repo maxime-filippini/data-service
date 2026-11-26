@@ -21,6 +21,8 @@ type DomainRecords = readonly [
   Runs.StepOutcomeStatus,
   Runs.RunTrigger,
   Runs.WorkflowRunSummary,
+  Runs.MissingDependency,
+  Runs.DependencyWait,
   Runs.StepOutcome,
   Runs.WorkflowRunDetail,
 ];
@@ -38,6 +40,8 @@ type ViewRecords = readonly [
   RunViews.StepOutcomeStatus,
   RunViews.RunTrigger,
   RunViews.WorkflowRunSummary,
+  RunViews.MissingDependency,
+  RunViews.DependencyWaitView,
   RunViews.StepOutcome,
   RunViews.WorkflowRunDetail,
 ];
