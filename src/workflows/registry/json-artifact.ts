@@ -7,12 +7,7 @@ import {
 } from "$/workflows/artifacts";
 
 import type { ArtifactReference } from "./contract";
-import {
-  StepFailure,
-  terminal,
-  transient,
-  type StepExecution,
-} from "./step-type";
+import { terminal, transient, type StepExecution } from "./step-type";
 
 // Bounds buffered JSON, with room for all 5,000 holdings/publications.
 const MAX_JSON_ARTIFACT_BYTES = 8 * 1024 * 1024;
@@ -65,34 +60,37 @@ export const readJsonArtifact = <A>(
     ).pipe(Effect.mapError(artifactFailure));
     if (content === null) return null;
 
-    const text = yield* Effect.tryPromise({
-      try: async () => {
-        const reader = new Response(content.body).body!.getReader();
-        const decoder = new TextDecoder();
-        let bytes = 0;
-        let text = "";
-        try {
+    const text = yield* Effect.acquireUseRelease(
+      Effect.try({
+        try: () => new Response(content.body).body!.getReader(),
+        catch: () => transient("Could not read the JSON run artifact"),
+      }),
+      (reader) =>
+        Effect.gen(function* () {
+          const decoder = new TextDecoder();
+          let bytes = 0;
+          let text = "";
           while (true) {
-            const { done, value } = await reader.read();
+            const { done, value } = yield* Effect.tryPromise({
+              try: () => reader.read(),
+              catch: () => transient("Could not read the JSON run artifact"),
+            });
             if (done) return text + decoder.decode();
             bytes += value.byteLength;
-            if (bytes > MAX_JSON_ARTIFACT_BYTES) {
-              await reader.cancel();
-              throw terminal(
+            if (bytes > MAX_JSON_ARTIFACT_BYTES)
+              return yield* terminal(
                 `JSON artifact exceeds ${MAX_JSON_ARTIFACT_BYTES} bytes`,
               );
-            }
             text += decoder.decode(value, { stream: true });
           }
-        } finally {
-          reader.releaseLock();
-        }
-      },
-      catch: (error) =>
-        error instanceof StepFailure
-          ? error
-          : transient("Could not read the JSON run artifact"),
-    });
+        }),
+      (reader) =>
+        Effect.tryPromise(() => reader.cancel()).pipe(
+          // Cleanup must not replace the read's failure or interruption.
+          Effect.ignore,
+          Effect.ensuring(Effect.sync(() => reader.releaseLock())),
+        ),
+    );
     const value = yield* Effect.try({
       try: () => JSON.parse(text) as unknown,
       catch: () => terminal(`Artifact ${reference.id} is not valid JSON`),
