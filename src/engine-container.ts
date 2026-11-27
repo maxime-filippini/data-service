@@ -4,8 +4,9 @@ import { Container } from "@cloudflare/containers";
  * The Python service: calculations and workflow operations (such as price
  * normalization). Only the Worker calls it, through `CALCULATION_ENGINE`. It
  * needs internet access to reach R2 through the S3 API. Calculations read and
- * write the processed bucket; operations read and write run artifacts under
- * `runs/` in the raw bucket (`ARTIFACT_BUCKET`).
+ * write the processed bucket. Workflow operations read published prices there
+ * and read and write run artifacts under `runs/` in the raw bucket
+ * (`ARTIFACT_BUCKET`).
  */
 export class CalculationEngine extends Container<CloudflareBindings> {
   defaultPort = 8080;

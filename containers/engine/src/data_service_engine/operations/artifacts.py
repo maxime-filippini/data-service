@@ -3,7 +3,8 @@
 Only IDs in the run namespace (`runs/<runId>/<stepId>/<name>.<ext>`) reach
 a store, so an operation can never read or write an arbitrary path or a
 published dataset. Writing an ID again replaces the object, which makes a
-repeated call after a lost response safe.
+repeated call after a lost response safe. Published datasets are read through
+`published.PublishedPrices` instead.
 """
 
 import os
@@ -35,6 +36,37 @@ def require_artifact_id(id: str) -> str:
     return id
 
 
+def read_file(path: Path, description: str) -> bytes | None:
+    """The file's bytes, or None when it does not exist."""
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise TransientError(f"Could not read the {description}") from error
+
+
+def _is_missing(error: ClientError) -> bool:
+    return error.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}
+
+
+def read_object(s3, bucket: str, key: str, description: str) -> bytes | None:
+    """The object's bytes, or None when it does not exist."""
+    try:
+        result = s3.get_object(Bucket=bucket, Key=key)
+        body = result["Body"]
+        try:
+            return body.read()
+        finally:
+            body.close()
+    except ClientError as error:
+        if _is_missing(error):
+            return None
+        raise TransientError(f"Could not read the {description}") from error
+    except BotoCoreError as error:
+        raise TransientError(f"Could not read the {description}") from error
+
+
 class ArtifactStore(Protocol):
     def read(self, id: str) -> bytes | None:
         """The artifact's bytes, or None when it does not exist."""
@@ -57,12 +89,7 @@ class FileArtifactStore:
         return self._root / require_artifact_id(id)
 
     def read(self, id: str) -> bytes | None:
-        try:
-            return self._path(id).read_bytes()
-        except FileNotFoundError:
-            return None
-        except OSError as error:
-            raise TransientError(f"Could not read the run artifact: {error}") from error
+        return read_file(self._path(id), "run artifact")
 
     def write(self, id: str, body: bytes, content_type: str) -> None:
         path = self._path(id)
@@ -77,32 +104,17 @@ class FileArtifactStore:
             ) from error
 
 
-def _is_missing(error: ClientError) -> bool:
-    return error.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}
-
-
 class S3ArtifactStore:
-    """Artifacts in an R2 bucket through the S3 API, under `runs/`."""
+    """Run artifacts through the R2 S3 API."""
 
     def __init__(self, s3, bucket: str):
         self._s3 = s3
         self._bucket = bucket
 
     def read(self, id: str) -> bytes | None:
-        key = require_artifact_id(id)
-        try:
-            result = self._s3.get_object(Bucket=self._bucket, Key=key)
-        except ClientError as error:
-            if _is_missing(error):
-                return None
-            raise TransientError("Could not read the run artifact") from error
-        except BotoCoreError as error:
-            raise TransientError("Could not read the run artifact") from error
-        body = result["Body"]
-        try:
-            return body.read()
-        finally:
-            body.close()
+        return read_object(
+            self._s3, self._bucket, require_artifact_id(id), "run artifact"
+        )
 
     def write(self, id: str, body: bytes, content_type: str) -> None:
         key = require_artifact_id(id)

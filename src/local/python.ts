@@ -45,10 +45,12 @@ export interface LocalPythonService {
  * Start the real Python service (the engine's FastAPI app) with uv on a
  * free localhost port, reading and writing run artifacts as files under
  * `artifactRoot`: the same directory the TypeScript side's local artifact
- * adapter uses. Resolves once `/health` answers.
+ * adapter uses. `processedRoot` is the directory for reading published
+ * datasets. Resolves once `/health` answers.
  */
 export const startPythonService = async (options: {
   readonly artifactRoot: string;
+  readonly processedRoot?: string;
   readonly timeoutMs?: number;
 }): Promise<LocalPythonService> => {
   const port = await freePort();
@@ -70,7 +72,13 @@ export const startPythonService = async (options: {
     ],
     {
       // ARTIFACT_ROOT takes precedence over any R2 settings in a .env.
-      env: { ...process.env, ARTIFACT_ROOT: options.artifactRoot },
+      env: {
+        ...process.env,
+        ARTIFACT_ROOT: options.artifactRoot,
+        ...(options.processedRoot === undefined
+          ? {}
+          : { PROCESSED_ROOT: options.processedRoot }),
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );

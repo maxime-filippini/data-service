@@ -16,6 +16,7 @@ from .errors import FailureKind
 
 UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 STEP_ID_PATTERN = r"^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+SYMBOL_PATTERN = r"^[A-Z0-9][A-Z0-9-]*(\.[A-Z0-9][A-Z0-9-]*)?$"
 # The same run namespace as the Worker's `runArtifactId`:
 # runs/<runId>/<stepId>/<name>.<json|parquet>
 ARTIFACT_ID_PATTERN = (

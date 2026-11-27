@@ -3,6 +3,12 @@ from contextlib import contextmanager
 from ..r2 import r2_client
 from ..settings import OperationSettings
 from .artifacts import FileArtifactStore, S3ArtifactStore
+from .published import (
+    FilePublishedPrices,
+    S3PublishedPrices,
+    UnconfiguredPublishedPrices,
+)
+from .registry import OperationStorage
 
 
 def load_settings() -> OperationSettings:
@@ -10,12 +16,18 @@ def load_settings() -> OperationSettings:
 
 
 @contextmanager
-def artifact_store(settings: OperationSettings | None = None):
-    """The run artifact store the settings select: local files under
-    `ARTIFACT_ROOT`, or the R2 artifact bucket."""
+def operation_storage(settings: OperationSettings | None = None):
+    """Open the configured local or R2 operation storage."""
     settings = settings if settings is not None else load_settings()
     if settings.artifact_root is not None:
-        yield FileArtifactStore(settings.artifact_root)
+        yield OperationStorage(
+            artifacts=FileArtifactStore(settings.artifact_root),
+            published_prices=(
+                UnconfiguredPublishedPrices("PROCESSED_ROOT")
+                if settings.processed_root is None
+                else FilePublishedPrices(settings.processed_root)
+            ),
+        )
         return
     assert settings.r2_endpoint_url is not None
     assert settings.r2_access_key_id is not None
@@ -26,4 +38,11 @@ def artifact_store(settings: OperationSettings | None = None):
         settings.r2_access_key_id,
         settings.r2_secret_access_key,
     ) as s3:
-        yield S3ArtifactStore(s3, settings.artifact_bucket)
+        yield OperationStorage(
+            artifacts=S3ArtifactStore(s3, settings.artifact_bucket),
+            published_prices=(
+                UnconfiguredPublishedPrices("PROCESSED_BUCKET")
+                if settings.processed_bucket is None
+                else S3PublishedPrices(s3, settings.processed_bucket)
+            ),
+        )

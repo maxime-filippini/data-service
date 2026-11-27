@@ -49,6 +49,25 @@ export const writeJsonArtifact = <A>(
     ).pipe(Effect.mapError(artifactFailure));
   });
 
+/**
+ * Read an artifact an earlier step wrote. It can only be missing because
+ * temporary run artifacts expire, which no retry can fix.
+ */
+export const requireJsonArtifact = <A>(
+  reference: ArtifactReference,
+  schema: Schema.Codec<A, unknown>,
+  description: string,
+) =>
+  readJsonArtifact(reference, schema).pipe(
+    Effect.flatMap((value) =>
+      value === null
+        ? terminal(
+            `The ${description} artifact no longer exists; temporary run artifacts expire`,
+          )
+        : Effect.succeed(value),
+    ),
+  );
+
 /** Missing data stays missing; callers must never re-resolve it from live state. */
 export const readJsonArtifact = <A>(
   reference: ArtifactReference,

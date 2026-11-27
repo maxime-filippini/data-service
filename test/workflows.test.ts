@@ -189,7 +189,11 @@ test("the step catalog exposes the registered step contracts", async () => {
   const { api, json } = setup();
   const catalog = await json<{
     stepTypes: Record<string, unknown>[];
-    contracts: { id: string; schema: Record<string, unknown> }[];
+    contracts: {
+      id: string;
+      schema: Record<string, unknown>;
+      accepts?: readonly string[];
+    }[];
     context: unknown[];
   }>(api("/step-types"));
 
@@ -236,7 +240,7 @@ test("the step catalog exposes the registered step contracts", async () => {
     outputs: ["prices:prices-eod"],
   });
   assert.deepEqual(ports("publish-dataset"), {
-    inputs: ["data:prices-eod"],
+    inputs: ["data:publishable-dataset"],
     outputs: ["publication:dataset-publication"],
   });
   assert.deepEqual(ports("portfolio-holdings"), {
@@ -247,6 +251,17 @@ test("the step catalog exposes the registered step contracts", async () => {
     inputs: ["holdings:holdings", "processingDate:date"],
     outputs: ["publications:published-asset-prices"],
   });
+  assert.deepEqual(ports("calculate-portfolio-volatility"), {
+    inputs: [
+      "holdings:holdings",
+      "publications:published-asset-prices",
+      "processingDate:date",
+    ],
+    outputs: [
+      "data:portfolio-volatility-data",
+      "summary:portfolio-volatility-summary",
+    ],
+  });
 
   assert.deepEqual(
     catalog.contracts.map((contract) => contract.id),
@@ -256,10 +271,17 @@ test("the step catalog exposes the registered step contracts", async () => {
       "date",
       "holdings",
       "portfolio-subject",
+      "portfolio-volatility-data",
+      "portfolio-volatility-summary",
       "prices-eod",
+      "publishable-dataset",
       "published-asset-prices",
       "raw-prices-eod",
     ],
+  );
+  assert.deepEqual(
+    catalog.contracts.find(({ id }) => id === "publishable-dataset")?.accepts,
+    ["prices-eod", "portfolio-volatility-data"],
   );
   // Contracts generated from the Python service's Pydantic models keep
   // their constraints in the catalog.
@@ -286,6 +308,68 @@ test("the step catalog exposes the registered step contracts", async () => {
       contracts: { asset: "date", portfolio: "date" },
     },
   ]);
+});
+
+test("an asset workflow cannot publish a portfolio dataset", async () => {
+  const { api, json } = setup();
+  const response = await json<Record<string, unknown>>(
+    api("/workflows", "POST", {
+      ...assetPrices,
+      steps: [
+        ...assetPrices.steps,
+        {
+          id: "publish",
+          type: "publish-dataset",
+          params: { dataset: "portfolio_volatility" },
+          inputs: {
+            data: {
+              value: {
+                id: "runs/fe8a9dca-0389-454b-aabf-427493a2f082/normalize/prices.parquet",
+                format: "parquet",
+                schema: "prices-eod/v1",
+              },
+            },
+          },
+        },
+      ],
+    }),
+    422,
+  );
+  assert.match(
+    JSON.stringify(response),
+    /portfolio_volatility can only be published/u,
+  );
+});
+
+test("a literal publication artifact must match the selected dataset", async () => {
+  const { api, json } = setup();
+  const response = await json<Record<string, unknown>>(
+    api("/workflows", "POST", {
+      ...assetPrices,
+      steps: [
+        ...assetPrices.steps,
+        {
+          id: "publish",
+          type: "publish-dataset",
+          params: { dataset: "prices_eod" },
+          inputs: {
+            data: {
+              value: {
+                id: "runs/fe8a9dca-0389-454b-aabf-427493a2f082/volatility/volatility.parquet",
+                format: "parquet",
+                schema: "portfolio-volatility/v1",
+              },
+            },
+          },
+        },
+      ],
+    }),
+    422,
+  );
+  assert.match(
+    JSON.stringify(response),
+    /prices_eod must be published from prices-eod\/v1/u,
+  );
 });
 
 test("a complete specification round-trips through POST, list, detail and PUT", async () => {

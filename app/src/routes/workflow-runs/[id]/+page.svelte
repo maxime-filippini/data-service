@@ -49,6 +49,28 @@
     "subject" in value &&
     "processingDate" in value;
 
+  const isVolatilitySummary = (
+    value: unknown,
+  ): value is {
+    volatility: number;
+    observations: number;
+    holdingsDate: string;
+    windowStart: string;
+    windowEnd: string;
+  } =>
+    typeof value === "object" &&
+    value !== null &&
+    "volatility" in value &&
+    typeof value.volatility === "number" &&
+    "observations" in value &&
+    typeof value.observations === "number" &&
+    "holdingsDate" in value &&
+    typeof value.holdingsDate === "string" &&
+    "windowStart" in value &&
+    typeof value.windowStart === "string" &&
+    "windowEnd" in value &&
+    typeof value.windowEnd === "string";
+
   /** Where the app shows a subject's published datasets. */
   const datasetsHref = (subject: SubjectView) =>
     subject.kind === "asset"
@@ -159,6 +181,11 @@
                 <a href={publicationDataUrl(value.dataset, value.subject)}
                   >current data</a
                 >
+              {:else if step.type === "calculate-portfolio-volatility" && name === "summary" && isVolatilitySummary(value)}
+                <span class="mono">{(value.volatility * 100).toFixed(2)}%</span>
+                annualised volatility from {value.observations} returns ({value.windowStart}
+                to {value.windowEnd}), using holdings effective
+                {value.holdingsDate}.
               {:else if Array.isArray(value) && value.length > 0 && value.every(isPublication)}
                 <ul class="publications">
                   {#each value as publication (subjectLabel(publication.subject))}

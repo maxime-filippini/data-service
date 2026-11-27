@@ -9,6 +9,7 @@ import type {
 } from "$/workflows/views";
 
 import type { Contract } from "./contract";
+import { calculatePortfolioVolatility } from "./calculate-portfolio-volatility";
 import { downloadPrices } from "./download-prices";
 import { normalizePrices } from "./normalize-prices";
 import { loadPortfolioHoldings } from "./portfolio-holdings";
@@ -26,6 +27,7 @@ export const builtInStepTypes: readonly StepType[] = [
   publishDataset,
   loadPortfolioHoldings,
   waitForAssetPublications,
+  calculatePortfolioVolatility,
 ];
 
 /**
@@ -115,6 +117,9 @@ export const stepCatalog = (registry: StepTypes): StepCatalog => {
         id: contract.id,
         description: contract.description,
         schema: jsonSchema(contract.schema),
+        ...(contract.accepts === undefined
+          ? {}
+          : { accepts: contract.accepts }),
       })),
     context: Object.entries(runContextFields).map(([field, definition]) => ({
       field,
