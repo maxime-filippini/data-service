@@ -15,8 +15,13 @@ from data_service_engine.operations.artifacts import (
     FileArtifactStore,
     S3ArtifactStore,
 )
-from data_service_engine.operations.errors import TerminalError
-from data_service_engine.operations.registry import dispatch
+from data_service_engine.operations.errors import TerminalError, TransientError
+from data_service_engine.operations.published import (
+    FilePublishedPrices,
+    S3PublishedPrices,
+    UnconfiguredPublishedPrices,
+)
+from data_service_engine.operations.registry import OperationStorage, dispatch
 from data_service_engine.operations.schemas import export_json
 from data_service_engine.settings import OperationSettings
 
@@ -218,7 +223,10 @@ class BrokenS3:
 def test_storage_failures_are_transient(error):
     @contextmanager
     def store():
-        yield S3ArtifactStore(BrokenS3(error), "raw-market-data")
+        yield OperationStorage(
+            artifacts=S3ArtifactStore(BrokenS3(error), "raw-market-data"),
+            published_prices=UnconfiguredPublishedPrices("PROCESSED_BUCKET"),
+        )
 
     outcome = dispatch("normalize-prices-eod", json.dumps(request()).encode(), store)
 
@@ -240,9 +248,9 @@ def test_unexpected_errors_are_reported_as_transient_not_as_success(root):
     }
 
 
-def test_s3_store_separates_run_artifacts_and_published_prices():
+def test_s3_artifact_store_only_reaches_the_run_namespace():
     r2 = FakeR2()
-    store = S3ArtifactStore(r2, "raw-market-data", "processed-market-data")
+    store = S3ArtifactStore(r2, "raw-market-data")
     assert store.read(RAW_ID) is None
     store.write(PRICES_ID, b"data", "application/vnd.apache.parquet")
     assert store.read(PRICES_ID) == b"data"
@@ -250,16 +258,37 @@ def test_s3_store_separates_run_artifacts_and_published_prices():
     for key in ["dataset=prices_eod/symbol=A.US/data.parquet", f"{RAW_ID}/../x.json"]:
         with pytest.raises(TerminalError):
             store.read(key)
+
+
+def test_s3_published_prices_read_only_validated_symbols():
+    r2 = FakeR2()
+    prices = S3PublishedPrices(r2, "processed-market-data")
     r2.put_object(
         Bucket="processed-market-data",
         Key="dataset=prices_eod/symbol=A.US/data.parquet",
         Body=b"published prices",
         ContentType="application/vnd.apache.parquet",
     )
-    assert store.read_published_prices("A.US") == b"published prices"
-    assert store.read_published_prices("B.US") is None
+    assert prices.read("A.US") == b"published prices"
+    assert prices.read("B.US") is None
     with pytest.raises(TerminalError):
-        store.read_published_prices("../A.US")
+        prices.read("../A.US")
+
+
+def test_file_published_prices_read_only_validated_symbols(tmp_path):
+    path = tmp_path / "dataset=prices_eod" / "symbol=A.US" / "data.parquet"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"published prices")
+    prices = FilePublishedPrices(tmp_path)
+    assert prices.read("A.US") == b"published prices"
+    assert prices.read("B.US") is None
+    with pytest.raises(TerminalError):
+        prices.read("../A.US")
+
+
+def test_unconfigured_published_prices_name_the_missing_setting():
+    with pytest.raises(TransientError, match="PROCESSED_ROOT"):
+        UnconfiguredPublishedPrices("PROCESSED_ROOT").read("A.US")
 
 
 def test_file_store_never_leaves_the_root(tmp_path):

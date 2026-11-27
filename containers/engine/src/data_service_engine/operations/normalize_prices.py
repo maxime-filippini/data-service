@@ -159,5 +159,5 @@ OPERATION = Operation(
     ),
     request=NormalizePricesRequest,
     response=NormalizePricesOutputs,
-    run=normalize_prices,
+    run=lambda request, storage: normalize_prices(request, storage.artifacts),
 )

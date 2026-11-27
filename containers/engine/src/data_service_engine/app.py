@@ -108,6 +108,6 @@ async def invoke_operation(name: str, request: Request):
     issues}}`, `kind` telling the caller whether a retry may help."""
     body = await request.body()
     outcome = await run_in_threadpool(
-        dispatch, name, body, operations_runtime.artifact_store
+        dispatch, name, body, operations_runtime.operation_storage
     )
     return JSONResponse(outcome.body, status_code=outcome.status)

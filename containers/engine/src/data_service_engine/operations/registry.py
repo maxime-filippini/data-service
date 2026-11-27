@@ -17,8 +17,18 @@ from .contracts import (
     OperationRequest,
 )
 from .errors import OperationError
+from .published import PublishedPrices
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OperationStorage:
+    """What an operation may reach: its run's artifacts and, read-only, the
+    current published prices."""
+
+    artifacts: ArtifactStore
+    published_prices: PublishedPrices
 
 
 @dataclass(frozen=True)
@@ -31,7 +41,7 @@ class Operation:
     description: str
     request: type[OperationRequest]
     response: type[Contract]
-    run: Callable[[Any, ArtifactStore], Contract]
+    run: Callable[[Any, OperationStorage], Contract]
 
     def describe(self) -> dict:
         return {
@@ -77,11 +87,11 @@ def _issues(error: ValidationError) -> list[Issue]:
     ]
 
 
-def dispatch(name: str, body: bytes, artifacts: Callable[[], Any]) -> Outcome:
+def dispatch(name: str, body: bytes, storage: Callable[[], Any]) -> Outcome:
     """Validate a request, run the operation and validate its response.
 
-    `artifacts` opens the artifact store (a context manager) only once the
-    request is valid. Status codes: 200 success; 404 unknown operation and
+    `storage` opens the operation storage (a context manager yielding an
+    `OperationStorage`) only once the request is valid. Status codes: 200 success; 404 unknown operation and
     422 invalid request or terminal failure (both `terminal`); 503 transient
     failure; 500 unexpected error (reported `transient`: it may be an outage
     as much as a bug, and the caller's retries are bounded).
@@ -94,8 +104,8 @@ def dispatch(name: str, body: bytes, artifacts: Callable[[], Any]) -> Outcome:
     except ValidationError as error:
         return failure(422, "terminal", "Invalid operation request", _issues(error))
     try:
-        with artifacts() as store:
-            produced = operation.run(request, store)
+        with storage() as opened:
+            produced = operation.run(request, opened)
         response = operation.response.model_validate(produced.model_dump())
     except OperationError as error:
         status = 503 if error.kind == "transient" else 422
