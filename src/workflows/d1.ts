@@ -1,6 +1,14 @@
+import { and, eq, notExists, sql } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { Effect, Layer } from "effect";
 
 import { d1Query } from "$/d1";
+import {
+  assets,
+  portfolios,
+  workflowAssignments,
+  workflowDefaults,
+} from "$/db/schema";
 import {
   type StepSpec,
   type Subject,
@@ -162,20 +170,43 @@ const SUBJECTS_OF_KIND = `subjects (id) AS (${SUBJECT_KINDS.map(
  * makes subject and assignments appear together.
  */
 export const assignDefaultsOnCreate = (
-  db: D1Database,
+  orm: DrizzleD1Database,
   subject: Subject,
   now: string,
-): D1PreparedStatement =>
-  db
-    .prepare(
-      `INSERT INTO workflow_assignments
-         (workflow_id, subject_kind, subject_id, enabled, created_at, updated_at)
-       SELECT f.workflow_id, f.subject_kind, ?2, 1, ?3, ?3
-       FROM workflow_defaults f
-       WHERE f.subject_kind = ?1 AND NOT ${subjectExists("?1", "?2")}
-       ON CONFLICT DO NOTHING`,
+) => {
+  const id = subjectId(subject);
+  const existing =
+    subject.kind === "asset"
+      ? orm
+          .select({ one: sql`1` })
+          .from(assets)
+          .where(eq(assets.symbol, id))
+      : orm
+          .select({ one: sql`1` })
+          .from(portfolios)
+          .where(eq(portfolios.portfolioId, id));
+  return orm
+    .insert(workflowAssignments)
+    .select(
+      orm
+        .select({
+          workflowId: workflowDefaults.workflowId,
+          subjectKind: workflowDefaults.subjectKind,
+          subjectId: sql`${id}`.as("subject_id"),
+          enabled: sql`1`.as("enabled"),
+          createdAt: sql`${now}`.as("created_at"),
+          updatedAt: sql`${now}`.as("updated_at"),
+        })
+        .from(workflowDefaults)
+        .where(
+          and(
+            eq(workflowDefaults.subjectKind, subject.kind),
+            notExists(existing),
+          ),
+        ),
     )
-    .bind(subject.kind, subjectId(subject), now);
+    .onConflictDoNothing();
+};
 
 /** Whether the subject exists, over ?2 (kind) and ?3 (ID). */
 const SUBJECT_EXISTS = subjectExists("?2", "?3");
