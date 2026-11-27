@@ -111,7 +111,7 @@ export const createPortfolioRoutes = (
     },
   );
 
-  // A portfolio a calculation uses can't be deleted (409, with the calculations).
+  // A portfolio with an active workflow run (or retained FK) can't be deleted (409).
   app.delete("/:id", effectValidator("param", IdParamSchema), async (c) => {
     const { id } = c.req.valid("param");
     await run(

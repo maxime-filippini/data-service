@@ -2,7 +2,6 @@ import { Context, type Effect } from "effect";
 
 import type {
   CreatePortfolio,
-  EnginePortfolio,
   NewSnapshot,
   Portfolio,
   PortfolioError,
@@ -11,11 +10,11 @@ import type {
 } from "./contracts";
 
 /**
- * Injectable portfolio persistence and engine-projection interface. Operations
- * obtain it with `yield* Portfolios`; `D1PortfoliosLive` enforces symbol references,
- * unique snapshot dates and managed single-asset protections. Use `get` for
- * presentation and `forEngine` for cutoff-filtered calculation input. Snapshot
- * changes replace complete dated sets by deletion/addition, not individual trades.
+ * Injectable portfolio persistence interface. Operations obtain it with
+ * `yield* Portfolios`; `D1PortfoliosLive` enforces asset references, unique
+ * snapshot dates and active-run deletion guards while retaining read
+ * compatibility for pre-cutover `portfolio_holdings` rows. Snapshot changes
+ * replace complete dated sets by deletion/addition, not individual trades.
  */
 export class Portfolios extends Context.Service<
   Portfolios,
@@ -47,7 +46,7 @@ export class Portfolios extends Context.Service<
       name: string,
       now: string,
     ) => Effect.Effect<Portfolio, PortfolioError>;
-    /** Delete configuration. A calculation reference or active workflow run blocks deletion. */
+    /** Delete configuration. An active workflow run blocks deletion. */
     readonly remove: (id: string) => Effect.Effect<void, PortfolioError>;
     readonly addSnapshot: (
       id: string,
@@ -59,14 +58,5 @@ export class Portfolios extends Context.Service<
       holdingsDate: string,
       now: string,
     ) => Effect.Effect<void, PortfolioError>;
-    /** Fails with `untracked_symbols` unless every symbol is a tracked `prices_eod` symbol. */
-    readonly requireTracked: (
-      symbols: readonly string[],
-    ) => Effect.Effect<void, PortfolioError>;
-    /** A portfolio with the snapshots dated on or before `asOf`, for the engine. */
-    readonly forEngine: (
-      id: string,
-      asOf: string,
-    ) => Effect.Effect<EnginePortfolio, PortfolioError>;
   }
 >()("data-service/Portfolios") {}

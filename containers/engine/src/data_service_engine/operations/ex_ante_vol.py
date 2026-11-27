@@ -1,12 +1,13 @@
-"""Ex-ante volatility: the as-of date's weights applied to past daily returns."""
+"""Ex-ante volatility: the processing date's weights applied to past daily returns."""
 
-from datetime import timedelta
+from collections.abc import Callable, Mapping, Sequence
+from datetime import date, timedelta
 
 import numpy as np
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..framework import CalculationError, CalculationType, Context
+from ..errors import CalculationError
 
 OUTPUT = {
     "volatility": pl.Float64,
@@ -16,13 +17,16 @@ OUTPUT = {
     "holdings_date": pl.Date,
 }
 
+# Loads the full `(dataset, symbol)` prices DataFrame (`date`, `adjusted_close`).
+SymbolLoader = Callable[[str, str], pl.DataFrame]
+
 
 class Params(BaseModel):
-    """Type-specific inputs for ex-ante volatility, used by validation and run().
+    """Numerical parameters for ex-ante volatility.
 
     The window counts aligned return observations; annualisation scales the
     variance. Decay selects EWMA instead of sample variance, and weight
-    normalization is optional. This model also supplies editor schema/defaults.
+    normalization is optional.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -45,11 +49,33 @@ class Params(BaseModel):
     )
 
 
-def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame:
+def _load_prices(
+    load_symbol: SymbolLoader,
+    as_of: date,
+    symbols: Sequence[str],
+    start: date,
+) -> pl.DataFrame:
+    dfs = []
+    for symbol in dict.fromkeys(symbols):
+        df = load_symbol("prices_eod", symbol).filter(
+            (pl.col("date") >= start) & (pl.col("date") <= as_of)
+        )
+        dfs.append(df.select(pl.lit(symbol).alias("symbol"), pl.all()))
+    if not dfs:
+        raise ValueError("Load at least one symbol")
+    return pl.concat(dfs).sort("symbol", "date")
+
+
+def daily_returns(
+    load_symbol: SymbolLoader,
+    as_of: date,
+    symbols: Sequence[str],
+    window: int,
+) -> pl.DataFrame:
     """The last `window` simple returns on dates every symbol has a price."""
     # Calendar days that comfortably hold `window` trading days.
-    start = ctx.as_of - timedelta(days=window * 2 + 30)
-    prices = ctx.load("prices_eod", symbols, start=start).pivot(
+    start = as_of - timedelta(days=window * 2 + 30)
+    prices = _load_prices(load_symbol, as_of, symbols, start).pivot(
         on="symbol", index="date", values="adjusted_close"
     )
     missing = [symbol for symbol in symbols if symbol not in prices.columns]
@@ -64,17 +90,24 @@ def daily_returns(ctx: Context, symbols: list[str], window: int) -> pl.DataFrame
     )
     if returns.height < window:
         raise CalculationError(
-            f"Only {returns.height} daily returns up to {ctx.as_of}, need {window}"
+            f"Only {returns.height} daily returns up to {as_of}, need {window}"
         )
     return returns
 
 
-def run(params: Params, ctx: Context) -> pl.DataFrame:
-    assert ctx.portfolio is not None
-
-    snapshot = ctx.portfolio.holdings_at(ctx.as_of)
-    symbols = snapshot.symbols
-    weights = np.array([snapshot.weights[symbol] for symbol in symbols])
+def run(
+    params: Params,
+    *,
+    as_of: date,
+    holdings_date: date,
+    holdings: Mapping[str, float],
+    load_symbol: SymbolLoader,
+) -> pl.DataFrame:
+    """Compute ex-ante volatility for one effective holdings snapshot."""
+    if not holdings:
+        raise CalculationError("At least one holding is required")
+    symbols = list(holdings.keys())
+    weights = np.array([holdings[symbol] for symbol in symbols], dtype=float)
 
     if params.normalise_weights:
         total = weights.sum()
@@ -82,7 +115,7 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
             raise CalculationError("Weights sum to zero, so they can't be normalised")
         weights = weights / total
 
-    returns = daily_returns(ctx, symbols, params.window)
+    returns = daily_returns(load_symbol, as_of, symbols, params.window)
     matrix = returns.select(symbols).to_numpy()
     if not np.isfinite(matrix).all():
         raise CalculationError("Prices include zeros, so returns are infinite")
@@ -102,21 +135,7 @@ def run(params: Params, ctx: Context) -> pl.DataFrame:
             "observations": [returns.height],
             "window_start": [dates.first()],
             "window_end": [dates.last()],
-            "holdings_date": [snapshot.holdings_date],
+            "holdings_date": [holdings_date],
         },
         schema=OUTPUT,
     )
-
-
-# Registration needs the params model and run function defined above.
-TYPE = CalculationType(
-    name="ex_ante_vol",
-    description=(
-        "Annualised volatility of the weights held at the as-of date over past "
-        "daily returns of adjusted close prices."
-    ),
-    params=Params,
-    output=OUTPUT,
-    run=run,
-    takes_portfolio=True,
-)

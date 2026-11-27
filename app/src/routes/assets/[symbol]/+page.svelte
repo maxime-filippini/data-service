@@ -65,7 +65,8 @@
             <a
               href={href("explore", {
                 dataset: publication.dataset,
-                symbol: asset.symbol,
+                kind: "asset",
+                subject: asset.symbol,
               })}>Explore</a
             >
             ·

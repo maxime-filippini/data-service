@@ -193,9 +193,9 @@ export interface DispatchDependencies {
 }
 
 /**
- * Whether the hourly tick dispatches workflows: only when the
- * `WORKFLOW_DISPATCH` var is `on`. It is `off` in every deployed
- * environment while the legacy scheduled download owns automatic downloads.
+ * Whether the hourly tick dispatches workflows: enabled when `WORKFLOW_DISPATCH`
+ * is `on`. Set it to `off` in `wrangler.jsonc` to pause all scheduled dispatch
+ * without editing individual workflow definitions.
  */
 export const workflowDispatchEnabled = (
   env: Pick<CloudflareBindings, "WORKFLOW_DISPATCH">,

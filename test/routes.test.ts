@@ -72,8 +72,10 @@ const asUser = async (path: string, headers: Record<string, string> = {}) =>
 test("everything but /api needs an allowlisted Access user", async () => {
   for (const path of [
     "/",
-    "/runs",
+    "/assets",
     "/portfolios/some-id",
+    "/workflows",
+    "/workflow-runs",
     "/_app/immutable/app.js",
     "/app-api/me",
     "/docs/",
@@ -86,28 +88,33 @@ test("everything but /api needs an allowlisted Access user", async () => {
   }
 });
 
-test("the management API uses its token, not Access", async () => {
+test("the management API uses its token, not Access, and removed legacy routes return 404", async () => {
   // Refused for the token, not for Access, and an Access user alone doesn't get in.
-  const response = await asUser("/api/symbols");
+  const response = await asUser("/api/assets");
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: "Unauthorized" });
-  assert.equal(
-    (
-      await request("/api/unknown", {
-        Authorization: "Bearer management-token",
-      })
-    ).status,
-    404,
-  );
+
+  const auth = { Authorization: "Bearer management-token" };
+  for (const path of [
+    "/api/unknown",
+    "/api/symbols",
+    "/api/ingestions",
+    "/api/schedule",
+    "/api/calculation-types",
+    "/api/calculate",
+    "/api/calculations",
+  ]) {
+    assert.equal((await request(path, auth)).status, 404, path);
+  }
 });
 
 test("the app gets the Access user's email, never the client's own header", async () => {
   appRequests.length = 0;
-  const response = await asUser("/calculations?x=1", {
+  const response = await asUser("/workflows?x=1", {
     "X-Access-Email": "forged@example.com",
   });
   assert.equal(response.status, 200);
-  assert.equal(await response.text(), "app /calculations");
+  assert.equal(await response.text(), "app /workflows");
   assert.equal(appRequests[0]?.headers.get("X-Access-Email"), ME);
   // SvelteKit's own CSP is kept; the other security headers are added.
   assert.match(

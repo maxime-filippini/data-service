@@ -139,8 +139,8 @@
       <HoldingsEditor bind:rows {symbols} />
     {/if}
     <p class="muted hint">
-      Choose an asset or a symbol from the prices_eod registry. Weights must be
-      non-zero and can be negative. Any total weight is accepted.
+      Choose registered assets. Weights must be non-zero and can be negative.
+      Any total weight is accepted.
     </p>
     {#if formError}
       <div class="error">{formError}</div>
@@ -200,7 +200,7 @@
   {#if visible.length === 0 && !loading && !error}
     <p class="notice">
       {portfolios.length === 0
-        ? "No portfolios yet. Create one to run calculations over it."
+        ? "No portfolios yet. Create one to assign portfolio workflows to it."
         : "No portfolios match."}
     </p>
   {:else if loading && portfolios.length === 0}

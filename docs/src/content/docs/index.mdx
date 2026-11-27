@@ -5,18 +5,18 @@ description: What the data service does and how its parts fit together.
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-A personal market-data service on Cloudflare Workers. It downloads data for a
-universe of symbols every day, builds **one Parquet file per symbol** in R2, and
-runs **calculations** such as ex-ante volatility over portfolios, storing their
-results next to the data.
+A personal market-data and portfolio workflow service on Cloudflare Workers. It
+stores whole **workflow definitions** as data, runs their ordered steps with
+Effect inside **Cloudflare Workflows**, calls one **Python operation service**
+for normalization and numerical work, and explicitly publishes Parquet datasets
+to R2 by dataset name and subject.
 
-Other apps manage the universe through a small API and **read the Parquet files
-straight from R2**. The management API never serves market data; only the
-dashboard does, so its users can browse the files.
+Client apps read published datasets either through the authenticated API or
+directly from R2 at stable keys:
 
 ```txt
 processed-market-data/dataset=prices_eod/symbol=AAPL.US/data.parquet
-processed-market-data/calculation=<calculation-id>/data.parquet
+processed-market-data/dataset=portfolio_volatility/portfolio=<portfolio-id>/data.parquet
 ```
 
 ## The big picture
@@ -26,69 +26,50 @@ flowchart LR
   subgraph Clients
     apps[Client apps]
     ops[Operator<br/>curl / scripts]
-    browser[Dashboard user]
+    browser[App user]
   end
 
   subgraph Worker["data-service Worker"]
     api[Management API /api<br/>Bearer token]
-    dash[App + /app-api<br/>Cloudflare Access]
-    cron[Hourly cron]
-    ingc[Ingestion consumer]
-    procc[Processing consumer]
+    dash[SvelteKit app + /app-api<br/>Cloudflare Access]
+    cron[Hourly cron<br/>scheduledWorkflowTick]
   end
 
-  subgraph Workflows
-    sdw[ScheduledDownloadWorkflow]
-    crw[CalculationRunWorkflow]
-  end
-
-  subgraph Containers
-    proc[Processor<br/>Python]
-    eng[Calculation engine<br/>Python]
-  end
+  wf[DefinitionRunWorkflow<br/>Cloudflare Workflows]
+  eng[CalculationEngine<br/>Python container]
 
   provider[(EODHD API)]
-  d1[(D1<br/>control plane)]
-  raw[(R2 raw-market-data)]
-  processed[(R2 processed-market-data)]
-  iq{{ingestion queue}}
-  pq{{processing queue}}
+  d1[(D1<br/>state & metadata)]
+  raw[(R2 raw-market-data<br/>runs/ 30d expiry)]
+  processed[(R2 processed-market-data<br/>published datasets)]
 
   ops --> api
   browser --> dash
-  cron --> sdw
-  cron --> crw
-  api --> iq
-  api --> crw
-  dash --> iq
-  sdw --> iq
-  iq --> ingc
-  ingc --> provider
-  ingc --> raw
-  ingc --> pq
-  pq --> procc
-  procc --> proc
-  proc --> raw
-  proc --> processed
-  crw --> eng
-  api -- ad hoc --> eng
-  eng --> processed
-  api & dash & ingc & procc & sdw & crw --- d1
+  cron --> wf
+  api --> wf
+  dash --> wf
+  wf --> provider
+  wf --> raw
+  wf -- POST /operations/:name --> eng
+  eng --> raw
+  eng -- read published prices --> processed
+  wf -- publish dataset --> processed
+  api & dash & cron & wf --- d1
   apps -- read Parquet --> processed
 ```
 
-Two pipelines share the Worker, D1 and the processed bucket:
+One execution model serves both subject scopes:
 
 <CardGrid>
-  <Card title="Market data" icon="download">
-    The hourly cron starts one download run a day. Each enabled symbol's full
-    history is fetched, stored raw, then rebuilt into its canonical Parquet file
-    by the processor container.
+  <Card title="Asset workflows" icon="download">
+    Each enabled asset assignment runs daily at its definition's UTC hour (or on
+    demand): download provider JSON in Effect, normalize to Parquet in Python,
+    and explicitly publish `prices_eod`.
   </Card>
-  <Card title="Calculations" icon="puzzle">
-    Saved calculations run on their own cron (or on demand) through a Workflow
-    that calls the engine container, once per portfolio. Results accumulate in
-    one Parquet file per calculation.
+  <Card title="Portfolio workflows" icon="puzzle">
+    Each enabled portfolio assignment resolves its dated holdings snapshot,
+    waits durably for matching upstream asset publications, runs Python ex-ante
+    volatility, and publishes `portfolio_volatility`.
   </Card>
 </CardGrid>
 
@@ -96,32 +77,37 @@ Two pipelines share the Worker, D1 and the processed bucket:
 
 <LinkCard
   title="Concepts"
-  description="The vocabulary: datasets, tracked symbols, runs, jobs, portfolios, calculations."
+  description="The glossary: assets, portfolios, workflow definitions, runs, dependencies, artifacts and publications."
   href="/docs/concepts/"
 />
 <LinkCard
   title="Architecture"
-  description="Every Cloudflare resource, what it owns, and how requests flow between them."
+  description="Every Cloudflare resource, what it owns, and how requests and runs flow."
   href="/docs/architecture/"
 />
 <LinkCard
-  title="Management API"
-  description="Every route, with curl examples."
-  href="/docs/reference/api/"
+  title="Maintaining the code"
+  description="Reading path, Effect conventions, recovery rules, and how to add a step or Python operation."
+  href="/docs/maintaining/"
 />
 <LinkCard
-  title="Writing a calculation type"
-  description="Adding a calculation is one Python file."
-  href="/docs/calculations/types/"
+  title="Workflow runs & local fixture"
+  description="Run the complete asset and portfolio workflow locally with pnpm workflow:fixture."
+  href="/docs/workflows/runs/#running-locally-against-fixtures"
+/>
+<LinkCard
+  title="Management API"
+  description="Every active route, curl examples, and removed pre-workflow endpoints."
+  href="/docs/reference/api/"
 />
 
 ## Repository layout
 
-| Path                    | What                                                       |
-| ----------------------- | ---------------------------------------------------------- |
-| `src/`                  | The Worker (TypeScript, Hono, Effect)                      |
-| `containers/processor/` | The Python processor container                             |
-| `containers/engine/`    | The Python calculation engine container                    |
-| `app/`                  | The SvelteKit app (home page and dashboard), served at `/` |
-| `docs/`                 | This site (Astro Starlight), served at `/docs/`            |
-| `migrations/`           | D1 migrations                                              |
+| Path                 | What                                                        |
+| -------------------- | ----------------------------------------------------------- |
+| `src/`               | The Worker (TypeScript, Hono, Effect, Cloudflare Workflows) |
+| `containers/engine/` | The single Python operation service container               |
+| `app/`               | The SvelteKit app, served at `/`                            |
+| `docs/`              | This site (Astro Starlight), served at `/docs/`             |
+| `migrations/`        | D1 migrations (`0001`–`0014`)                               |
+| `scripts/`           | Fixture command, contract codegen, migration & smoke tools  |

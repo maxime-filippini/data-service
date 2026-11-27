@@ -12,21 +12,6 @@ _CONFIG = SettingsConfigDict(
 )
 
 
-class EngineSettings(BaseSettings):
-    """R2 access through the S3 API. Read from the environment or a local .env.
-
-    The bucket name has no default so a dev deployment can never fall back to
-    the production bucket.
-    """
-
-    model_config = _CONFIG
-
-    r2_endpoint_url: AnyHttpUrl
-    r2_access_key_id: SecretStr = Field(min_length=1)
-    r2_secret_access_key: SecretStr = Field(min_length=1)
-    processed_bucket: str = Field(min_length=1)
-
-
 class OperationSettings(BaseSettings):
     """Where workflow operations access run artifacts and published prices.
 
