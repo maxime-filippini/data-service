@@ -50,6 +50,7 @@ and sends mutations through `/app-api/*`, which mounts the same route modules as
 | `src/workflows/cloudflare.ts`    | Cloudflare adapters: the Checkpointer over `WorkflowStep`, instance body runner                         |
 | `src/definition-run-workflow.ts` | Cloudflare Workflow entrypoint wiring production adapters                                               |
 | `src/datasets/`                  | Explicit publication step logic, D1 metadata store and R2 adapter                                       |
+| `src/db/schema.ts`               | Typed Drizzle mirrors of the D1 tables the ported adapters query (ADR 0006)                             |
 | `src/operations/`                | Generated TypeScript contracts (`schemas.json`, `contracts.generated.ts`) and Python HTTP client        |
 | `src/market-data/`               | Shared schemas (`MarketDateSchema`, `MarketSymbolSchema`, `EodEntrySchema`) and EODHD adapter           |
 | `src/local/`                     | The local host (`localWorkflowService`): SQLite D1, file/memory stores, `uv` Python, local Checkpointer |
@@ -195,7 +196,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 | Scheduled dispatch / claims    | `src/workflows/runs/dispatch.ts`, `src/workflows/runs/d1.ts`, `test/workflow-dispatch.test.ts` |
 | Python operation logic/schemas | `containers/engine/src/data_service_engine/operations/`, then `pnpm operations:generate`       |
 | Dataset publication & lookup   | `src/datasets/`, `src/routes/datasets/index.ts`, `test/dataset-publication.test.ts`            |
-| SQL schema                     | New file in `migrations/`; real-SQL tests via `test/support/d1.ts`                             |
+| SQL schema                     | New file in `migrations/`, then `src/db/schema.ts`; `test/db-schema.test.ts` checks they agree |
 | HTTP error mapping             | `src/http/run-effect.ts`; relevant route tests                                                 |
 | App pages & browser API        | `src/pages/views.ts`, `src/pages/index.ts`, `app/src/routes/`, `app/src/lib/api.ts`            |
 

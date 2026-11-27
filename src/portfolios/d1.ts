@@ -1,6 +1,7 @@
+import { drizzle } from "drizzle-orm/d1";
 import { Effect, Layer } from "effect";
 
-import { d1Query } from "$/d1";
+import { d1Query, toD1Statement } from "$/d1";
 import {
   type Holding,
   type NewSnapshot,
@@ -103,6 +104,7 @@ const toSnapshots = (rows: readonly HoldingRow[]): Snapshot[] => {
 };
 
 export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
+  const orm = drizzle(db);
   /** Load snapshots through `asOf`. With `from`, start at the snapshot effective on that date. */
   const load = (id: string, asOf: string | null, from: string | null = null) =>
     query(() =>
@@ -268,7 +270,10 @@ export const D1PortfoliosLive = (db: D1Database): Layer.Layer<Portfolios> => {
           if (input.snapshot !== undefined)
             yield* requireAssets(symbolsOf(input.snapshot));
           yield* write([
-            assignDefaultsOnCreate(db, { kind: "portfolio", id }, now),
+            toD1Statement(
+              db,
+              assignDefaultsOnCreate(orm, { kind: "portfolio", id }, now),
+            ),
             db
               .prepare(
                 `INSERT INTO portfolios (portfolio_id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,

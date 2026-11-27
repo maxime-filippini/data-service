@@ -35,7 +35,8 @@ export const applyMigrations = (
 
 /**
  * Wrap an open SQLite database in the minimal D1 interface used by the
- * service. Batches run in a single transaction.
+ * service and by Drizzle's D1 driver (`raw()` for typed selects). Batches run
+ * in a single transaction.
  */
 export const wrapSqliteAsD1 = (sqlite: DatabaseSync): D1Database => {
   const execute = (sql: string, values: SQLInputValue[]) => {
@@ -62,6 +63,12 @@ export const wrapSqliteAsD1 = (sqlite: DatabaseSync): D1Database => {
     run: async () => execute(sql, values),
     all: async () => execute(sql, values),
     first: async () => execute(sql, values).results[0] ?? null,
+    // Rows as column-ordered arrays, as D1 returns them; Drizzle reads these.
+    raw: async () => {
+      const prepared = sqlite.prepare(sql);
+      prepared.setReturnArrays(true);
+      return prepared.all(...values);
+    },
     execute: () => execute(sql, values),
   });
 

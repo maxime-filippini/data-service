@@ -159,3 +159,83 @@ test("asset input is validated", async () => {
     404,
   );
 });
+
+test("an edit keeps the fields it omits", async () => {
+  const { request } = setup();
+  await request("/", "POST", apple);
+  const edited = await request("/AAPL.US", "PATCH", { enabled: false });
+  assert.equal(edited.status, 200);
+  const { createdAt, updatedAt, ...asset } = (await edited.json()) as Record<
+    string,
+    unknown
+  >;
+  assert.deepEqual(asset, { ...apple, enabled: false });
+  assert.ok(typeof createdAt === "string" && typeof updatedAt === "string");
+  assert.equal(
+    (await request("/MSFT.US", "PATCH", { enabled: false })).status,
+    404,
+  );
+});
+
+/** An asset workflow that is an asset default. */
+const addAssetDefault = (sqlite: ReturnType<typeof setup>["sqlite"]) => {
+  sqlite.exec(`INSERT INTO workflow_definitions
+      (workflow_id, name, scope, enabled, schedule_hour_utc, steps_json, created_at, updated_at)
+    VALUES ('prices', 'Prices', 'asset', 1, 6, '[]', 'then', 'then');
+    INSERT INTO workflow_defaults (subject_kind, workflow_id, created_at)
+    VALUES ('asset', 'prices', 'then');`);
+};
+
+test("creating an asset assigns the asset defaults, and a duplicate assigns nothing", async () => {
+  const { sqlite, request, count } = setup();
+  addAssetDefault(sqlite);
+  await request("/", "POST", apple);
+  assert.deepEqual(
+    sqlite
+      .prepare(
+        `SELECT workflow_id, subject_kind, subject_id, enabled FROM workflow_assignments`,
+      )
+      .all()
+      .map((row) => ({ ...row })),
+    [
+      {
+        workflow_id: "prices",
+        subject_kind: "asset",
+        subject_id: "AAPL.US",
+        enabled: 1,
+      },
+    ],
+  );
+
+  // With the assignment removed, a rejected duplicate does not restore it.
+  sqlite.exec(`DELETE FROM workflow_assignments`);
+  assert.equal((await request("/", "POST", apple)).status, 409);
+  assert.equal(count("workflow_assignments"), 0);
+});
+
+test("an asset with an active run is kept until the run finishes", async () => {
+  const { sqlite, request, count } = setup();
+  addAssetDefault(sqlite);
+  await request("/", "POST", apple);
+  sqlite.exec(`INSERT INTO workflow_runs
+      (run_id, workflow_id, workflow_name, subject_kind, subject_id, processing_date,
+       trigger, status, steps_json, created_at)
+    VALUES ('run-1', 'prices', 'Prices', 'asset', 'AAPL.US', '2024-01-02',
+       'manual', 'waiting', '[]', 'then')`);
+
+  const refused = await request("/AAPL.US", "DELETE");
+  assert.equal(refused.status, 409);
+  assert.deepEqual(await refused.json(), {
+    error:
+      "Run run-1 for asset AAPL.US is still active; delete the asset once it finishes",
+  });
+  assert.equal(count("assets"), 1);
+  assert.equal(count("workflow_assignments"), 1);
+
+  sqlite.exec(`UPDATE workflow_runs SET status = 'completed'`);
+  assert.equal((await request("/AAPL.US", "DELETE")).status, 204);
+  assert.equal(count("assets"), 0);
+  assert.equal(count("workflow_assignments"), 0);
+  // Run history is not touched.
+  assert.equal(count("workflow_runs"), 1);
+});
