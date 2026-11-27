@@ -1,16 +1,7 @@
 import { Effect } from "effect";
 
 import { WorkerLoggerLive } from "$/logging";
-import {
-  type DispatchPlatform,
-  startScheduledWorkflowTick,
-} from "$/workflows/runs/dispatch";
-
-/** Overrides for the Worker's hourly scheduled handler; tests supply a stand-in. */
-export interface ScheduledDependencies {
-  /** Where the dispatch Workflow starts; the `WORKFLOW_DISPATCHES` binding by default. */
-  readonly dispatchPlatformFor?: (env: CloudflareBindings) => DispatchPlatform;
-}
+import { startScheduledWorkflowTick } from "$/workflows/runs/dispatch";
 
 /** Whether this tick started the durable dispatch Workflow, which dispatches the due assignments. */
 export type ScheduledHandlerOutcome =
@@ -20,20 +11,16 @@ export type ScheduledHandlerOutcome =
 /**
  * Execute the Worker's hourly scheduled tick: start the durable dispatch
  * Workflow, which reconciles active workflow runs and dispatches enabled
- * workflow assignments whose daily UTC hour is due.
+ * workflow assignments whose daily UTC hour is due. The instance starts on
+ * `env.WORKFLOW_DISPATCHES`.
  */
 export const runScheduledHandlers = (
   now: Date,
   env: CloudflareBindings,
-  deps: ScheduledDependencies = {},
 ): Promise<ScheduledHandlerOutcome> =>
   Effect.gen(function* () {
     const dispatch = yield* Effect.tryPromise(() =>
-      startScheduledWorkflowTick(
-        env,
-        now,
-        deps.dispatchPlatformFor?.(env) ?? env.WORKFLOW_DISPATCHES,
-      ),
+      startScheduledWorkflowTick(env, now, env.WORKFLOW_DISPATCHES),
     ).pipe(Effect.result);
     if (dispatch._tag === "Success") {
       if (dispatch.success.status === "started")
