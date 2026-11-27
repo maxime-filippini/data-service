@@ -101,10 +101,10 @@ The root package pins Effect **4.0.0-rc.118** (see
   return Effects; pure helpers (`latestOccurrence`, `previousDay`, reference
   parsing) stay ordinary functions.
 - **Read generators top to bottom:** operations use
-  `Effect.fn("Name")(function* (...) { ... })`. `const store = yield* Workflows`
+  `Effect.fn("Name")(function* (...) { ... })`. `const store = yield* WorkflowStore`
   obtains an injected service; `yield* store.create(...)` executes a step on it.
 - **Services and Layers:** `Context.Service` keys live in `store.ts` or
-  `client.ts`; real Cloudflare adapters end in `Live` (`D1WorkflowsLive`,
+  `client.ts`; real Cloudflare adapters end in `Live` (`D1WorkflowStoreLive`,
   `R2RunArtifactsLive`, `HttpPythonOperationsLive`). `src/dependencies.ts` wires
   them from `CloudflareBindings`; `src/local/runs.ts` wires local equivalents
   using the exact same interfaces.
@@ -169,7 +169,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 2. Declare its `type`, `description`, `scopes`, `params` Effect Schema, named
    `inputs` and `outputs` with explicit contract identities, optional retry
    policy, and `implementation`.
-3. Use existing `Context.Service` interfaces (`Assets`, `Portfolios`,
+3. Use existing `Context.Service` interfaces (`AssetStore`, `Portfolios`,
    `DatasetPublicationStore`, `RunArtifacts`, `MarketDataSources`) and map errors to
    `terminalStepError` or `transientStepError`.
 4. Register it in `builtInStepTypes` in `src/workflows/registry/index.ts` and

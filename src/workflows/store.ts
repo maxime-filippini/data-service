@@ -23,8 +23,8 @@ export interface AssignmentFilter {
  * the step registry first (see `operations.ts`). Each change is one atomic
  * statement, so a failed replacement leaves the saved definition intact.
  */
-export class Workflows extends Context.Service<
-  Workflows,
+export class WorkflowStore extends Context.Service<
+  WorkflowStore,
   {
     /** Every definition, by name. */
     readonly list: () => Effect.Effect<
@@ -104,4 +104,4 @@ export class Workflows extends Context.Service<
       now: string,
     ) => Effect.Effect<readonly WorkflowAssignment[], WorkflowError>;
   }
->()("data-service/Workflows") {}
+>()("data-service/WorkflowStore") {}

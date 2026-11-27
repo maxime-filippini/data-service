@@ -1,12 +1,16 @@
 import { Effect, Schema } from "effect";
 
-import { Assets } from "$/assets/store";
+import { AssetStore } from "$/assets/store";
 import { type MarketDataError, MarketDataSource } from "$/market-data";
 import { MarketDateSchema } from "$/market-data/schemas";
 import { MarketDataSources } from "$/market-data/sources";
 import { RunArtifacts, runArtifactId } from "$/workflows/artifacts";
 
-import { assetSubject, date, rawPricesEod } from "./contract";
+import {
+  assetSubjectContract,
+  dateContract,
+  rawPricesEodContract,
+} from "./contract";
 import { defineStepType, terminal, transient } from "./step-type";
 
 /** The raw artifact's envelope version, as in legacy raw storage. */
@@ -44,22 +48,25 @@ export const downloadPrices = defineStepType({
     ),
   }),
   inputs: {
-    asset: { contract: assetSubject, description: "The asset to download" },
+    asset: {
+      contract: assetSubjectContract,
+      description: "The asset to download",
+    },
     throughDate: {
-      contract: date,
+      contract: dateContract,
       description: "The last date to request, usually the processing date",
     },
   },
   outputs: {
     raw: {
-      contract: rawPricesEod,
+      contract: rawPricesEodContract,
       description: "The raw provider response, stored under the run",
     },
   },
   implementation: ({ params, inputs, execution }) =>
     Effect.gen(function* () {
       const symbol = inputs.asset.symbol;
-      const asset = yield* Assets.use((assets) => assets.get(symbol)).pipe(
+      const asset = yield* AssetStore.use((assets) => assets.get(symbol)).pipe(
         Effect.mapError((error) =>
           error.kind === "not_found"
             ? terminal(error.message)

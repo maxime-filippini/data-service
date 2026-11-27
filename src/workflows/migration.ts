@@ -4,10 +4,11 @@ import { SINGLE_ASSET_HOLDINGS_DATE } from "$/portfolios/contracts";
 import { WorkflowIdSchema, type WorkflowSpec } from "$/workflows/contracts";
 import {
   builtInStepTypes,
-  makeStepTypes,
-  type StepTypes,
+  makeStepTypeRegistry,
+  type StepTypeRegistry,
 } from "$/workflows/registry";
 import { validateWorkflowSpec } from "$/workflows/validate";
+import type { SubjectKind } from "$/workflows/subjects";
 
 /**
  * Deterministic UUID for the standard EOD prices download workflow seeded by
@@ -234,7 +235,7 @@ export interface RollbackReport {
 /** Optional overrides for migration timestamps and step registry validation. */
 export interface MigrationOptions {
   readonly now?: string;
-  readonly registry?: StepTypes;
+  readonly registry?: StepTypeRegistry;
 }
 
 /** Build the standard asset download workflow specification from the legacy schedule. */
@@ -303,7 +304,7 @@ interface ScheduleRow {
 interface DefinitionRow {
   readonly workflow_id: string;
   readonly name: string;
-  readonly scope: "asset" | "portfolio";
+  readonly scope: SubjectKind;
   readonly enabled: number;
   readonly schedule_hour_utc: number;
   readonly steps_json: string;
@@ -354,7 +355,7 @@ interface WorkflowRunCountRow {
   readonly active: number;
 }
 
-const defaultRegistry = () => makeStepTypes(builtInStepTypes);
+const defaultRegistry = () => makeStepTypeRegistry(builtInStepTypes);
 
 const query = <A>(operation: () => Promise<A>, context: string) =>
   Effect.tryPromise({
@@ -366,7 +367,10 @@ const query = <A>(operation: () => Promise<A>, context: string) =>
       }),
   });
 
-const validateDefaultSpec = (spec: WorkflowSpec, registry: StepTypes) => {
+const validateDefaultSpec = (
+  spec: WorkflowSpec,
+  registry: StepTypeRegistry,
+) => {
   if (!Schema.is(WorkflowIdSchema)(DEFAULT_PRICES_EOD_WORKFLOW_ID)) {
     return Effect.fail(
       new MigrationError({
@@ -1331,7 +1335,7 @@ const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
  */
 export const renderApplyMigrationSql = (
   now = new Date().toISOString(),
-  registry: StepTypes = defaultRegistry(),
+  registry: StepTypeRegistry = defaultRegistry(),
 ): string => {
   const sampleSpec = defaultPricesEodWorkflowSpec({
     hourUtc: 0,

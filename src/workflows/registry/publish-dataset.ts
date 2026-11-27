@@ -5,8 +5,12 @@ import {
   PublishedDatasetSchema,
 } from "$/datasets/contracts";
 import { publishDataset as publish } from "$/datasets/operations";
+import { SUBJECT_KINDS } from "$/workflows/subjects";
 
-import { datasetPublication, publishableDataset } from "./contract";
+import {
+  datasetPublicationContract,
+  publishableDatasetContract,
+} from "./contract";
 import { defineStepType, terminal, transient } from "./step-type";
 
 /**
@@ -23,7 +27,7 @@ export const publishDataset = defineStepType({
   type: "publish-dataset",
   description:
     "Publish a dataset artifact as the subject's current dataset, independently of temporary run storage",
-  scopes: ["asset", "portfolio"],
+  scopes: SUBJECT_KINDS,
   params: Schema.Struct({
     dataset: PublishedDatasetSchema.annotate({
       description:
@@ -32,14 +36,14 @@ export const publishDataset = defineStepType({
   }),
   inputs: {
     data: {
-      contract: publishableDataset,
+      contract: publishableDatasetContract,
       description:
         "The dataset's data, from the normalization or volatility step",
     },
   },
   outputs: {
     publication: {
-      contract: datasetPublication,
+      contract: datasetPublicationContract,
       description: "The published dataset's identity",
     },
   },
@@ -56,7 +60,7 @@ export const publishDataset = defineStepType({
     if (
       data !== undefined &&
       "value" in data &&
-      Schema.is(publishableDataset.schema)(data.value) &&
+      Schema.is(publishableDatasetContract.schema)(data.value) &&
       data.value.schema !== expected.schema
     )
       return [

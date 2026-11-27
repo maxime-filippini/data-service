@@ -3,10 +3,10 @@ import { Effect, Schema } from "effect";
 import { Portfolios } from "$/portfolios/store";
 
 import {
-  date,
+  dateContract,
   PortfolioHoldingsArtifactSchema,
-  portfolioHoldings,
-  portfolioSubject,
+  portfolioHoldingsContract,
+  portfolioSubjectContract,
 } from "./contract";
 import {
   jsonArtifactReference,
@@ -22,21 +22,21 @@ export const loadPortfolioHoldings = defineStepType({
   params: Schema.Struct({}),
   inputs: {
     portfolio: {
-      contract: portfolioSubject,
+      contract: portfolioSubjectContract,
       description: "The portfolio to read",
     },
     processingDate: {
-      contract: date,
+      contract: dateContract,
       description: "The date for which to resolve holdings",
     },
   },
   outputs: {
     holdingsDate: {
-      contract: date,
+      contract: dateContract,
       description: "The snapshot's effective date",
     },
     holdings: {
-      contract: portfolioHoldings,
+      contract: portfolioHoldingsContract,
       description: "The resolved snapshot, stored under the run as JSON",
     },
   },

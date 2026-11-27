@@ -4,25 +4,46 @@
  * expression and cannot traverse into a value.
  */
 
-/** A parsed `{ "ref": ... }` binding. */
-export type Reference =
-  | { readonly kind: "context"; readonly field: string }
-  | { readonly kind: "output"; readonly step: string; readonly output: string };
+import { Option, Schema } from "effect";
 
-const CONTEXT = /^context\.([A-Za-z][A-Za-z0-9_]*)$/u;
+import { StepIdSchema } from "$/workflows/contracts";
 
-const OUTPUT =
-  /^steps\.([A-Za-z][A-Za-z0-9_-]{0,63})\.outputs\.([A-Za-z][A-Za-z0-9_]*)$/u;
+/** A run-context field or port name: a letter, then letters, digits or `_`. */
+const NameSchema = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z][A-Za-z0-9_]*$/u),
+);
 
-/** Parse a reference, or undefined when it has neither form. */
-export const parseReference = (ref: string): Reference | undefined => {
-  const context = CONTEXT.exec(ref);
-  if (context !== null) return { kind: "context", field: context[1]! };
-  const output = OUTPUT.exec(ref);
-  if (output !== null)
-    return { kind: "output", step: output[1]!, output: output[2]! };
+/** A parsed `{ "ref": ... }` binding. Step IDs follow `StepIdSchema`. */
+export const ReferenceSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("context"), field: NameSchema }),
+  Schema.Struct({
+    kind: Schema.Literal("output"),
+    step: StepIdSchema,
+    output: NameSchema,
+  }),
+]);
+
+export type Reference = typeof ReferenceSchema.Type;
+
+const decodeReference = Schema.decodeUnknownOption(ReferenceSchema);
+
+/**
+ * Split `context.<field>` or `steps.<step>.outputs.<output>` into its parts.
+ * Neither form allows a `.` inside a part, so splitting on `.` is exact; the
+ * parts are validated by decoding them with `ReferenceSchema`.
+ */
+const splitReference = (ref: string) => {
+  const parts = ref.split(".");
+  if (parts.length === 2 && parts[0] === "context")
+    return { kind: "context", field: parts[1] };
+  if (parts.length === 4 && parts[0] === "steps" && parts[2] === "outputs")
+    return { kind: "output", step: parts[1], output: parts[3] };
   return undefined;
 };
+
+/** Parse a reference, or undefined when it has neither form. */
+export const parseReference = (ref: string): Reference | undefined =>
+  Option.getOrUndefined(decodeReference(splitReference(ref)));
 
 /** The reference string for an earlier step's output. */
 export const outputReference = (step: string, output: string) =>

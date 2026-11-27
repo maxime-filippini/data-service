@@ -5,9 +5,10 @@ import {
   WorkflowError,
   type WorkflowSpec,
 } from "$/workflows/contracts";
-import { inspectWorkflow } from "$/workflows/inspect";
-import { StepRegistry, stepCatalog } from "$/workflows/registry";
-import { Workflows } from "$/workflows/store";
+import { stepCatalog } from "$/workflows/catalog";
+import { buildWorkflowDetail } from "$/workflows/detail";
+import { StepRegistry } from "$/workflows/registry";
+import { WorkflowStore } from "$/workflows/store";
 import { validateWorkflowSpec } from "$/workflows/validate";
 
 /**
@@ -37,7 +38,7 @@ export const createWorkflow = Effect.fn("Workflows.create")(function* (
   now: string,
 ) {
   yield* requireValid(spec);
-  const workflows = yield* Workflows;
+  const workflows = yield* WorkflowStore;
   return yield* workflows.create(id, spec, now);
 });
 
@@ -51,26 +52,26 @@ export const replaceWorkflow = Effect.fn("Workflows.replace")(function* (
   now: string,
 ) {
   yield* requireValid(spec);
-  const workflows = yield* Workflows;
+  const workflows = yield* WorkflowStore;
   return yield* workflows.replace(id, spec, now);
 });
 
-/** A definition with its ordered steps' connections, and its assignments. */
-export const inspectWorkflowById = Effect.fn("Workflows.inspect")(function* (
+/** A definition's detail (its steps' connections), and its assignments. */
+export const getWorkflowDetail = Effect.fn("Workflows.detail")(function* (
   id: string,
 ) {
-  const workflows = yield* Workflows;
+  const workflows = yield* WorkflowStore;
   const registry = yield* StepRegistry;
   const [workflow, assignments] = yield* Effect.all([
     workflows.get(id),
     workflows.listAssignments({ workflowId: id }),
   ]);
-  return { inspection: inspectWorkflow(workflow, registry), assignments };
+  return { detail: buildWorkflowDetail(workflow, registry), assignments };
 });
 
 /** The definitions assigned to one subject. */
 export const subjectAssignments = (subject: Subject) =>
-  Workflows.use((workflows) => workflows.listAssignments({ subject }));
+  WorkflowStore.use((workflows) => workflows.listAssignments({ subject }));
 
 /** Every registered step type and contract. */
 export const catalog = StepRegistry.use((registry) =>

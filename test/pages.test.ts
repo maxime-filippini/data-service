@@ -3,14 +3,14 @@ import test from "node:test";
 
 import { Layer } from "effect";
 
-import { D1AssetsLive } from "$/assets/d1";
+import { D1AssetStoreLive } from "$/assets/d1";
 import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
 import type { Dependencies } from "$/dependencies";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { memoryDatasetObjectStore } from "$/local/published";
 import { PageDataError, pageData } from "$/pages";
 import { D1PortfoliosLive } from "$/portfolios/d1";
-import { D1WorkflowsLive } from "$/workflows/d1";
+import { D1WorkflowStoreLive } from "$/workflows/d1";
 import { StepRegistryLive } from "$/workflows/registry";
 import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
 
@@ -27,9 +27,9 @@ type Sqlite = ReturnType<typeof makeTestDatabase>["sqlite"];
 const setup = () => {
   const { sqlite, db } = makeTestDatabase();
   const dependencies: Dependencies = {
-    assetsFor: () => D1AssetsLive(db),
+    assetsFor: () => D1AssetStoreLive(db),
     portfoliosFor: () => D1PortfoliosLive(db),
-    workflowsFor: () => Layer.merge(D1WorkflowsLive(db), StepRegistryLive),
+    workflowsFor: () => Layer.merge(D1WorkflowStoreLive(db), StepRegistryLive),
     workflowRunsFor: () =>
       Layer.merge(D1WorkflowRunsLive(db), memoryRunArtifacts().layer),
     runPlatformFor: () => ({

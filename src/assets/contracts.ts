@@ -6,23 +6,20 @@
 
 import { Schema } from "effect";
 
-import { utcDay } from "$/datetime";
 import {
   MarketDateSchema,
   MarketSymbolSchema,
   ProviderSchema,
 } from "$/market-data/schemas";
+import { isNotFutureDate } from "$/schema";
 
 /** An asset's identity, such as `AAPL.US` or `BRK-B.US`, kept as given. */
 export const AssetSymbolSchema = MarketSymbolSchema;
 
-const notInFuture = Schema.makeFilter<string>(
-  (date) =>
-    date <= utcDay(new Date()) || "The start date must not be in the future",
-);
-
 /** The earliest date its downloads request. Not in the future. */
-const BackfillStartDateSchema = MarketDateSchema.check(notInFuture);
+const BackfillStartDateSchema = MarketDateSchema.check(
+  isNotFutureDate("The start date must not be in the future"),
+);
 
 /**
  * HTTP input for creating an asset. Omitted `enabled` means enabled. Creating
@@ -45,10 +42,10 @@ export const UpdateAssetSchema = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
 });
 
-/** Decoded input consumed by `Assets.create`. */
+/** Decoded input consumed by `AssetStore.create`. */
 export type CreateAsset = typeof CreateAssetSchema.Type;
 
-/** Decoded partial update consumed by `Assets.update`. */
+/** Decoded partial update consumed by `AssetStore.update`. */
 export type UpdateAsset = typeof UpdateAssetSchema.Type;
 
 export type * from "$/assets/views";

@@ -12,10 +12,10 @@ import { localWorkflowService } from "$/local/runs";
 import { pageData, PageDataError } from "$/pages";
 import { createRoutes } from "$/routes";
 import {
-  date,
+  dateContract,
   defineContract,
   defineStepType,
-  rawPricesEod,
+  rawPricesEodContract,
   type StepType,
 } from "$/workflows/registry";
 import type { RunPlatform } from "$/workflows/runs/contracts";
@@ -46,8 +46,8 @@ const describeDownload = defineStepType({
   scopes: ["asset"],
   params: Schema.Struct({}),
   inputs: {
-    raw: { contract: rawPricesEod, description: "Raw prices" },
-    date: { contract: date, description: "A date" },
+    raw: { contract: rawPricesEodContract, description: "Raw prices" },
+    date: { contract: dateContract, description: "A date" },
     label: { contract: text, description: "A label" },
   },
   outputs: { summary: { contract: text, description: "The summary" } },

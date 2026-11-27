@@ -77,7 +77,7 @@ test("workflow contracts and persistence do not depend on views", () => {
   }
 });
 
-test("workflow views stay runtime-free and only depend on other views", () => {
+test("workflow views stay runtime-free and only depend on views or subject kinds", () => {
   for (const path of ["views.ts", "runs/views.ts"]) {
     const source = readFileSync(
       new URL(`../src/workflows/${path}`, import.meta.url),
@@ -92,7 +92,19 @@ test("workflow views stay runtime-free and only depend on other views", () => {
     for (const dependency of source.matchAll(
       /(?:\bfrom\s*|\bimport\s*\()\s*["']([^"']+)["']/gu,
     )) {
-      assert.match(dependency[1]!, /^\.\.?\/(?:[^/]+\/)*views$/u, path);
+      assert.match(
+        dependency[1]!,
+        /^\.\.?\/(?:[^/]+\/)*(?:views|subjects)$/u,
+        path,
+      );
     }
   }
+});
+
+test("the subject kinds module has no imports, so views and the app can share it", () => {
+  const source = readFileSync(
+    new URL("../src/workflows/subjects.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /(?:\bfrom\s*|\bimport\s*\()\s*["']/u);
 });
