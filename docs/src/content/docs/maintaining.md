@@ -98,7 +98,7 @@ Start with one end-to-end slice rather than the root Worker:
 
 ## Effect in this codebase
 
-The root package pins Effect **4.0.0-rc.118** (see
+The root package pins Effect **4.1.6** (see
 [the v4 documentation](https://effect.website/docs/v4/getting-started/creating-effects/)).
 
 - **An Effect describes work:** `Effect.Effect<A, E, R>` names its success type

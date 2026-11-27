@@ -9,7 +9,8 @@
 import { parseEnv } from "node:util";
 
 import { exportJWK, generateKeyPair } from "jose";
-import { Console, Crypto, Effect, FileSystem, Path } from "effect";
+import { Console, Effect, FileSystem, Path } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { Argument, Command } from "effect/cli";
 
 import { runScript, ScriptError } from "../cli";
@@ -28,7 +29,7 @@ const command = Command.make(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const crypto = yield* Crypto.Crypto;
+      const crypto = yield* SecureRandom.SecureRandom;
 
       const env = parseEnv(yield* fs.readFileString(envFile));
       const r2 = {

@@ -4,9 +4,10 @@
  * processes, stdio), so handlers stay effects instead of calling Node directly.
  */
 
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { NodeCrypto, NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Cause, Console, Duration, Effect, Option, Stream } from "effect";
 import { CliError, Command } from "effect/cli";
+import type { SecureRandom } from "effect/crypto";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { ManagementApiError } from "$/management-api/client";
@@ -32,15 +33,22 @@ const report = <E>(cause: Cause.Cause<E>) => {
 };
 
 /**
- * Parse the process arguments and run the command on Node's services. A
+ * Parse the process arguments and run the command on Node's services and
+ * secure random source. A
  * failure exits with code 1.
  */
 export const runScript = <Name extends string, Input, E>(
-  command: Command.Command<Name, Input, {}, E, NodeServices.NodeServices>,
+  command: Command.Command<
+    Name,
+    Input,
+    {},
+    E,
+    NodeServices.NodeServices | SecureRandom.SecureRandom
+  >,
 ): void =>
   Command.run(command, { version: "0.0.0" }).pipe(
     Effect.tapCause(report),
-    Effect.provide(NodeServices.layer),
+    Effect.provide([NodeServices.layer, NodeCrypto.layerSecureRandom]),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   );
 

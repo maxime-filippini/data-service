@@ -13,4 +13,4 @@ minimumReleaseAge: 1440
 # @effect/platform-node asks for platform-node-shared ^<its version>, which
 # resolves to a release built for a newer effect; keep it on effect's version.
 overrides:
-  "@effect/platform-node-shared": 4.0.0-rc.118
+  "@effect/platform-node-shared": 4.1.6

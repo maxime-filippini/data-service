@@ -344,7 +344,7 @@ test("recursive models are refused", async () => {
         $ref: "#/$defs/Node",
       }),
     ),
-    /Recursive or non-JSON operation contracts are not supported/u,
+    /Recursive operation contracts are not supported/u,
   );
 });
 
