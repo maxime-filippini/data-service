@@ -1,5 +1,4 @@
-import type { WorkflowStepConfig } from "cloudflare:workers";
-import { type Effect, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { AssetStore } from "$/assets/store";
 import type {
@@ -90,7 +89,7 @@ export interface StepRequest<P, I> {
 
 /**
  * Why a step attempt failed. `retry` marks a transient failure (network,
- * storage, service); the executor retries it within the step's policy.
+ * storage, service); the executor retries it within its step policy.
  * Otherwise it is terminal (invalid input, deterministic domain error) and
  * stops the run at once.
  */
@@ -108,16 +107,6 @@ export type StepServices =
   | PythonOperations
   | DatasetPublicationStore
   | DatasetObjectStore;
-
-/**
- * The registry-owned retry policy: three retries with exponential backoff
- * for transient failures, and a timeout per attempt. A step type can declare
- * its own.
- */
-export const DEFAULT_STEP_POLICY = {
-  retries: { limit: 3, delay: "10 seconds", backoff: "exponential" },
-  timeout: "10 minutes",
-} as const satisfies WorkflowStepConfig;
 
 /** A durable check is either ready to produce outputs or waiting for inputs. */
 export type WaitCheck<O> =
@@ -142,8 +131,6 @@ export interface StepType<
   readonly params: Schema.Codec<P, unknown>;
   readonly inputs: I;
   readonly outputs: O;
-  /** Retries and timeout; `DEFAULT_STEP_POLICY` when omitted. */
-  readonly policy?: WorkflowStepConfig;
   /** Check relationships between decoded parameters, scope and literal inputs. */
   validateConfiguration?(
     params: P,
@@ -164,13 +151,37 @@ export interface StepType<
   };
 }
 
-/** A transient step failure, retried within the step's policy. */
+/** A transient step failure, retried within the executor's step policy. */
 export const transient = (message: string) =>
   new StepFailure({ retry: true, message });
 
 /** A terminal step failure, which stops the run. */
 export const terminal = (message: string) =>
   new StepFailure({ retry: false, message });
+
+/**
+ * Treat every failure of `program` as transient, keeping its message: for
+ * services whose failures are all worth retrying, such as recording run
+ * outcomes.
+ */
+export const asTransient = <A, E extends { readonly message: string }, R>(
+  program: Effect.Effect<A, E, R>,
+) => Effect.mapError(program, (error) => transient(error.message));
+
+/**
+ * Treat an unexpected exception (a defect) as a transient failure: it may be
+ * an outage as much as a bug.
+ */
+export const defectsAsTransient = <A, R>(
+  program: Effect.Effect<A, StepFailure, R>,
+) =>
+  program.pipe(
+    Effect.catchDefect((defect) =>
+      Effect.fail(
+        transient(defect instanceof Error ? defect.message : String(defect)),
+      ),
+    ),
+  );
 
 /** Declare a step type, inferring its params, input and output types. */
 export const defineStepType = <P, I extends Ports, O extends Ports>(
