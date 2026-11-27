@@ -5,7 +5,7 @@
  */
 
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Cause, Console, Effect, Option, Stream } from "effect";
+import { Cause, Console, Duration, Effect, Option, Stream } from "effect";
 import { CliError, Command } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -46,12 +46,16 @@ export const runScript = <Name extends string, Input, E>(
 
 /**
  * Run a command to completion and return its standard output. Standard error
- * goes to the terminal; a non-zero exit fails with a `ScriptError`.
+ * goes to the terminal; a non-zero exit, or running past `timeout` (which
+ * stops the command), fails with a `ScriptError`.
  */
 export const runProcess = (
   command: string,
   args: readonly string[],
-  options: { readonly cwd?: string } = {},
+  {
+    timeout,
+    ...options
+  }: { readonly cwd?: string; readonly timeout?: Duration.Input } = {},
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -75,4 +79,14 @@ export const runProcess = (
         );
       return output;
     }),
+  ).pipe(
+    timeout === undefined
+      ? (effect) => effect
+      : Effect.timeoutOrElse({
+          duration: timeout,
+          orElse: () =>
+            Effect.fail(
+              new ScriptError(`${command} ${args.join(" ")} timed out`),
+            ),
+        }),
   );
