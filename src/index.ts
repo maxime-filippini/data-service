@@ -1,8 +1,5 @@
 import { Effect, Layer } from "effect";
 
-import { D1CalculationsLive } from "$/calculations/d1";
-import { failStoppedRuns } from "$/calculations/runs";
-import { triggerScheduledCalculations } from "$/calculations/schedule";
 import { WorkerLoggerLive } from "$/logging";
 import { D1MarketDataControlPlaneLive } from "$/market-data/control-plane/d1";
 import {
@@ -10,15 +7,13 @@ import {
   isRetryable,
   runIngestion,
 } from "$/market-data/ingestion-queue";
-import { processJob, scheduleProcessing } from "$/market-data/processing";
+import { processJob } from "$/market-data/processing";
 import { R2RawMarketDataStoreLive } from "$/market-data/r2-raw-store";
-import { triggerScheduledRun } from "$/market-data/schedule/operations";
-import { D1ScheduleStoreLive } from "$/market-data/schedule/d1";
 import { liveSourceFor } from "$/market-data/sources";
 import { D1SymbolRegistryLive } from "$/market-data/symbol-registry/d1";
 import { createRoutes } from "$/routes";
 import { dependencies } from "$/dependencies";
-import { startScheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { runScheduledHandlers } from "$/scheduled";
 // SvelteKit's handler, built by `pnpm --filter app build` (wrangler's build
 // command runs it before dev and deploy). It has no type declarations.
 // @ts-expect-error -- generated JavaScript, missing until the app is built
@@ -30,11 +25,9 @@ export { CalculationEngine } from "./engine-container";
 export { MarketDataProcessor } from "./processor-container";
 export { ScheduledDownloadWorkflow } from "./scheduled-download-workflow";
 export { WorkflowDispatchWorkflow } from "./workflow-dispatch-workflow";
+export { runScheduledHandlers } from "$/scheduled";
 
 const app = createRoutes(dependencies, sveltekit);
-
-/** The hour (UTC) at which the cron resends queued Parquet rebuilds. */
-const PROCESSING_SWEEP_HOUR = 2;
 
 const ingest = Effect.fn("Worker.ingest")(function* (
   batch: MessageBatch<IngestionMessage>,
@@ -86,106 +79,11 @@ export default {
   fetch: app.fetch,
 
   async scheduled(controller, env) {
-    return Effect.gen(function* () {
-      const now = new Date(controller.scheduledTime);
-
-      const trigger = yield* triggerScheduledRun(
-        now,
-        env.SCHEDULED_DOWNLOADS,
-      ).pipe(
-        Effect.provide(D1ScheduleStoreLive(env.MARKET_DATA_DB)),
-        Effect.result,
-      );
-      if (trigger._tag === "Success") {
-        if (trigger.success.status === "started") {
-          yield* Effect.logInfo("schedule_run_started").pipe(
-            Effect.annotateLogs({
-              runId: trigger.success.runId,
-            }),
-          );
-        }
-      } else {
-        // The run is forgotten, so the next hourly tick tries again.
-        yield* Effect.logError("schedule_run_failed").pipe(
-          Effect.annotateLogs({
-            message: trigger.failure.message,
-          }),
-        );
-      }
-
-      // Fail calculation runs whose Workflow stopped without reporting back.
-      const sweep = yield* failStoppedRuns(env.CALCULATION_RUNS, now).pipe(
-        Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
-        Effect.result,
-      );
-      if (sweep._tag === "Success" && sweep.success > 0) {
-        yield* Effect.logInfo("calculation_runs_failed_as_stopped").pipe(
-          Effect.annotateLogs({
-            count: sweep.success,
-          }),
-        );
-      } else if (sweep._tag === "Failure") {
-        yield* Effect.logError("calculation_run_sweep_failed").pipe(
-          Effect.annotateLogs({
-            message: sweep.failure.message,
-          }),
-        );
-      }
-
-      // Start calculations whose cron has fired since their last scheduled run.
-      const calculations = yield* triggerScheduledCalculations(
-        now,
-        env.CALCULATION_RUNS,
-      ).pipe(
-        Effect.provide(D1CalculationsLive(env.MARKET_DATA_DB)),
-        Effect.result,
-      );
-      if (calculations._tag === "Success") {
-        for (const run of calculations.success) {
-          if ("error" in run)
-            yield* Effect.logError("calculation_schedule_failed").pipe(
-              Effect.annotateLogs({ ...run }),
-            );
-          else
-            yield* Effect.logInfo("calculation_run_scheduled").pipe(
-              Effect.annotateLogs({ ...run }),
-            );
-        }
-      } else {
-        yield* Effect.logError("calculation_schedule_failed").pipe(
-          Effect.annotateLogs({
-            message: calculations.failure.message,
-          }),
-        );
-      }
-
-      // Dispatch workflow assignments at their definitions' daily hour. Off
-      // (WORKFLOW_DISPATCH "off") until the download cutover: the legacy
-      // scheduled download above still owns automatic downloads.
-      const dispatch = yield* Effect.tryPromise(() =>
-        startScheduledWorkflowTick(env, now, env.WORKFLOW_DISPATCHES),
-      ).pipe(Effect.result);
-      if (dispatch._tag === "Success") {
-        if (dispatch.success.status === "started")
-          yield* Effect.logInfo("workflow_dispatch_started").pipe(
-            Effect.annotateLogs({ id: dispatch.success.id }),
-          );
-      } else {
-        // Nothing claimed is lost: the next tick dispatches what is still due.
-        const error = dispatch.failure.cause;
-        yield* Effect.logError("workflow_dispatch_failed").pipe(
-          Effect.annotateLogs({
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
-      }
-
-      if (now.getUTCHours() === PROCESSING_SWEEP_HOUR) {
-        yield* scheduleProcessing(env.PROCESSING_QUEUE, now).pipe(
-          Effect.provide(D1MarketDataControlPlaneLive(env.MARKET_DATA_DB)),
-        );
-      }
-    }).pipe(Effect.provide(WorkerLoggerLive), Effect.runPromise);
+    await runScheduledHandlers(
+      new Date(controller.scheduledTime),
+      env,
+      dependencies,
+    );
   },
 
   async queue(batch, env) {
