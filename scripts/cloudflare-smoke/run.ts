@@ -82,7 +82,7 @@ const portfolioSteps = (
     type: "wait-for-asset-publications",
     params: { workflowId, timeoutSeconds },
     inputs: {
-      assets: { ref: "steps.holdings.outputs.assets" },
+      holdings: { ref: "steps.holdings.outputs.holdings" },
       processingDate: { ref: "context.processingDate" },
     },
   },
@@ -92,7 +92,6 @@ const portfolioSteps = (
     params: { window: 3 },
     inputs: {
       holdings: { ref: "steps.holdings.outputs.holdings" },
-      holdingsDate: { ref: "steps.holdings.outputs.holdingsDate" },
       publications: { ref: "steps.dependencies.outputs.publications" },
       processingDate: { ref: "context.processingDate" },
     },
