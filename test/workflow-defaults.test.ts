@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { WorkflowAssignment, WorkflowDefault } from "$/workflows/views";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
-import { localSteps } from "$/local/steps";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
+import { localCheckpointer } from "$/local/checkpointer";
 
 import { assetPricesSpec, workflowService } from "./support/workflow-service";
 
@@ -213,7 +213,7 @@ test("removing a definition removes it from the defaults", async () => {
 });
 
 test("the app's pages read the defaults, assigned schedules and scheduled outcomes", async () => {
-  const { api, json, pages, createAsset, createWorkflow, dependencies, env } =
+  const { api, json, pages, createAsset, createWorkflow, servicesFor, env } =
     workflowService({
       platform: { autoStart: false },
       env: { WORKFLOW_DISPATCH: "on" },
@@ -243,10 +243,10 @@ test("the app's pages read the defaults, assigned schedules and scheduled outcom
 
   // A dispatched occurrence and a manual run, told apart by trigger.
   await scheduledWorkflowTick(
-    dependencies,
+    servicesFor(env),
     env,
     new Date("2024-01-10T06:00:00Z"),
-    localSteps(new Map(), { delayScale: 0 }),
+    localCheckpointer(new Map(), { delayScale: 0 }),
   );
   await json(
     api("/runs", "POST", {

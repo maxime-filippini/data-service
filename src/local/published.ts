@@ -5,7 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
 
 import { DatasetError } from "$/datasets/contracts";
-import { DatasetObjectStore } from "$/datasets/store";
+import { PublishedFileStore } from "$/datasets/store";
 
 const PARQUET = "application/vnd.apache.parquet";
 
@@ -21,9 +21,9 @@ const etagOf = (body: Uint8Array) =>
  * processed bucket: a key maps to the same relative path. Writes go through
  * a temporary file, so a reader never sees half an object.
  */
-export const FileDatasetObjectStoreLive = (
+export const FilePublishedFileStoreLive = (
   root: string,
-): Layer.Layer<DatasetObjectStore> => {
+): Layer.Layer<PublishedFileStore> => {
   const pathOf = (key: string) => {
     const path = resolve(root, key);
     if (!path.startsWith(resolve(root) + sep))
@@ -31,8 +31,8 @@ export const FileDatasetObjectStoreLive = (
     return path;
   };
   return Layer.succeed(
-    DatasetObjectStore,
-    DatasetObjectStore.of({
+    PublishedFileStore,
+    PublishedFileStore.of({
       put: (key, body) =>
         Effect.tryPromise({
           try: async () => {
@@ -85,12 +85,12 @@ export const FileDatasetObjectStoreLive = (
  * In-memory published datasets, for tests. `objects` holds what was
  * written; `failPuts` makes the next writes fail, as an outage would.
  */
-export const memoryDatasetObjectStore = () => {
+export const memoryPublishedFileStore = () => {
   const objects = new Map<string, Uint8Array>();
   const faults = { failPuts: 0 };
   const layer = Layer.succeed(
-    DatasetObjectStore,
-    DatasetObjectStore.of({
+    PublishedFileStore,
+    PublishedFileStore.of({
       put: (key, body) =>
         Effect.suspend(() => {
           if (faults.failPuts > 0) {

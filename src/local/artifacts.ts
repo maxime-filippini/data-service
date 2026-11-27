@@ -6,7 +6,7 @@ import { Effect, Layer } from "effect";
 import {
   ArtifactError,
   requireArtifactId,
-  RunArtifacts,
+  RunArtifactStore,
 } from "$/workflows/artifacts";
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -26,10 +26,12 @@ const storageError = (message: string) =>
  * to the same relative path (`<root>/runs/<runId>/<stepId>/<name>.<ext>`).
  * IDs are validated first, so nothing is written outside the directory.
  */
-export const FileRunArtifactsLive = (root: string): Layer.Layer<RunArtifacts> =>
+export const FileRunArtifactStoreLive = (
+  root: string,
+): Layer.Layer<RunArtifactStore> =>
   Layer.succeed(
-    RunArtifacts,
-    RunArtifacts.of({
+    RunArtifactStore,
+    RunArtifactStore.of({
       put: (id, body) =>
         requireArtifactId(id).pipe(
           Effect.andThen(
@@ -69,8 +71,8 @@ export const FileRunArtifactsLive = (root: string): Layer.Layer<RunArtifacts> =>
 export const memoryRunArtifacts = () => {
   const objects = new Map<string, string | Uint8Array>();
   const layer = Layer.succeed(
-    RunArtifacts,
-    RunArtifacts.of({
+    RunArtifactStore,
+    RunArtifactStore.of({
       put: (id, body) =>
         requireArtifactId(id).pipe(
           Effect.andThen(Effect.sync(() => void objects.set(id, body))),

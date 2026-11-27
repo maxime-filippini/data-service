@@ -9,24 +9,20 @@ import {
   type PublishedDataset,
 } from "$/datasets/contracts";
 import { currentDatasetData } from "$/datasets/operations";
-import {
-  DatasetPublicationStore,
-  type DatasetObjectStore,
-} from "$/datasets/store";
+import { PublicationStore, type PublishedFileStore } from "$/datasets/store";
 import { effectValidator } from "$/effect-validator";
 import { runHttp } from "$/http/run-effect";
 import { type Subject, SubjectSchema } from "$/workflows/contracts";
 import type { SubjectKind } from "$/workflows/subjects";
 
 /** The services dataset routes need. */
-export type DatasetServices = DatasetPublicationStore | DatasetObjectStore;
+export type DatasetServices = PublicationStore | PublishedFileStore;
 
 /** What dataset routes select from request bindings. */
-export interface DatasetDependencies {
-  readonly datasetsFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<DatasetServices>;
-}
+/** Selects the dataset routes' services from request bindings. */
+export type DatasetServicesFor = (
+  env: CloudflareBindings,
+) => Layer.Layer<DatasetServices>;
 
 /** The subject a path names, or a 404 for one that cannot exist. */
 const subjectOf = (
@@ -55,7 +51,7 @@ const subjectOf = (
  * management API (`/api/datasets`) and the app (`/app-api/publications`).
  */
 export const createDatasetRoutes = (
-  dependencies: DatasetDependencies,
+  servicesFor: DatasetServicesFor,
   auth: MiddlewareHandler<{ Bindings: CloudflareBindings }>,
 ) => {
   const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -64,7 +60,7 @@ export const createDatasetRoutes = (
   const run = <A>(
     env: CloudflareBindings,
     program: Effect.Effect<A, DatasetError, DatasetServices>,
-  ) => runHttp(program, dependencies.datasetsFor(env));
+  ) => runHttp(program, servicesFor(env));
 
   app.get(
     "/",
@@ -75,7 +71,7 @@ export const createDatasetRoutes = (
       const query = c.req.valid("query");
       const publications = await run(
         c.env,
-        DatasetPublicationStore.use((store) =>
+        PublicationStore.use((store) =>
           store.list({
             ...(query.subjectKind === undefined
               ? {}
@@ -105,9 +101,7 @@ export const createDatasetRoutes = (
           c.env,
           subjectOf(dataset, subjectKind, subjectId).pipe(
             Effect.flatMap((subject) =>
-              DatasetPublicationStore.use((store) =>
-                store.get(dataset, subject),
-              ),
+              PublicationStore.use((store) => store.get(dataset, subject)),
             ),
           ),
         ),

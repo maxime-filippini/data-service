@@ -1,16 +1,13 @@
-import { Effect, type Layer } from "effect";
+import { Effect } from "effect";
 
 import { addUtcDays, atUtcHour } from "$/datetime";
+import { Checkpointer } from "$/workflows/checkpointer";
 import type { Subject } from "$/workflows/contracts";
-import type { Steps } from "$/workflows/steps";
+import { asTransient } from "$/workflows/registry";
 
-import type {
-  RunPlatform,
-  WorkflowRunStatus,
-  WorkflowRunSummary,
-} from "./contracts";
+import type { WorkflowRunStatus, WorkflowRunSummary } from "./contracts";
 import { claimAndLaunch, reconcileRun } from "./operations";
-import { type DueAssignment, WorkflowRuns } from "./store";
+import { type DueAssignment, WorkflowRunStore } from "./store";
 
 /**
  * Scheduled dispatch: the hourly tick runs each enabled assignment once per
@@ -81,7 +78,6 @@ export interface DispatchOptions {
 const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
   assignments: readonly DueAssignment[],
   now: Date,
-  platform: RunPlatform,
 ) {
   const dispatched: DispatchedRun[] = [];
   const failures: DispatchFailure[] = [];
@@ -97,7 +93,6 @@ const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
           scheduledFor: due.scheduledFor,
         },
         now,
-        platform,
       ),
     );
     if (outcome._tag === "Failure")
@@ -114,38 +109,44 @@ const dispatchBatch = Effect.fn("WorkflowRuns.dispatchBatch")(function* (
   return { runs: dispatched, failures };
 });
 
-type Runner = <A, E>(program: Effect.Effect<A, E, WorkflowRuns>) => Promise<A>;
-
-export const dispatchScheduledRuns = async (
-  now: Date,
-  platform: RunPlatform,
-  steps: Steps,
-  run: Runner,
-  options: DispatchOptions = {},
-): Promise<Extract<TickReport, { status: "dispatched" }>> => {
+/**
+ * The dispatch body: reconcile active runs, then claim and launch every due
+ * assignment, a batch per checkpoint so a replayed tick resumes where it
+ * stopped instead of launching a batch twice.
+ */
+export const dispatchScheduledRuns = Effect.fn(
+  "WorkflowRuns.dispatchScheduled",
+)(function* (now: Date, options: DispatchOptions = {}) {
   const batchSize = options.batchSize ?? DISPATCH_BATCH_SIZE;
   if (
     !Number.isInteger(batchSize) ||
     batchSize < 1 ||
     batchSize > DISPATCH_BATCH_SIZE
   )
-    throw new RangeError(
-      `Dispatch batch size must be an integer between 1 and ${DISPATCH_BATCH_SIZE}`,
+    return yield* Effect.die(
+      new RangeError(
+        `Dispatch batch size must be an integer between 1 and ${DISPATCH_BATCH_SIZE}`,
+      ),
     );
+  const checkpointer = yield* Checkpointer;
 
   const reconciled = { kept: 0, failed: 0 };
   let afterActive: Pick<WorkflowRunSummary, "createdAt" | "id"> | undefined;
   for (let page = 1; ; page += 1) {
-    const active = await steps.do(`select active batch ${page}`, () =>
-      run(WorkflowRuns.use((runs) => runs.allActive(batchSize, afterActive))),
+    const active = yield* checkpointer.checkpoint(
+      `select active batch ${page}`,
+      asTransient(
+        WorkflowRunStore.use((runs) => runs.allActive(batchSize, afterActive)),
+      ),
     );
     if (active.length === 0) break;
-    const counts = await steps.do(`reconcile active batch ${page}`, () =>
-      run(
+    const counts = yield* checkpointer.checkpoint(
+      `reconcile active batch ${page}`,
+      asTransient(
         Effect.gen(function* () {
           const counts = { kept: 0, failed: 0 };
           for (const current of active)
-            counts[yield* reconcileRun(platform, current, now)] += 1;
+            counts[yield* reconcileRun(current, now)] += 1;
           return counts;
         }),
       ),
@@ -164,16 +165,18 @@ export const dispatchScheduledRuns = async (
   const failures: DispatchFailure[] = [];
   let afterDue: DueAssignment | undefined;
   for (let page = 1; ; page += 1) {
-    const assignments = await steps.do(`select due batch ${page}`, () =>
-      run(
-        WorkflowRuns.use((runs) =>
+    const assignments = yield* checkpointer.checkpoint(
+      `select due batch ${page}`,
+      asTransient(
+        WorkflowRunStore.use((runs) =>
           runs.due(occurrenceByHour, batchSize, afterDue),
         ),
       ),
     );
     if (assignments.length === 0) break;
-    const batch = await steps.do(`dispatch due batch ${page}`, () =>
-      run(dispatchBatch(assignments, now, platform)),
+    const batch = yield* checkpointer.checkpoint(
+      `dispatch due batch ${page}`,
+      dispatchBatch(assignments, now),
     );
     dispatched.push(...batch.runs);
     failures.push(...batch.failures);
@@ -181,16 +184,13 @@ export const dispatchScheduledRuns = async (
     if (assignments.length < batchSize) break;
   }
 
-  return { status: "dispatched", reconciled, runs: dispatched, failures };
-};
-
-/** What the tick selects from the Worker's bindings. */
-export interface DispatchDependencies {
-  readonly workflowRunsFor: (
-    env: CloudflareBindings,
-  ) => Layer.Layer<WorkflowRuns, never, never>;
-  readonly runPlatformFor: (env: CloudflareBindings) => RunPlatform;
-}
+  return {
+    status: "dispatched",
+    reconciled,
+    runs: dispatched,
+    failures,
+  } as Extract<TickReport, { status: "dispatched" }>;
+});
 
 /**
  * Whether the hourly tick dispatches workflows: enabled when `WORKFLOW_DISPATCH`
@@ -200,32 +200,6 @@ export interface DispatchDependencies {
 export const workflowDispatchEnabled = (
   env: Pick<CloudflareBindings, "WORKFLOW_DISPATCH">,
 ) => String(env.WORKFLOW_DISPATCH) === "on";
-
-/**
- * The dispatch Workflow's body, gated by `WORKFLOW_DISPATCH`, with the
- * trigger's scheduled time and durable steps. Tests and the fixture command
- * call the same body with a controlled clock and local steps.
- */
-export const scheduledWorkflowTick = (
-  dependencies: DispatchDependencies,
-  env: CloudflareBindings,
-  now: Date,
-  steps: Steps,
-  options: DispatchOptions = {},
-): Promise<TickReport> =>
-  workflowDispatchEnabled(env)
-    ? dispatchScheduledRuns(
-        now,
-        dependencies.runPlatformFor(env),
-        steps,
-        (program) =>
-          program.pipe(
-            Effect.provide(dependencies.workflowRunsFor(env)),
-            Effect.runPromise,
-          ),
-        options,
-      )
-    : Promise.resolve({ status: "disabled" });
 
 export interface WorkflowDispatchParams {
   readonly scheduledTime: string;

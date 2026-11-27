@@ -5,7 +5,7 @@ import {
   remoteAccessKeys,
   requireManagementToken,
 } from "$/auth";
-import type { Dependencies } from "$/dependencies";
+import type { ServicesFor } from "$/dependencies";
 import { type AppHandler, createAppRoutes } from "$/routes/app";
 import { createAppApiRoutes } from "$/routes/app-api";
 import { createAssetRoutes } from "$/routes/assets";
@@ -31,48 +31,42 @@ import {
  * All but `/api` need an allowlisted Access user.
  */
 export const createRoutes = (
-  dependencies: Dependencies,
+  servicesFor: ServicesFor,
   appHandler: AppHandler,
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
   const api = new Hono<{ Bindings: CloudflareBindings }>();
-  api.route(
-    "/assets",
-    createAssetRoutes(dependencies.assetsFor, requireManagementToken),
-  );
+  api.route("/assets", createAssetRoutes(servicesFor, requireManagementToken));
   api.route(
     "/portfolios",
-    createPortfolioRoutes(dependencies.portfoliosFor, requireManagementToken),
+    createPortfolioRoutes(servicesFor, requireManagementToken),
   );
   api.route(
     "/workflows",
-    createWorkflowRoutes(dependencies.workflowsFor, requireManagementToken),
+    createWorkflowRoutes(servicesFor, requireManagementToken),
   );
   api.route(
     "/step-types",
-    createStepTypeRoutes(dependencies.workflowsFor, requireManagementToken),
+    createStepTypeRoutes(servicesFor, requireManagementToken),
   );
   api.route(
     "/workflow-defaults",
-    createWorkflowDefaultRoutes(
-      dependencies.workflowsFor,
-      requireManagementToken,
-    ),
+    createWorkflowDefaultRoutes(servicesFor, requireManagementToken),
   );
   api.route(
     "/workflow-assignments",
-    createAssignmentRoutes(dependencies.workflowsFor, requireManagementToken),
+    createAssignmentRoutes(servicesFor, requireManagementToken),
   );
-  api.route("/runs", createRunRoutes(dependencies, requireManagementToken));
+  api.route("/runs", createRunRoutes(servicesFor, requireManagementToken));
   api.route(
     "/datasets",
-    createDatasetRoutes(dependencies, requireManagementToken),
+    createDatasetRoutes(servicesFor, requireManagementToken),
   );
   api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
   const app = new Hono<{ Bindings: CloudflareBindings }>();
   app.route("/api", api);
-  app.route("/app-api", createAppApiRoutes(dependencies, keysFor));
+  app.route("/app-api", createAppApiRoutes(servicesFor, keysFor));
   app.route("/docs", createDocsRoutes(keysFor));
   // The dashboard used to live here; its pages are now at the top level.
   app.get("/dashboard", (c) => c.redirect("/", 302));

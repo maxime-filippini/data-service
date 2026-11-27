@@ -1,5 +1,6 @@
-import { Effect, Result } from "effect";
+import { Clock, Effect, Result } from "effect";
 
+import { nowIso } from "$/clock";
 import { validateValueDescribed } from "$/schema";
 import type { StepSpec } from "$/workflows/contracts";
 import { outputReference, parseReference } from "$/workflows/references";
@@ -15,13 +16,13 @@ import {
   terminal,
 } from "$/workflows/registry";
 import type { WorkflowRunParams } from "$/workflows/runs/contracts";
-import { type CapturedRun, WorkflowRuns } from "$/workflows/runs/store";
+import { type CapturedRun, WorkflowRunStore } from "$/workflows/runs/store";
 import {
+  Checkpointer,
   DEFAULT_STEP_POLICY,
-  NonRetryableStepError,
+  type Json,
   type StepPolicy,
-  type WorkflowSteps,
-} from "$/workflows/steps";
+} from "$/workflows/checkpointer";
 
 /**
  * Largest serialized outputs one step may return. Outputs are checkpointed
@@ -33,22 +34,8 @@ export const MAX_STEP_OUTPUT_BYTES = 32 * 1024;
 const DEPENDENCY_CHECK_INTERVAL_MS = 60_000;
 
 /** The services a run's execution needs. */
-export type ExecutorServices = WorkflowRuns | StepRegistry | StepServices;
-
-/** Runs an Effect program with the executor's services. */
-export type Runner = <A, E>(
-  program: Effect.Effect<A, E, ExecutorServices>,
-) => Promise<A>;
-
-type RunStepBody = <A>(
-  program: Effect.Effect<A, StepFailure, ExecutorServices>,
-) => Promise<A>;
-
-/**
- * A JSON value: what a step output can be once checkpointed. Kept shallow;
- * a recursive JSON type is too deep for the platform's serializable check.
- */
-type Json = {} | null;
+export type ExecutorServices =
+  Checkpointer | WorkflowRunStore | StepRegistry | StepServices;
 
 /** A completed step's outputs, by output name. */
 type StepOutputs = { readonly [name: string]: Json };
@@ -56,8 +43,6 @@ type StepOutputs = { readonly [name: string]: Json };
 /** How a run ended, as the Workflow instance's result. */
 export type ExecutionResult =
   { readonly status: "completed" } | { readonly status: "inactive" };
-
-const now = () => new Date().toISOString();
 
 /**
  * Resolve one input binding: a literal as given, a run-context field, or a
@@ -186,75 +171,77 @@ const attemptStep = Effect.fn("Workflows.attemptStep")(function* (
   stepType: StepType | undefined,
 ) {
   const spec = run.steps[index]!;
-  const runs = yield* WorkflowRuns;
+  const runs = yield* WorkflowRunStore;
   const ids = { runId: run.runId, stepId: spec.id };
   yield* asTransient(
     runs.stepStarted({
       ...ids,
       position: index + 1,
       type: spec.type,
-      now: now(),
+      now: yield* nowIso,
     }),
   );
   const outputs = yield* runImplementation(run, spec, prior, stepType).pipe(
     Effect.tapError((failure) =>
-      runs
-        .stepFailed({
+      Effect.flatMap(nowIso, (now) =>
+        runs.stepFailed({
           ...ids,
           error: failure.message,
           final: !failure.retry,
-          now: now(),
-        })
-        .pipe(Effect.ignore),
+          now,
+        }),
+      ).pipe(Effect.ignore),
     ),
   );
-  yield* asTransient(runs.stepCompleted({ ...ids, outputs, now: now() }));
+  yield* asTransient(
+    runs.stepCompleted({ ...ids, outputs, now: yield* nowIso }),
+  );
   return outputs;
 });
 
 /**
  * A wait step: resolve its deadline once, then check until it is ready or
- * the deadline passes, sleeping durably between checks. The checks and
- * absolute wake times are checkpointed so replay cannot reset the wait.
+ * the deadline passes, sleeping durably between checks. The deadline and
+ * each check's result (with its absolute wake time) are checkpointed, so a
+ * replay cannot reset the wait.
  */
-const waitForStep = async (
+const waitForStep = Effect.fn("Workflows.waitForStep")(function* (
   run: CapturedRun,
   index: number,
   prior: ReadonlyMap<string, StepOutputs>,
   stepType: StepType,
   wait: NonNullable<StepType["wait"]>,
-  steps: WorkflowSteps,
-  body: RunStepBody,
-  clock: () => number,
   policy: StepPolicy,
-): Promise<StepOutputs> => {
+) {
+  const checkpointer = yield* Checkpointer;
   const spec = run.steps[index]!;
   const ids = { runId: run.runId, stepId: spec.id };
 
   const startWait = Effect.gen(function* () {
+    const startedAt = yield* Clock.currentTimeMillis;
     yield* asTransient(
-      WorkflowRuns.use((runs) =>
+      WorkflowRunStore.use((runs) =>
         runs.stepStarted({
           ...ids,
           position: index + 1,
           type: spec.type,
-          now: now(),
+          now: new Date(startedAt).toISOString(),
         }),
       ),
     );
     const request = yield* resolveRequest(run, spec, prior, stepType);
-    return new Date(clock() + wait.timeoutMs(request.params)).toISOString();
+    return new Date(startedAt + wait.timeoutMs(request.params)).toISOString();
   });
-  const deadline = await steps.do(
+  const deadline = yield* checkpointer.checkpoint(
     `start wait ${spec.id}`,
-    () => body(startWait),
+    startWait,
     policy,
   );
   const deadlineMs = Date.parse(deadline);
 
   const checkOnce = Effect.gen(function* () {
     const request = yield* resolveRequest(run, spec, prior, stepType);
-    const runs = yield* WorkflowRuns;
+    const runs = yield* WorkflowRunStore;
     const result = yield* defectsAsTransient(wait.check(request, deadline));
     if (result.ready) {
       const outputs = yield* validateOutputs(stepType, result.outputs);
@@ -262,7 +249,7 @@ const waitForStep = async (
         runs.stepCompleted({
           ...ids,
           outputs,
-          now: now(),
+          now: yield* nowIso,
           resumesRun: true,
         }),
       );
@@ -274,7 +261,7 @@ const waitForStep = async (
         waiting: { deadline, missing: result.missing },
       }),
     );
-    const observedAt = clock();
+    const observedAt = yield* Clock.currentTimeMillis;
     if (observedAt >= deadlineMs) {
       const symbols = result.missing.map(({ symbol }) => symbol);
       return yield* terminal(
@@ -287,129 +274,104 @@ const waitForStep = async (
     };
   });
   for (let check = 1; ; check += 1) {
-    const result = await steps.do(
+    const result = yield* checkpointer.checkpoint(
       `check ${spec.id} ${check}`,
-      () => body(checkOnce),
+      checkOnce,
       policy,
     );
     if (result.ready) return result.outputs;
-    await steps.sleepUntil(`wait ${spec.id} ${check}`, result.wakeAt);
+    yield* checkpointer.sleepUntil(`wait ${spec.id} ${check}`, result.wakeAt);
   }
-};
-
-/**
- * A failed step's message. Cloudflare prefixes a rethrown non-retryable
- * error's message with its name; the diagnostic doesn't need it.
- */
-const errorMessage = (cause: unknown) =>
-  (cause instanceof Error ? cause.message : String(cause)).replace(
-    /^NonRetryableError: /u,
-    "",
-  );
+});
 
 /** How an execution environment runs the executor. */
 export interface ExecuteOptions {
-  /** The clock wait deadlines are measured against. */
-  readonly clock?: () => number;
   /**
    * Retries and timeout for each step's attempts; `DEFAULT_STEP_POLICY`
-   * when omitted. The Steps adapter applies it as its runtime can.
+   * when omitted. The Checkpointer applies it as its platform can.
    */
   readonly stepPolicy?: StepPolicy;
 }
 
+/** Record a run's outcome; a store failure is retried within the checkpoint. */
+const recordOutcome = <A extends Json, E extends { readonly message: string }>(
+  name: string,
+  record: (now: string) => Effect.Effect<A, E, WorkflowRunStore>,
+) =>
+  Effect.flatMap(Checkpointer, (checkpointer) =>
+    checkpointer.checkpoint(name, asTransient(Effect.flatMap(nowIso, record))),
+  );
+
 /**
  * A run's Workflow body: the one interpreter of a captured definition. It
  * loads the run (capturing its steps in the first checkpoint), executes the
- * steps in their saved order, each through the durable Steps adapter with
- * the environment's step policy, and records the outcome. On replay,
- * completed steps return their checkpointed outputs without executing again.
- * A terminal failure, or a transient one that outlasts its retries, stops
- * the run with a diagnostic.
+ * steps in their saved order, each in a checkpoint with the environment's
+ * step policy, and records the outcome. On replay, completed steps return
+ * their stored outputs without executing again. A terminal failure, or a
+ * transient one that outlasts its retries, records the failure and fails
+ * the run with it.
  */
-export const executeWorkflowRun = async (
+export const executeWorkflowRun = Effect.fn("Workflows.executeRun")(function* (
   params: WorkflowRunParams,
-  steps: WorkflowSteps,
-  run: Runner,
-  { clock = Date.now, stepPolicy = DEFAULT_STEP_POLICY }: ExecuteOptions = {},
-): Promise<ExecutionResult> => {
-  /** Run a step body; a failure becomes the error its retry needs. */
-  const body = async <A>(
-    program: Effect.Effect<A, StepFailure, ExecutorServices>,
-  ): Promise<A> => {
-    const result = await run(Effect.result(program));
-    if (Result.isSuccess(result)) return result.success;
-    throw result.failure.retry
-      ? new Error(result.failure.message)
-      : new NonRetryableStepError(result.failure.message);
-  };
-
-  const startRun = asTransient(
-    WorkflowRuns.use((runs) => runs.start(params.runId, now())),
-  ) as Effect.Effect<Json, StepFailure, ExecutorServices>;
-  const captured = await steps.do("start run", () => body(startRun));
-  if (captured === null) return { status: "inactive" };
+  { stepPolicy = DEFAULT_STEP_POLICY }: ExecuteOptions = {},
+) {
+  const checkpointer = yield* Checkpointer;
+  const captured = yield* recordOutcome("start run", (now) =>
+    WorkflowRunStore.use((runs) => runs.start(params.runId, now)),
+  );
+  if (captured === null) return { status: "inactive" } as ExecutionResult;
   const execution = captured as unknown as CapturedRun;
 
-  // Code-owned, so reading it outside a step is deterministic.
-  const types = await run(
-    StepRegistry.use((registry) =>
-      Effect.succeed(execution.steps.map((spec) => registry.get(spec.type))),
-    ),
-  );
+  // Code-owned, so reading it outside a checkpoint is deterministic.
+  const registry = yield* StepRegistry;
+  const types = execution.steps.map((spec) => registry.get(spec.type));
 
   const outputs = new Map<string, StepOutputs>();
   let current: StepSpec | undefined;
-  try {
+  const steps = Effect.gen(function* () {
     for (const [index, spec] of execution.steps.entries()) {
       current = spec;
       const stepType = types[index];
-      let produced: StepOutputs;
-      if (stepType?.wait === undefined) {
-        const attempt = attemptStep(execution, index, outputs, stepType);
-        produced = await steps.do(
-          `step ${spec.id}`,
-          () => body(attempt),
-          stepPolicy,
-        );
-      } else {
-        produced = await waitForStep(
-          execution,
-          index,
-          outputs,
-          stepType,
-          stepType.wait,
-          steps,
-          body,
-          clock,
-          stepPolicy,
-        );
-      }
+      const produced =
+        stepType?.wait === undefined
+          ? yield* checkpointer.checkpoint(
+              `step ${spec.id}`,
+              attemptStep(execution, index, outputs, stepType),
+              stepPolicy,
+            )
+          : yield* waitForStep(
+              execution,
+              index,
+              outputs,
+              stepType,
+              stepType.wait,
+              stepPolicy,
+            );
       outputs.set(spec.id, produced);
     }
     current = undefined;
-    const completeRun = asTransient(
-      WorkflowRuns.use((runs) => runs.complete(params.runId, now())),
+    yield* recordOutcome("complete run", (now) =>
+      WorkflowRunStore.use((runs) => runs.complete(params.runId, now)),
     );
-    await steps.do("complete run", () => body(completeRun));
-    return { status: "completed" };
-  } catch (cause) {
-    const message = errorMessage(cause);
-    const failed = current;
-    const recordFailure = asTransient(
-      WorkflowRuns.use((runs) =>
-        runs.fail({
-          runId: params.runId,
-          error:
-            failed === undefined
-              ? message
-              : `Step "${failed.id}" failed: ${message}`,
-          ...(failed === undefined ? {} : { stepId: failed.id }),
-          now: now(),
-        }),
-      ),
-    );
-    await steps.do("record failure", () => body(recordFailure));
-    throw cause;
-  }
-};
+  });
+
+  yield* steps.pipe(
+    Effect.catch((failure) => {
+      const failed = current;
+      return recordOutcome("record failure", (now) =>
+        WorkflowRunStore.use((runs) =>
+          runs.fail({
+            runId: params.runId,
+            error:
+              failed === undefined
+                ? failure.message
+                : `Step "${failed.id}" failed: ${failure.message}`,
+            ...(failed === undefined ? {} : { stepId: failed.id }),
+            now,
+          }),
+        ),
+      ).pipe(Effect.andThen(Effect.fail(failure)));
+    }),
+  );
+  return { status: "completed" } as ExecutionResult;
+});

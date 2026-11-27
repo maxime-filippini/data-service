@@ -33,14 +33,14 @@ import { appendFileSync } from "node:fs";
 import { Console, Effect, FileSystem, Path } from "effect";
 import { Command, Flag } from "effect/cli";
 
-import { FileRunArtifactsLive } from "$/local/artifacts";
+import { FileRunArtifactStoreLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import type { LocalInstance } from "$/local/platform";
-import { FileDatasetObjectStoreLive } from "$/local/published";
+import { FilePublishedFileStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
-import type { LocalStepEvent } from "$/local/steps";
+import type { LocalCheckpointEvent } from "$/local/checkpointer";
 import { HttpManagementApiLive, ManagementApi } from "$/management-api/client";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import type { Portfolio } from "$/portfolios/views";
@@ -137,9 +137,8 @@ const command = Command.make(
       yield* fs.makeDirectory(out, { recursive: true });
       const trace = makeTracer(path.join(out, "trace.log"));
 
-      // Virtual time: sleeps move it forward instantly. It starts at the
-      // real time because run records are stamped with the real time and
-      // the dependency check compares those stamps with the wait's deadline.
+      // Virtual time: sleeps move it forward instantly. Run records, wait
+      // deadlines and publications all read it through the Clock service.
       const start = Date.now();
       let now = start;
       const elapsed = (at = now) => {
@@ -244,7 +243,7 @@ const command = Command.make(
       const evicted = new Set<string>();
       const onEvent = (
         instance: LocalInstance,
-        event: LocalStepEvent | { readonly type: "execution" },
+        event: LocalCheckpointEvent | { readonly type: "execution" },
       ) => {
         const label = labels.get(instance.id) ?? instance.id.slice(0, 8);
         actor = label;
@@ -286,12 +285,12 @@ const command = Command.make(
 
       const service = localWorkflowService({
         db,
-        artifacts: FileRunArtifactsLive(rawBucket),
+        artifacts: FileRunArtifactStoreLive(rawBucket),
         sourceFor: fixtureSourceFor(
           loadEodhdFixtures(path.resolve(options.fixtures)),
         ),
         python: HttpPythonOperationsLive({ fetch: pythonFetch }, python.url),
-        published: FileDatasetObjectStoreLive(processedBucket),
+        published: FilePublishedFileStoreLive(processedBucket),
         now: () => now,
         platform: {
           autoStart: false,
@@ -305,7 +304,7 @@ const command = Command.make(
             return true;
           },
           onEvent,
-          steps: {
+          checkpointer: {
             delayScale: 0,
             sleepUntil: async (timestamp) => {
               now = Math.max(now, timestamp);
@@ -315,7 +314,7 @@ const command = Command.make(
       });
       const { platform } = service;
 
-      const routes = createRoutes(service.dependencies, {
+      const routes = createRoutes(service.servicesFor, {
         fetch: () => new Response("No app locally", { status: 404 }),
       });
       const managementApi = HttpManagementApiLive({

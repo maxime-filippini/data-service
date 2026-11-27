@@ -1,18 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { Effect } from "effect";
+
+import { localCheckpointer } from "$/local/checkpointer";
 import type { LocalPlatformOptions } from "$/local/platform";
-import { localSteps } from "$/local/steps";
+import type { Checkpointer } from "$/workflows/checkpointer";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import {
   DISPATCH_BATCH_SIZE,
-  scheduledWorkflowTick,
   startScheduledWorkflowTick,
 } from "$/workflows/runs/dispatch";
-import type { Steps } from "$/workflows/steps";
 
 import { assetPricesSpec, workflowService } from "./support/workflow-service";
 
@@ -31,18 +33,20 @@ const setup = (
     ...(options.platform === undefined ? {} : { platform: options.platform }),
     env: { WORKFLOW_DISPATCH: options.dispatch ?? "on" },
   });
-  const { api, json, dependencies, env } = service;
+  const { api, json, servicesFor, env } = service;
 
   /** One hourly tick at the given instant. */
   const tick = (
     at: string,
-    steps: Steps = localSteps(new Map(), { delayScale: 0 }),
+    checkpointer: typeof Checkpointer.Service = localCheckpointer(new Map(), {
+      delayScale: 0,
+    }),
   ) =>
     scheduledWorkflowTick(
-      dependencies,
+      servicesFor(env),
       env,
       new Date(at),
-      steps,
+      checkpointer,
       options.batchSize === undefined ? {} : { batchSize: options.batchSize },
     );
   /** Runs, oldest first. */
@@ -462,7 +466,7 @@ test("one dispatch launches 500 assignments in five checkpointed batches", async
   const checkpoints = new Map<string, string>();
   const report = await tick(
     "2024-01-10T06:00:00Z",
-    localSteps(checkpoints, { delayScale: 0 }),
+    localCheckpointer(checkpoints, { delayScale: 0 }),
   );
   assert.equal(report.status, "dispatched");
   if (report.status !== "dispatched") return;
@@ -499,13 +503,13 @@ test("dispatch resumes checkpointed batches without losing or duplicating assign
   });
   await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
   const checkpoints = new Map<string, string>();
-  const durable = localSteps(checkpoints, { delayScale: 0 });
-  const interrupted: Steps = {
-    do: (name, run, config) => {
-      if (name === "dispatch due batch 2")
-        throw new Error("dispatcher interrupted");
-      return durable.do(name, run, config);
-    },
+  const durable = localCheckpointer(checkpoints, { delayScale: 0 });
+  const interrupted: typeof Checkpointer.Service = {
+    ...durable,
+    checkpoint: (name, body, policy) =>
+      name === "dispatch due batch 2"
+        ? Effect.die(new Error("dispatcher interrupted"))
+        : durable.checkpoint(name, body, policy),
   };
   await assert.rejects(
     tick("2024-01-10T06:00:00Z", interrupted),
@@ -524,15 +528,13 @@ test("replaying a batch whose checkpoint was lost does not launch duplicate runs
     batchSize: 2,
   });
   await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
-  const durable = localSteps(new Map(), { delayScale: 0 });
-  const interrupted: Steps = {
-    do: async (name, run, config) => {
-      if (name === "dispatch due batch 1") {
-        await run();
-        throw new Error("checkpoint not saved");
-      }
-      return durable.do(name, run, config);
-    },
+  const durable = localCheckpointer(new Map(), { delayScale: 0 });
+  const interrupted: typeof Checkpointer.Service = {
+    ...durable,
+    checkpoint: (name, body, policy) =>
+      name === "dispatch due batch 1"
+        ? Effect.andThen(body, Effect.die(new Error("checkpoint not saved")))
+        : durable.checkpoint(name, body, policy),
   };
   await assert.rejects(
     tick("2024-01-10T06:00:00Z", interrupted),
@@ -570,19 +572,26 @@ test("a rejected assignment does not block subsequent dispatch batches", async (
     batchSize: 1,
   });
   const workflowId = await configure(6, ["AAPL.US", "MSFT.US", "NVDA.US"]);
-  const durable = localSteps(new Map(), { delayScale: 0 });
-  const steps: Steps = {
-    do: async (name, run, config) => {
-      if (name === "dispatch due batch 1")
-        await json(
-          api(`/workflows/${workflowId}/assignments/asset/AAPL.US`, "PATCH", {
-            enabled: false,
-          }),
-        );
-      return durable.do(name, run, config);
-    },
+  const durable = localCheckpointer(new Map(), { delayScale: 0 });
+  const checkpointer: typeof Checkpointer.Service = {
+    ...durable,
+    checkpoint: (name, body, policy) =>
+      Effect.andThen(
+        name === "dispatch due batch 1"
+          ? Effect.promise(() =>
+              json(
+                api(
+                  `/workflows/${workflowId}/assignments/asset/AAPL.US`,
+                  "PATCH",
+                  { enabled: false },
+                ),
+              ),
+            )
+          : Effect.void,
+        durable.checkpoint(name, body, policy),
+      ),
   };
-  const report = await tick("2024-01-10T06:00:00Z", steps);
+  const report = await tick("2024-01-10T06:00:00Z", checkpointer);
   assert.equal(report.status === "dispatched" && report.failures.length, 1);
   assert.deepEqual(
     (await outcomes()).map(([symbol]) => symbol),

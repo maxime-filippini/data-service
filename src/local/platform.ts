@@ -1,20 +1,22 @@
+import { Cause, Effect, Exit } from "effect";
+
+import type { Checkpointer } from "$/workflows/checkpointer";
 import type {
-  RunPlatform,
+  RunWorkflowBinding,
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
-import type { WorkflowSteps } from "$/workflows/steps";
 
 import {
-  type LocalStepEvent,
-  type LocalStepsOptions,
-  localSteps,
-} from "./steps";
+  type LocalCheckpointEvent,
+  type LocalCheckpointerOptions,
+  localCheckpointer,
+} from "./checkpointer";
 
-/** Executes one run's Workflow body with the given steps adapter. */
+/** One run's Workflow body, given the instance's Checkpointer. */
 export type ExecuteRun = (
   params: WorkflowRunParams,
-  steps: WorkflowSteps,
-) => Promise<unknown>;
+  checkpointer: typeof Checkpointer.Service,
+) => Effect.Effect<unknown, unknown>;
 
 type LocalStatus = "queued" | "running" | "complete" | "errored";
 
@@ -34,28 +36,31 @@ export interface LocalInstance {
 export interface LocalPlatformOptions {
   /** Start instances when created (default). False holds them `queued`. */
   readonly autoStart?: boolean;
-  readonly steps?: Omit<
-    LocalStepsOptions,
-    "interruptBefore" | "onInterrupt" | "onEvent"
+  readonly checkpointer?: Omit<
+    LocalCheckpointerOptions,
+    "interruptBefore" | "onEvent"
   >;
   /**
-   * Simulate eviction: stop an execution before the named step (see
-   * `LocalStepsOptions.interruptBefore`). `instance.executions` counts the
-   * current execution from 1.
+   * Simulate eviction: interrupt an execution before the named checkpoint
+   * (see `LocalCheckpointerOptions.interruptBefore`). `instance.executions`
+   * counts the current execution from 1.
    */
-  readonly interruptBefore?: (instance: LocalInstance, step: string) => boolean;
+  readonly interruptBefore?: (
+    instance: LocalInstance,
+    checkpoint: string,
+  ) => boolean;
   /**
    * Notified when an execution of an instance's body begins and of every
    * checkpoint event in it, for tracing.
    */
   readonly onEvent?: (
     instance: LocalInstance,
-    event: LocalStepEvent | { readonly type: "execution" },
+    event: LocalCheckpointEvent | { readonly type: "execution" },
   ) => void;
 }
 
 /** The local Workflow binding plus controls for tests and the fixture run. */
-export interface LocalRunPlatform extends RunPlatform {
+export interface LocalRunPlatform extends RunWorkflowBinding {
   readonly instances: ReadonlyMap<string, LocalInstance>;
   /** Start a held instance. */
   readonly start: (id: string) => void;
@@ -68,8 +73,10 @@ export interface LocalRunPlatform extends RunPlatform {
 /**
  * An in-process stand-in for the run Workflow binding. Instance IDs are
  * unique, as on the platform: creating an existing ID fails, and looking up
- * an unknown one fails. Each instance executes the same run body through the
- * local Steps adapter, keeping its checkpoints so it can be replayed.
+ * an unknown one fails. Each instance executes the same run body with a
+ * local Checkpointer over its own stored results, so it can be replayed. An
+ * eviction interrupts the execution and leaves the instance running until
+ * `replay`.
  */
 export const localRunPlatform = (
   execute: ExecuteRun,
@@ -101,26 +108,24 @@ export const localRunPlatform = (
     instance.status = "running";
     instance.executions += 1;
     options.onEvent?.(instance, { type: "execution" });
-    const settled = new Promise<void>((resolve) => {
-      const steps = localSteps(instance.checkpoints, {
-        ...options.steps,
-        interruptBefore: (step) =>
-          options.interruptBefore?.(instance, step) ?? false,
-        // An evicted instance stays running until the platform replays it.
-        onInterrupt: () => resolve(),
-        onEvent: (event) => options.onEvent?.(instance, event),
-      });
-      execute(instance.params, steps).then(
-        () => {
-          instance.status = "complete";
-          resolve();
-        },
-        (error: unknown) => {
-          instance.status = "errored";
-          instance.error = error;
-          resolve();
-        },
-      );
+    const checkpointer = localCheckpointer(instance.checkpoints, {
+      ...options.checkpointer,
+      interruptBefore: (name) =>
+        options.interruptBefore?.(instance, name) ?? false,
+      onEvent: (event) => options.onEvent?.(instance, event),
+    });
+    const settled = Effect.runPromiseExit(
+      execute(instance.params, checkpointer),
+    ).then((exit) => {
+      if (Exit.isSuccess(exit)) {
+        instance.status = "complete";
+      } else if (!Cause.hasInterruptsOnly(exit.cause)) {
+        instance.status = "errored";
+        const failure = Cause.findErrorOption(exit.cause);
+        instance.error =
+          failure._tag === "Some" ? failure.value : Cause.squash(exit.cause);
+      }
+      // Interrupted: evicted, so it stays running until replayed.
     });
     pending.add(settled);
     void settled.then(() => pending.delete(settled));

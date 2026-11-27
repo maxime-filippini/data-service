@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
-import { RunArtifacts } from "$/workflows/artifacts";
+import { nowIso } from "$/clock";
+import { RunArtifactStore } from "$/workflows/artifacts";
 import type { Subject } from "$/workflows/contracts";
 
 import {
@@ -8,7 +9,7 @@ import {
   type PublishedDataset,
   publishedDatasetKey,
 } from "./contracts";
-import { DatasetPublicationStore, DatasetObjectStore } from "./store";
+import { PublicationStore, PublishedFileStore } from "./store";
 
 const PARQUET = "application/vnd.apache.parquet";
 
@@ -42,7 +43,7 @@ export interface PublishRequest {
 export const publishDataset = Effect.fn("Datasets.publish")(function* (
   request: PublishRequest,
 ) {
-  const content = yield* RunArtifacts.use((artifacts) =>
+  const content = yield* RunArtifactStore.use((artifacts) =>
     artifacts.get(request.artifact.id),
   );
   if (content === null)
@@ -58,14 +59,15 @@ export const publishDataset = Effect.fn("Datasets.publish")(function* (
         message: "Could not read the run artifact",
       }),
   });
-  const stored = yield* DatasetObjectStore.use((datasets) =>
+  const stored = yield* PublishedFileStore.use((datasets) =>
     datasets.put(
       publishedDatasetKey(request.dataset, request.subject),
       new Uint8Array(body),
       PARQUET,
     ),
   );
-  yield* DatasetPublicationStore.use((publications) =>
+  const publishedAt = yield* nowIso;
+  yield* PublicationStore.use((publications) =>
     publications.record({
       dataset: request.dataset,
       subject: request.subject,
@@ -76,7 +78,7 @@ export const publishDataset = Effect.fn("Datasets.publish")(function* (
       schema: request.artifact.schema,
       etag: stored.etag,
       size: stored.size,
-      publishedAt: new Date().toISOString(),
+      publishedAt,
     }),
   );
 });
@@ -90,7 +92,7 @@ export const currentDatasetData = Effect.fn("Datasets.currentData")(function* (
   dataset: PublishedDataset,
   subject: Subject,
 ) {
-  const object = yield* DatasetObjectStore.use((datasets) =>
+  const object = yield* PublishedFileStore.use((datasets) =>
     datasets.get(publishedDatasetKey(dataset, subject)),
   );
   if (object === null)

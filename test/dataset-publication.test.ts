@@ -23,12 +23,12 @@ import { promisify } from "node:util";
 import type { Layer } from "effect";
 
 import type { PublicationView } from "$/datasets/contracts";
-import type { DatasetObjectStore } from "$/datasets/store";
-import { FileRunArtifactsLive } from "$/local/artifacts";
+import type { PublishedFileStore } from "$/datasets/store";
+import { FileRunArtifactStoreLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import {
-  FileDatasetObjectStoreLive,
-  memoryDatasetObjectStore,
+  FilePublishedFileStoreLive,
+  memoryPublishedFileStore,
 } from "$/local/published";
 import {
   type LocalPythonService,
@@ -125,7 +125,7 @@ describe(
 
     const setup = (
       options: {
-        readonly published?: Layer.Layer<DatasetObjectStore>;
+        readonly published?: Layer.Layer<PublishedFileStore>;
         readonly platform?: LocalPlatformOptions;
         readonly now?: () => number;
         readonly processed?: string;
@@ -180,20 +180,20 @@ describe(
       };
       const service = localWorkflowService({
         db: faultyDb,
-        artifacts: FileRunArtifactsLive(join(root, "raw")),
+        artifacts: FileRunArtifactStoreLive(join(root, "raw")),
         sourceFor: fixtureSourceFor(fixtures, (url) => provider.respond(url)),
         python: HttpPythonOperationsLive(
           fetcher,
           options.pythonUrl ?? python.url,
         ),
-        published: options.published ?? FileDatasetObjectStoreLive(processed),
+        published: options.published ?? FilePublishedFileStoreLive(processed),
         platform: {
           ...options.platform,
-          steps: { delayScale: 0, ...options.platform?.steps },
+          checkpointer: { delayScale: 0, ...options.platform?.checkpointer },
         },
         ...(options.now === undefined ? {} : { now: options.now }),
       });
-      const routes = createRoutes(service.dependencies, {
+      const routes = createRoutes(service.servicesFor, {
         fetch: () => new Response("app"),
       });
       const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
@@ -289,7 +289,7 @@ describe(
       return {
         api,
         json,
-        pages: pageData({} as CloudflareBindings, service.dependencies),
+        pages: pageData({} as CloudflareBindings, service.servicesFor),
         configure,
         startRun,
         runDetail,
@@ -545,7 +545,7 @@ describe(
         platform: {
           interruptBefore: (instance, name) =>
             name === "wait dependencies 1" && instance.executions === 1,
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = Math.max(now, timestamp);
             },
@@ -605,7 +605,7 @@ describe(
         platform: {
           interruptBefore: (instance, name) =>
             name === "wait dependencies 1" && instance.executions === 1,
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = Math.max(timestamp, now);
             },
@@ -644,7 +644,7 @@ describe(
       const service = setup({
         now: () => now,
         platform: {
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = timestamp;
             },
@@ -680,7 +680,7 @@ describe(
       const service = setup({
         now: () => now,
         platform: {
-          steps: {
+          checkpointer: {
             sleepUntil: async (timestamp) => {
               now = timestamp;
             },
@@ -969,7 +969,7 @@ describe(
     });
 
     test("publication metadata is recorded only after the object write succeeds", async () => {
-      const storage = memoryDatasetObjectStore();
+      const storage = memoryPublishedFileStore();
       const { configure, runFor, publication } = setup({
         published: storage.layer,
       });

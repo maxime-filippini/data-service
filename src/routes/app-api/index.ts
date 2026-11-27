@@ -6,7 +6,7 @@ import {
   remoteAccessKeys,
   requireAccessUser,
 } from "$/auth";
-import type { Dependencies } from "$/dependencies";
+import type { ServicesFor } from "$/dependencies";
 import type { DashboardUser } from "$/pages/views";
 import { createAssetRoutes } from "$/routes/assets";
 import { createDatasetRoutes } from "$/routes/datasets";
@@ -51,7 +51,7 @@ const requireSameOrigin: MiddlewareHandler = async (c, next) => {
  * shared with the management API through the same route modules.
  */
 export const createAppApiRoutes = (
-  dependencies: Dependencies,
+  servicesFor: ServicesFor,
   keysFor: AccessKeys = remoteAccessKeys,
 ) => {
   const app = new Hono<AppApiEnv>();
@@ -66,32 +66,20 @@ export const createAppApiRoutes = (
 
   app.get("/me", (c) => c.json<DashboardUser>({ email: c.get("accessEmail") }));
 
-  app.route(
-    "/assets",
-    createAssetRoutes(dependencies.assetsFor, accessChecked),
-  );
-  app.route(
-    "/portfolios",
-    createPortfolioRoutes(dependencies.portfoliosFor, accessChecked),
-  );
-  app.route(
-    "/workflows",
-    createWorkflowRoutes(dependencies.workflowsFor, accessChecked),
-  );
-  app.route(
-    "/step-types",
-    createStepTypeRoutes(dependencies.workflowsFor, accessChecked),
-  );
+  app.route("/assets", createAssetRoutes(servicesFor, accessChecked));
+  app.route("/portfolios", createPortfolioRoutes(servicesFor, accessChecked));
+  app.route("/workflows", createWorkflowRoutes(servicesFor, accessChecked));
+  app.route("/step-types", createStepTypeRoutes(servicesFor, accessChecked));
   app.route(
     "/workflow-defaults",
-    createWorkflowDefaultRoutes(dependencies.workflowsFor, accessChecked),
+    createWorkflowDefaultRoutes(servicesFor, accessChecked),
   );
   app.route(
     "/workflow-assignments",
-    createAssignmentRoutes(dependencies.workflowsFor, accessChecked),
+    createAssignmentRoutes(servicesFor, accessChecked),
   );
-  app.route("/workflow-runs", createRunRoutes(dependencies, accessChecked));
-  app.route("/publications", createDatasetRoutes(dependencies, accessChecked));
+  app.route("/workflow-runs", createRunRoutes(servicesFor, accessChecked));
+  app.route("/publications", createDatasetRoutes(servicesFor, accessChecked));
 
   app.all("*", (c) => c.json({ error: "Not found" }, 404));
 

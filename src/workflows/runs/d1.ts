@@ -20,7 +20,7 @@ import {
   type CapturedRun,
   type ClaimOutcome,
   type DueAssignment,
-  WorkflowRuns,
+  WorkflowRunStore,
 } from "./store";
 
 /** Private `workflow_runs` row. */
@@ -169,10 +169,12 @@ interface EligibilityRow {
   readonly subject_enabled: number | null;
 }
 
-export const D1WorkflowRunsLive = (db: D1Database): Layer.Layer<WorkflowRuns> =>
+export const D1WorkflowRunStoreLive = (
+  db: D1Database,
+): Layer.Layer<WorkflowRunStore> =>
   Layer.succeed(
-    WorkflowRuns,
-    WorkflowRuns.of({
+    WorkflowRunStore,
+    WorkflowRunStore.of({
       // One batch, one transaction: claim the slot, or record a skip when
       // another run holds it, then explain whichever happened. The unique
       // indexes make the queued insert a no-op when the slot is taken or the

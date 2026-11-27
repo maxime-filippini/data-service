@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Effect } from "effect";
 
-import { MarketDataSource } from "$/market-data";
-import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
+import { PriceProvider } from "$/market-data";
+import { EodhdPriceProviderLive } from "$/market-data/eodhd";
 
 const retrieve = (token: unknown) =>
-  MarketDataSource.use((source) =>
+  PriceProvider.use((source) =>
     source.retrieveDaily("AAPL.US", { from: "2024-01-01", to: "2024-01-03" }),
   ).pipe(
-    Effect.provide(EodhdMarketDataSourceLive(token)),
+    Effect.provide(EodhdPriceProviderLive(token)),
     Effect.result,
     Effect.runPromise,
   );

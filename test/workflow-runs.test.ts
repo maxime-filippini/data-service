@@ -18,12 +18,12 @@ import {
   rawPricesEodContract,
   type StepType,
 } from "$/workflows/registry";
-import type { RunPlatform } from "$/workflows/runs/contracts";
+import type { RunWorkflowBinding } from "$/workflows/runs/contracts";
 import type {
   WorkflowRunDetail,
   WorkflowRunSummary,
 } from "$/workflows/runs/views";
-import type { StepPolicy } from "$/workflows/steps";
+import type { StepPolicy } from "$/workflows/checkpointer";
 
 import { makeTestDatabase } from "./support/d1";
 
@@ -101,7 +101,25 @@ const setup = (
     respond: () => undefined,
   };
   const artifacts = memoryRunArtifacts();
+  /** Faults injected between the API and the Workflow binding. */
+  const faults = {
+    /** "lost": the instance is created but the response is lost. */
+    create: "none" as "none" | "lost" | "failed",
+    getUnavailable: false,
+  };
   const service = localWorkflowService({
+    wrapBinding: (binding): RunWorkflowBinding => ({
+      create: async (create) => {
+        if (faults.create === "failed") throw new Error("network error");
+        const instance = await binding.create(create);
+        if (faults.create === "lost") throw new Error("response lost");
+        return instance;
+      },
+      get: async (id) => {
+        if (faults.getUnavailable) throw new Error("platform unavailable");
+        return binding.get(id);
+      },
+    }),
     db,
     artifacts: artifacts.layer,
     sourceFor: fixtureSourceFor(fixtures, (url) => {
@@ -113,37 +131,14 @@ const setup = (
       oversized,
       ...(options.extraStepTypes ?? []),
     ],
-    platform: { steps: { delayScale: 0 }, ...options.platform },
+    platform: { checkpointer: { delayScale: 0 }, ...options.platform },
     ...(options.stepPolicy === undefined
       ? {}
       : { stepPolicy: options.stepPolicy }),
   });
   const platform = service.platform;
 
-  /** Faults injected between the API and the Workflow binding. */
-  const faults = {
-    /** "lost": the instance is created but the response is lost. */
-    create: "none" as "none" | "lost" | "failed",
-    getUnavailable: false,
-  };
-  const runPlatform: RunPlatform = {
-    create: async (create) => {
-      if (faults.create === "failed") throw new Error("network error");
-      const instance = await platform.create(create);
-      if (faults.create === "lost") throw new Error("response lost");
-      return instance;
-    },
-    get: async (id) => {
-      if (faults.getUnavailable) throw new Error("platform unavailable");
-      return platform.get(id);
-    },
-  };
-
-  const dependencies = {
-    ...service.dependencies,
-    runPlatformFor: () => runPlatform,
-  };
-  const routes = createRoutes(dependencies, {
+  const routes = createRoutes(service.servicesFor, {
     fetch: () => new Response("app"),
   });
   const env = { MANAGEMENT_API_TOKEN: TOKEN } as CloudflareBindings;
@@ -238,7 +233,7 @@ const setup = (
     provider,
     requests,
     artifacts,
-    pages: pageData({} as CloudflareBindings, dependencies),
+    pages: pageData({} as CloudflareBindings, service.servicesFor),
   };
 };
 

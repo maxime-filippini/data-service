@@ -11,25 +11,33 @@ import { createLocalJWKSet, type JWK } from "jose";
 import { D1AssetStoreLive } from "$/assets/d1";
 import { requireManagementToken } from "$/auth";
 import { DatasetError } from "$/datasets/contracts";
-import { D1DatasetPublicationStoreLive } from "$/datasets/d1";
-import { R2DatasetObjectStoreLive } from "$/datasets/r2";
-import { DatasetPublicationStore } from "$/datasets/store";
-import { dependencies } from "$/dependencies";
+import { D1PublicationStoreLive } from "$/datasets/d1";
+import { R2PublishedFileStoreLive } from "$/datasets/r2";
+import { PublicationStore } from "$/datasets/store";
+import { cloudflareServices } from "$/dependencies";
 import { fixtureSourceFor } from "$/local/eodhd-fixtures";
-import { MarketDataSourcesLayer } from "$/market-data/sources";
+import { PriceProvidersLayer } from "$/market-data/sources";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { D1PortfoliosLive } from "$/portfolios/d1";
 import { createRoutes } from "$/routes";
-import { R2RunArtifactsLive } from "$/workflows/artifacts";
+import { R2RunArtifactStoreLive } from "$/workflows/artifacts";
+import type { Checkpointer } from "$/workflows/checkpointer";
+import {
+  CloudflareCheckpointerLive,
+  runInstanceBody,
+} from "$/workflows/cloudflare";
 import { executeWorkflowRun } from "$/workflows/executor";
 import { StepRegistryLive } from "$/workflows/registry";
 import type {
-  RunPlatform,
+  RunWorkflowBinding,
   WorkflowRunParams,
 } from "$/workflows/runs/contracts";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
-import { type Steps, workflowSteps } from "$/workflows/steps";
+import { D1WorkflowRunStoreLive } from "$/workflows/runs/d1";
+import {
+  RunCoordinatorLive,
+  scheduledWorkflowTick,
+} from "$/workflows/runs/coordinator";
+import { BindingRunLauncherLive } from "$/workflows/runs/launcher";
 
 // @ts-expect-error -- built SvelteKit adapter, as in the main Worker.
 import sveltekit from "../../app/.svelte-kit/cloudflare/_worker.js";
@@ -43,6 +51,11 @@ const control = new Hono<{ Bindings: SmokeBindings }>();
 type SmokeBindings = CloudflareBindings & {
   SMOKE_SYMBOL_PREFIX: string;
   SMOKE_ACCESS_JWK: string;
+  /**
+   * Local runs only: the engine as a local process at this URL instead of
+   * the container, for hosts where `wrangler dev` cannot start containers.
+   */
+  SMOKE_ENGINE_URL?: string;
 };
 
 type LaunchFault = "lose-create-and-lookup" | "lose-lookup";
@@ -79,7 +92,7 @@ function fixtureSources(prefix: string) {
   });
 }
 
-function platform(env: SmokeBindings, fault: LaunchFault): RunPlatform {
+function platform(env: SmokeBindings, fault: LaunchFault): RunWorkflowBinding {
   return {
     create: async (options) => {
       const instance = await env.WORKFLOW_RUNS.create(options);
@@ -100,10 +113,10 @@ function platform(env: SmokeBindings, fault: LaunchFault): RunPlatform {
 
 function publicationsWithFault(db: D1Database) {
   return Layer.effect(
-    DatasetPublicationStore,
+    PublicationStore,
     Effect.gen(function* () {
-      const store = yield* DatasetPublicationStore;
-      return DatasetPublicationStore.of({
+      const store = yield* PublicationStore;
+      return PublicationStore.of({
         ...store,
         record: (publication) =>
           Effect.gen(function* () {
@@ -125,7 +138,7 @@ function publicationsWithFault(db: D1Database) {
           }),
       });
     }),
-  ).pipe(Layer.provide(D1DatasetPublicationStoreLive(db)));
+  ).pipe(Layer.provide(D1PublicationStoreLive(db)));
 }
 
 /** Only this Worker wraps the production adapters with injected faults. */
@@ -139,7 +152,11 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
   ) {
     const env = this.env;
     const db = env.MARKET_DATA_DB;
-    const engine = env.CALCULATION_ENGINE.getByName("engine");
+    const engineUrl = env.SMOKE_ENGINE_URL ?? "http://engine";
+    const engine =
+      env.SMOKE_ENGINE_URL === undefined
+        ? env.CALCULATION_ENGINE.getByName("engine")
+        : { fetch: (url: string, init: RequestInit) => fetch(url, init) };
     const fetcher = {
       async fetch(url: string, init: RequestInit) {
         const response = await engine.fetch(url, init);
@@ -154,20 +171,22 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
       },
     };
     const layer = Layer.mergeAll(
-      D1WorkflowRunsLive(db),
+      CloudflareCheckpointerLive(
+        step,
+        (message) => new NonRetryableError(message),
+      ),
+      D1WorkflowRunStoreLive(db),
       StepRegistryLive,
       D1AssetStoreLive(db),
       D1PortfoliosLive(db),
-      MarketDataSourcesLayer(fixtureSources(env.SMOKE_SYMBOL_PREFIX)),
-      R2RunArtifactsLive(env.MARKET_DATA_BUCKET),
-      HttpPythonOperationsLive(fetcher, "http://engine"),
+      PriceProvidersLayer(fixtureSources(env.SMOKE_SYMBOL_PREFIX)),
+      R2RunArtifactStoreLive(env.MARKET_DATA_BUCKET),
+      HttpPythonOperationsLive(fetcher, engineUrl),
       publicationsWithFault(db),
-      R2DatasetObjectStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
+      R2PublishedFileStoreLive(env.PROCESSED_MARKET_DATA_BUCKET),
     );
-    return executeWorkflowRun(
-      event.payload,
-      workflowSteps(step, (error) => new NonRetryableError(error.message)),
-      (program) => program.pipe(Effect.provide(layer), Effect.runPromise),
+    return runInstanceBody(
+      executeWorkflowRun(event.payload).pipe(Effect.provide(layer)),
     );
   }
 }
@@ -176,7 +195,10 @@ export class SmokeDefinitionRun extends WorkflowEntrypoint<
  * Runs the dispatch body inside the request or cron invocation: the smoke
  * exercises recovery of the runs it launches, not of the dispatcher itself.
  */
-const inlineSteps: Steps = { do: (_name, run) => run() };
+const inlineCheckpointer: typeof Checkpointer.Service = {
+  checkpoint: (_name, body) => body,
+  sleepUntil: () => Effect.void,
+};
 
 control.use("/__smoke/*", requireManagementToken);
 control.post("/__smoke/tick", async (c) => {
@@ -186,11 +208,20 @@ control.post("/__smoke/tick", async (c) => {
     return c.json({ error: "Invalid tick" }, 400);
   const { env } = c;
   const { fault } = tick;
-  const deps =
+  // A fault replaces the launcher the coordinator launches runs with.
+  const services =
     fault === undefined
-      ? dependencies
-      : { ...dependencies, runPlatformFor: () => platform(env, fault) };
-  return c.json(await scheduledWorkflowTick(deps, env, at, inlineSteps));
+      ? cloudflareServices(env)
+      : Layer.provideMerge(
+          RunCoordinatorLive,
+          Layer.merge(
+            cloudflareServices(env),
+            BindingRunLauncherLive(platform(env, fault)),
+          ),
+        );
+  return c.json(
+    await scheduledWorkflowTick(services, env, at, inlineCheckpointer),
+  );
 });
 control.get("/__smoke/instances/:id", async (c) => {
   const id = c.req.param("id");
@@ -216,7 +247,7 @@ export default {
     const keys = createLocalJWKSet({
       keys: [JSON.parse(env.SMOKE_ACCESS_JWK) as JWK],
     });
-    return createRoutes(dependencies, sveltekit, () => keys).fetch(
+    return createRoutes(cloudflareServices, sveltekit, () => keys).fetch(
       request,
       env,
       ctx,
@@ -224,10 +255,10 @@ export default {
   },
   async scheduled(controller, env) {
     await scheduledWorkflowTick(
-      dependencies,
+      cloudflareServices(env),
       env,
       new Date(controller.scheduledTime),
-      inlineSteps,
+      inlineCheckpointer,
     );
   },
 } satisfies ExportedHandler<SmokeBindings>;

@@ -4,7 +4,7 @@ description: Exercise durable workflow recovery in an isolated deployment.
 ---
 
 The smoke test deploys a separate Worker, Workflow, container app and D1
-database. It uses the real Cloudflare Steps adapter, Python engine, application
+database. It uses the real Cloudflare Checkpointer, Python engine, application
 API and SvelteKit run pages. Its test adapter serves fixture prices through
 the EODHD client and injects failures around real platform operations. The
 regular fixture command and the production Worker do not load these adapters.
@@ -61,6 +61,48 @@ publication to an `evidence-*` subdirectory. Keep the adjacent secret and
 private key files private. Use a fresh smoke database for a new scenario, so
 earlier enabled fixtures do not receive the fixed scheduled occurrence.
 
+## Run locally
+
+The same suite runs against a `wrangler dev` session: workerd's local
+Workflows, D1 and Durable Objects, with the two dev R2 buckets as remote
+bindings. They stay remote because the Python engine reads and writes R2 over
+S3 itself. This exercises the Cloudflare Checkpointer, the Workflow entry
+points and `cloudflareServices` without deploying anything. It does not
+show durability on Cloudflare's infrastructure (eviction across machines,
+real retry timing, container cold starts), so a deployed run is still due
+before a production cutover.
+
+Run it with one command. Docker isn't needed. The env file needs the dev R2
+S3 credentials, and Wrangler must be logged in, because the buckets are remote
+bindings.
+
+```sh
+pnpm smoke:local                 # uses .dev.vars
+pnpm smoke:local --container     # the engine container through Docker
+```
+
+`pnpm smoke:local` runs these steps:
+
+1. Prepare a fresh private directory and write a local config
+   (`configure.ts --local`).
+2. Apply the migrations and the fault table to local D1, and build the app.
+3. Start the engine as a local `uv` process on the dev buckets, and the smoke
+   Worker under `wrangler dev`.
+4. Run `run.ts` against `http://localhost:8787`.
+5. Stop everything.
+
+The engine and Wrangler logs and the evidence stay in the printed directory.
+With a `localhost` URL, the runner sends its pause, resume and describe
+commands to the local session (`wrangler workflows instances … --local`).
+
+Use `--container` to start the engine container instead, where `wrangler dev`
+can start containers. On the yoloagent VM, workerd's container sidecar timed
+out before the engine started.
+
+Run it before merging changes to the Cloudflare adapters
+(`src/workflows/cloudflare.ts`, the Workflow entry points,
+`src/dependencies.ts`, the R2 adapters) or to the smoke itself.
+
 ## Retention
 
 List the two dev bucket configurations. The only object expiry should be
@@ -112,6 +154,15 @@ Cloudflare reported a 2,592,000-second age transition for prefix `runs/`
 on the dev raw bucket and no object deletion rule on the dev processed
 bucket. The raw prefix was empty before the smoke scenario. Production
 configuration was outside the deployment.
+
+On 2026-11-22 the full suite also passed locally (see [Run locally](#run-locally)),
+after run execution moved to platform-neutral services (#57): the
+Checkpointer, RunLauncher, RunCoordinator and per-host service layers. The
+engine ran as a local process. The scheduled portfolio paused while waiting,
+resumed and published 2,882 bytes, with two attempts each for volatility and
+publication. The timeout failed at its dependency step, the rerun completed
+the edited definition, the terminal input failed on attempt 1, and the
+transient outage used all 4 attempts.
 
 After removing the superseded download, calculation, queue, and processor
 paths (issue #39), the contracted Worker and single Python container were

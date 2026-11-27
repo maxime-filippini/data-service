@@ -43,18 +43,18 @@ import {
   publishedDatasetKey,
 } from "$/datasets/contracts";
 import { previousDay } from "$/datetime";
-import { FileRunArtifactsLive } from "$/local/artifacts";
+import { FileRunArtifactStoreLive } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
-import { FileDatasetObjectStoreLive } from "$/local/published";
+import { FilePublishedFileStoreLive } from "$/local/published";
 import { startPythonService } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { makeSqliteD1 } from "$/local/sqlite-d1";
-import { localSteps } from "$/local/steps";
+import { localCheckpointer } from "$/local/checkpointer";
 import { HttpManagementApiLive, ManagementApi } from "$/management-api/client";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import type { Portfolio } from "$/portfolios/views";
 import { createRoutes } from "$/routes";
-import { scheduledWorkflowTick } from "$/workflows/runs/dispatch";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import type { WorkflowRunDetail } from "$/workflows/runs/views";
 
 import { runScript, ScriptError } from "./cli";
@@ -126,13 +126,13 @@ const command = Command.make(
       const { db } = makeSqliteD1(path.join(out, "d1.sqlite"));
       const service = localWorkflowService({
         db,
-        artifacts: FileRunArtifactsLive(rawBucket),
+        artifacts: FileRunArtifactStoreLive(rawBucket),
         sourceFor: fixtureSourceFor(fixtures),
         python: HttpPythonOperationsLive({ fetch }, python.url),
-        published: FileDatasetObjectStoreLive(processedBucket),
-        platform: { steps: { delayScale: 0 } },
+        published: FilePublishedFileStoreLive(processedBucket),
+        platform: { checkpointer: { delayScale: 0 } },
       });
-      const routes = createRoutes(service.dependencies, {
+      const routes = createRoutes(service.servicesFor, {
         fetch: () => new Response("No app locally", { status: 404 }),
       });
       const idle = Effect.promise(() => service.platform.idle());
@@ -210,10 +210,10 @@ const command = Command.make(
           const at = `${options.date}T03:00:00Z`;
           const tick = yield* Effect.promise(() =>
             scheduledWorkflowTick(
-              service.dependencies,
+              service.servicesFor(env),
               env,
               new Date(at),
-              localSteps(new Map(), { delayScale: 0 }),
+              localCheckpointer(new Map(), { delayScale: 0 }),
             ),
           );
           if (tick.status !== "dispatched")

@@ -1,17 +1,17 @@
 import { Context, Effect, Layer } from "effect";
 
-import { MarketDataError, MarketDataSource } from "$/market-data";
-import { EodhdMarketDataSourceLive } from "$/market-data/eodhd";
+import { MarketDataError, PriceProvider } from "$/market-data";
+import { EodhdPriceProviderLive } from "$/market-data/eodhd";
 
 /** Selects the download adapter for a registered provider. */
 export type SourceFor = (
   provider: string,
-) => Layer.Layer<MarketDataSource, MarketDataError>;
+) => Layer.Layer<PriceProvider, MarketDataError>;
 
 /** A provider with no adapter: a configuration failure, not a retryable one. */
 export const unknownProvider = (provider: string) =>
   Layer.effect(
-    MarketDataSource,
+    PriceProvider,
     Effect.fail(
       new MarketDataError({
         kind: "configuration",
@@ -25,7 +25,7 @@ export const liveSourceFor =
   (env: Pick<CloudflareBindings, "EODHD_API_TOKEN">): SourceFor =>
   (provider) =>
     provider === "eodhd"
-      ? EodhdMarketDataSourceLive(env.EODHD_API_TOKEN)
+      ? EodhdPriceProviderLive(env.EODHD_API_TOKEN)
       : unknownProvider(provider);
 
 /**
@@ -33,11 +33,11 @@ export const liveSourceFor =
  * provider integrations; tests and the fixture command inject adapters that
  * answer from fixture data.
  */
-export class MarketDataSources extends Context.Service<
-  MarketDataSources,
+export class PriceProviders extends Context.Service<
+  PriceProviders,
   { readonly sourceFor: SourceFor }
->()("data-service/MarketDataSources") {}
+>()("data-service/PriceProviders") {}
 
 /** Provider selection from a `SourceFor` function. */
-export const MarketDataSourcesLayer = (sourceFor: SourceFor) =>
-  Layer.succeed(MarketDataSources, MarketDataSources.of({ sourceFor }));
+export const PriceProvidersLayer = (sourceFor: SourceFor) =>
+  Layer.succeed(PriceProviders, PriceProviders.of({ sourceFor }));

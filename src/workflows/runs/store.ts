@@ -65,8 +65,8 @@ export interface CapturedRun {
  * stay the durable execution state. Every write tolerates being repeated, so
  * a retried step body can record its outcome again.
  */
-export class WorkflowRuns extends Context.Service<
-  WorkflowRuns,
+export class WorkflowRunStore extends Context.Service<
+  WorkflowRunStore,
   {
     /**
      * Atomically claim the assignment's one active-run slot and capture the
@@ -161,4 +161,4 @@ export class WorkflowRuns extends Context.Service<
       readonly now: string;
     }) => Effect.Effect<boolean, WorkflowError>;
   }
->()("data-service/WorkflowRuns") {}
+>()("data-service/WorkflowRunStore") {}

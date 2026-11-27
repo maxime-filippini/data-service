@@ -1,10 +1,11 @@
 import { Effect, Schema } from "effect";
 
 import { AssetStore } from "$/assets/store";
-import { type MarketDataError, MarketDataSource } from "$/market-data";
+import { nowIso } from "$/clock";
+import { type MarketDataError, PriceProvider } from "$/market-data";
 import { MarketDateSchema } from "$/market-data/schemas";
-import { MarketDataSources } from "$/market-data/sources";
-import { RunArtifacts, runArtifactId } from "$/workflows/artifacts";
+import { PriceProviders } from "$/market-data/sources";
+import { RunArtifactStore, runArtifactId } from "$/workflows/artifacts";
 
 import {
   assetSubjectContract,
@@ -82,8 +83,8 @@ export const downloadPrices = defineStepType({
           `The start date ${range.from} is after the through date ${range.to}`,
         );
 
-      const sources = yield* MarketDataSources;
-      const entries = yield* MarketDataSource.use((source) =>
+      const sources = yield* PriceProviders;
+      const entries = yield* PriceProvider.use((source) =>
         source.retrieveDaily(symbol, range),
       ).pipe(
         Effect.provide(sources.sourceFor(asset.provider)),
@@ -100,6 +101,7 @@ export const downloadPrices = defineStepType({
         format: "json",
         schema: "raw-prices-eod/v1",
       } as const;
+      const receivedAt = yield* nowIso;
       const envelope = {
         version: RAW_ENVELOPE_VERSION,
         runId: execution.runId,
@@ -107,10 +109,10 @@ export const downloadPrices = defineStepType({
         provider: asset.provider,
         symbol,
         requestedRange: range,
-        receivedAt: new Date().toISOString(),
+        receivedAt,
         entries,
       };
-      yield* RunArtifacts.use((artifacts) =>
+      yield* RunArtifactStore.use((artifacts) =>
         artifacts.put(raw.id, JSON.stringify(envelope), "application/json"),
       ).pipe(
         Effect.mapError((error) =>

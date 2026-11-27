@@ -5,7 +5,7 @@ import type { Subject } from "$/workflows/contracts";
 import { type SubjectKind, subjectId, subjectOf } from "$/workflows/subjects";
 
 import { DatasetError, type PublicationView } from "./contracts";
-import { DatasetPublicationStore } from "./store";
+import { PublicationStore } from "./store";
 
 /** Private `dataset_publications` row joined with its run's workflow name. */
 interface PublicationRow {
@@ -54,12 +54,12 @@ const SELECT = `SELECT p.*, r.workflow_name
   LEFT JOIN workflow_runs r ON r.run_id = p.run_id`;
 
 /** Publication metadata in D1 (`dataset_publications`). */
-export const D1DatasetPublicationStoreLive = (
+export const D1PublicationStoreLive = (
   db: D1Database,
-): Layer.Layer<DatasetPublicationStore> =>
+): Layer.Layer<PublicationStore> =>
   Layer.succeed(
-    DatasetPublicationStore,
-    DatasetPublicationStore.of({
+    PublicationStore,
+    PublicationStore.of({
       record: (publication) =>
         query(() =>
           db

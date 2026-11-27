@@ -33,31 +33,32 @@ references. The SvelteKit app reads page data on the server through `src/pages/`
 and sends mutations through `/app-api/*`, which mounts the same route modules as
 `/api/*`.
 
-| Location                         | Read it for                                                                                              |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                   | Worker `fetch` and `scheduled` handlers, Workflow & Container exports                                    |
-| `src/scheduled.ts`               | Hourly cron wrapper around `scheduledWorkflowTick`                                                       |
-| `src/dependencies.ts`            | Concrete Cloudflare adapter wiring shared by routes and page reads                                       |
-| `src/routes/`                    | Authentication, request validation, `/api/*` and `/app-api/*` routes                                     |
-| `src/http/run-effect.ts`         | Shared Effect execution and expected-error HTTP status mapping                                           |
-| `src/assets/`                    | Asset contracts, store interface and D1 adapter (with holdings guards)                                   |
-| `src/portfolios/`                | Portfolio and dated snapshot contracts, store interface and D1 adapter                                   |
-| `src/workflows/`                 | Definition validation, inspection, assignments, defaults, D1 store                                       |
-| `src/workflows/registry/`        | Registered step types, contracts, retry policies and implementations                                     |
-| `src/workflows/runs/`            | Atomic claims, launch reconciliation, daily dispatch and run D1 store                                    |
-| `src/workflows/executor.ts`      | Sequential step runner, reference resolution, durable dependency waits                                   |
-| `src/workflows/steps.ts`         | Narrow adapter over Cloudflare `WorkflowStep`                                                            |
-| `src/definition-run-workflow.ts` | Cloudflare Workflow entrypoint wiring production adapters                                                |
-| `src/datasets/`                  | Explicit publication step logic, D1 metadata store and R2 adapter                                        |
-| `src/operations/`                | Generated TypeScript contracts (`schemas.json`, `contracts.generated.ts`) and Python HTTP client         |
-| `src/market-data/`               | Shared schemas (`MarketDateSchema`, `MarketSymbolSchema`, `EodEntrySchema`) and EODHD adapter            |
-| `src/local/`                     | Local SQLite D1, file/memory artifact & dataset stores, `uv` Python runner, in-process Workflow stand-in |
-| `src/pages/`                     | Read-only page-data facade for SvelteKit server loads                                                    |
-| `containers/engine/`             | Uniform Python FastAPI service (`/health`, `/operations`, `/operations/{name}`)                          |
-| `app/src/`                       | SvelteKit pages, server loads, and browser API helpers                                                   |
-| `migrations/`                    | D1 schema migrations (`0001`–`0014`)                                                                     |
-| `scripts/workflow-fixture.ts`    | End-to-end local fixture scenario (`pnpm workflow:fixture`)                                              |
-| `test/`                          | API, fixture, real-SQLite D1, contract and lifecycle tests                                               |
+| Location                         | Read it for                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                   | Worker `fetch` and `scheduled` handlers, Workflow & Container exports                                   |
+| `src/scheduled.ts`               | Hourly cron wrapper around `scheduledWorkflowTick`                                                      |
+| `src/dependencies.ts`            | The Cloudflare host: `cloudflareServices(env)`, one Layer with every service routes, pages and runs use |
+| `src/routes/`                    | Authentication, request validation, `/api/*` and `/app-api/*` routes                                    |
+| `src/http/run-effect.ts`         | Shared Effect execution and expected-error HTTP status mapping                                          |
+| `src/assets/`                    | Asset contracts, store interface and D1 adapter (with holdings guards)                                  |
+| `src/portfolios/`                | Portfolio and dated snapshot contracts, store interface and D1 adapter                                  |
+| `src/workflows/`                 | Definition validation, inspection, assignments, defaults, D1 store                                      |
+| `src/workflows/registry/`        | Registered step types, contracts, retry policies and implementations                                    |
+| `src/workflows/runs/`            | `RunCoordinator`, `RunLauncher`, atomic claims, reconciliation, daily dispatch and run D1 store         |
+| `src/workflows/executor.ts`      | Sequential step runner, reference resolution, durable dependency waits                                  |
+| `src/workflows/checkpointer.ts`  | `Checkpointer` service (durable checkpoints and sleeps) and the default step policy                     |
+| `src/workflows/cloudflare.ts`    | Cloudflare adapters: the Checkpointer over `WorkflowStep`, instance body runner                         |
+| `src/definition-run-workflow.ts` | Cloudflare Workflow entrypoint wiring production adapters                                               |
+| `src/datasets/`                  | Explicit publication step logic, D1 metadata store and R2 adapter                                       |
+| `src/operations/`                | Generated TypeScript contracts (`schemas.json`, `contracts.generated.ts`) and Python HTTP client        |
+| `src/market-data/`               | Shared schemas (`MarketDateSchema`, `MarketSymbolSchema`, `EodEntrySchema`) and EODHD adapter           |
+| `src/local/`                     | The local host (`localWorkflowService`): SQLite D1, file/memory stores, `uv` Python, local Checkpointer |
+| `src/pages/`                     | Read-only page-data facade for SvelteKit server loads                                                   |
+| `containers/engine/`             | Uniform Python FastAPI service (`/health`, `/operations`, `/operations/{name}`)                         |
+| `app/src/`                       | SvelteKit pages, server loads, and browser API helpers                                                  |
+| `migrations/`                    | D1 schema migrations (`0001`–`0014`)                                                                    |
+| `scripts/workflow-fixture.ts`    | End-to-end local fixture scenario (`pnpm workflow:fixture`)                                             |
+| `test/`                          | API, fixture, real-SQLite D1, contract and lifecycle tests                                              |
 
 ### File roles inside a feature
 
@@ -83,10 +84,14 @@ Start with one end-to-end slice rather than the root Worker:
    contracts and retry policies.
 3. Read `src/workflows/validate.ts` and `src/workflows/operations.ts` to see how
    complete specifications are validated and stored atomically.
-4. Read `src/workflows/runs/operations.ts` and `src/workflows/runs/dispatch.ts`
-   to follow atomic claiming, reconciliation, and daily UTC dispatch.
-5. Read `src/workflows/executor.ts` and `src/definition-run-workflow.ts` to see
-   how Effect programs execute inside Cloudflare Workflows checkpoints and waits.
+4. Read `src/workflows/runs/coordinator.ts`, then `operations.ts` and
+   `dispatch.ts` beside it, to follow how runs start: atomic claiming,
+   launching through `RunLauncher`, reconciliation, and daily UTC dispatch.
+5. Read `src/workflows/checkpointer.ts` and `src/workflows/executor.ts` to see
+   how a run executes as checkpoints and durable waits, then
+   `src/workflows/cloudflare.ts` for the Checkpointer on Cloudflare Workflows.
+   ADR 0005 (`docs/adr/0005-run-execution-through-platform-neutral-services.md`)
+   explains the split between services and hosts.
 6. Read `containers/engine/src/data_service_engine/operations/registry.py`,
    `normalize_prices.py`, and `portfolio_volatility.py` for the Python service.
 7. Finally read `src/index.ts`, `src/routes/index.ts`, and `src/dependencies.ts`.
@@ -105,9 +110,11 @@ The root package pins Effect **4.0.0-rc.118** (see
   obtains an injected service; `yield* store.create(...)` executes a step on it.
 - **Services and Layers:** `Context.Service` keys live in `store.ts` or
   `client.ts`; real Cloudflare adapters end in `Live` (`D1WorkflowStoreLive`,
-  `R2RunArtifactsLive`, `HttpPythonOperationsLive`). `src/dependencies.ts` wires
-  them from `CloudflareBindings`; `src/local/runs.ts` wires local equivalents
-  using the exact same interfaces.
+  `R2RunArtifactStoreLive`, `HttpPythonOperationsLive`). Each host builds one Layer
+  with every service: `cloudflareServices(env)` in `src/dependencies.ts` from
+  `CloudflareBindings`, and `localWorkflowService(...).servicesFor` in
+  `src/local/runs.ts` from local adapters. Entry points provide that Layer, plus
+  the instance's `Checkpointer` inside a Workflow, and run a program.
 - **HTTP edge translation:** `runHttp(program, layer)` in `src/http/run-effect.ts`
   provides dependencies and maps `AssetError`, `PortfolioError`, `WorkflowError`,
   and `DatasetError` to HTTP status codes. Never call `runHttp` from domain
@@ -170,7 +177,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
    `inputs` and `outputs` with explicit contract identities, and
    `implementation`.
 3. Use existing `Context.Service` interfaces (`AssetStore`, `Portfolios`,
-   `DatasetPublicationStore`, `RunArtifacts`, `MarketDataSources`) and map errors to
+   `PublicationStore`, `RunArtifactStore`, `PriceProviders`) and map errors to
    `terminalStepError` or `transientStepError`.
 4. Register it in `builtInStepTypes` in `src/workflows/registry/index.ts` and
    cover validation and execution through the `/api/workflows` and `/api/runs`
@@ -184,7 +191,7 @@ and the [Cloudflare recovery smoke test](/docs/operations/workflow-smoke/):
 | Portfolio holdings rules       | `src/portfolios/contracts.ts`, `src/portfolios/d1.ts`, `test/portfolios.test.ts`               |
 | Workflow specification rules   | `src/workflows/validate.ts`, `src/workflows/contracts.ts`, `test/workflows.test.ts`            |
 | Step contracts                 | `src/workflows/registry/`, `test/workflow-runs.test.ts`                                        |
-| Step retry policy              | `src/workflows/steps.ts`, `src/workflows/executor.ts`, `test/workflow-runs.test.ts`            |
+| Step retry policy              | `src/workflows/checkpointer.ts`, `src/workflows/executor.ts`, `test/workflow-runs.test.ts`     |
 | Scheduled dispatch / claims    | `src/workflows/runs/dispatch.ts`, `src/workflows/runs/d1.ts`, `test/workflow-dispatch.test.ts` |
 | Python operation logic/schemas | `containers/engine/src/data_service_engine/operations/`, then `pnpm operations:generate`       |
 | Dataset publication & lookup   | `src/datasets/`, `src/routes/datasets/index.ts`, `test/dataset-publication.test.ts`            |
@@ -206,8 +213,15 @@ pnpm engine:test            # Python pytest (needs uv)
 pnpm engine:lint            # Python ruff check + format (needs uv)
 pnpm app:check              # svelte-check (0 errors, 0 warnings)
 pnpm --filter app build     # Cloudflare SvelteKit build
+pnpm deploy:check           # bundle the Worker as both deploys would (dry run; after the app build)
 pnpm docs:build             # Starlight docs build
 ```
+
+CI runs all of these except `workflow:fixture`. Before merging a change to the
+Cloudflare adapters or wiring, also run `pnpm smoke:local`. It runs the
+recovery smoke in a local `wrangler dev` session. Unlike the commands above,
+it needs a Wrangler login and the dev R2 credentials in `.dev.vars`; see
+[the smoke test](/docs/operations/workflow-smoke/#run-locally).
 
 On CPUs without AVX2, run Python tests with Polars' compatibility runtime:
 

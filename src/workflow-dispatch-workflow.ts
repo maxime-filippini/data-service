@@ -3,16 +3,15 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import { Effect } from "effect";
 
+import { cloudflareServices } from "$/dependencies";
 import { WorkerLoggerLive } from "$/logging";
-import { D1WorkflowRunsLive } from "$/workflows/runs/d1";
-import {
-  scheduledWorkflowTick,
-  type WorkflowDispatchParams,
-} from "$/workflows/runs/dispatch";
+import { cloudflareCheckpointer } from "$/workflows/cloudflare";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
+import type { WorkflowDispatchParams } from "$/workflows/runs/dispatch";
 import { reportDispatch } from "$/workflows/runs/report";
-import { workflowSteps } from "$/workflows/steps";
 
 export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
   CloudflareBindings,
@@ -23,13 +22,10 @@ export class WorkflowDispatchWorkflow extends WorkflowEntrypoint<
     step: WorkflowStep,
   ) {
     const report = await scheduledWorkflowTick(
-      {
-        workflowRunsFor: (env) => D1WorkflowRunsLive(env.MARKET_DATA_DB),
-        runPlatformFor: (env) => env.WORKFLOW_RUNS,
-      },
+      cloudflareServices(this.env),
       this.env,
       new Date(event.payload.scheduledTime),
-      workflowSteps(step),
+      cloudflareCheckpointer(step, (message) => new NonRetryableError(message)),
     );
     return reportDispatch(report).pipe(
       Effect.provide(WorkerLoggerLive),

@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { publishedDatasetKey } from "$/datasets/contracts";
-import { DatasetPublicationStore, DatasetObjectStore } from "$/datasets/store";
+import { PublicationStore, PublishedFileStore } from "$/datasets/store";
 import { WorkflowIdSchema } from "$/workflows/contracts";
 import type { MissingDependency } from "$/workflows/runs/contracts";
 
@@ -73,7 +73,7 @@ export const waitForAssetPublications = defineStepType({
           return yield* terminal(
             "The holdings artifact does not match the portfolio and processing date",
           );
-        const checks = yield* DatasetPublicationStore.use((publications) =>
+        const checks = yield* PublicationStore.use((publications) =>
           publications.checkAssetPrices({
             workflowId: params.workflowId,
             processingDate: inputs.processingDate,
@@ -83,7 +83,7 @@ export const waitForAssetPublications = defineStepType({
         ).pipe(Effect.mapError((error) => transient(error.message)));
         const missing: MissingDependency[] = [];
         const publications = [];
-        const objects = yield* DatasetObjectStore;
+        const objects = yield* PublishedFileStore;
         for (const { symbol, succeeded, publication } of checks) {
           const subject = { kind: "asset", symbol } as const;
           if (!succeeded) {

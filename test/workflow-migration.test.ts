@@ -14,9 +14,12 @@ import {
   type PublicationView,
   publishedDatasetKey,
 } from "$/datasets/contracts";
-import { FileRunArtifactsLive, memoryRunArtifacts } from "$/local/artifacts";
+import {
+  FileRunArtifactStoreLive,
+  memoryRunArtifacts,
+} from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
-import { FileDatasetObjectStoreLive } from "$/local/published";
+import { FilePublishedFileStoreLive } from "$/local/published";
 import {
   type LocalPythonService,
   startPythonService,
@@ -24,7 +27,7 @@ import {
 } from "$/local/python";
 import { localWorkflowService } from "$/local/runs";
 import { applyMigrations, makeSqliteD1 } from "$/local/sqlite-d1";
-import { localSteps } from "$/local/steps";
+import { localCheckpointer } from "$/local/checkpointer";
 import { HttpPythonOperationsLive } from "$/operations/client";
 import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
@@ -41,9 +44,9 @@ import {
   renderRollbackSql,
   rollbackDownloads,
 } from "$/workflows/migration";
+import { scheduledWorkflowTick } from "$/workflows/runs/coordinator";
 import {
   type DispatchPlatform,
-  scheduledWorkflowTick,
   type TickReport,
   type WorkflowDispatchParams,
 } from "$/workflows/runs/dispatch";
@@ -308,7 +311,7 @@ const makeFullService = (
     readonly autoStart?: boolean;
     readonly artifacts?: ReturnType<typeof memoryRunArtifacts>["layer"];
     readonly python?: ReturnType<typeof HttpPythonOperationsLive>;
-    readonly published?: ReturnType<typeof FileDatasetObjectStoreLive>;
+    readonly published?: ReturnType<typeof FilePublishedFileStoreLive>;
   } = {},
 ) => {
   const local = localWorkflowService({
@@ -320,17 +323,15 @@ const makeFullService = (
       ? {}
       : { published: options.published }),
     platform: {
-      steps: { delayScale: 0 },
+      checkpointer: { delayScale: 0 },
       ...(options.autoStart === undefined
         ? {}
         : { autoStart: options.autoStart }),
     },
   });
 
-  const { dependencies } = local;
-
   const routes = createRoutes(
-    dependencies,
+    local.servicesFor,
     { fetch: () => new Response("app") },
     () => accessKeys,
   );
@@ -396,10 +397,10 @@ const makeFullService = (
     create: async ({ params }: { params: WorkflowDispatchParams }) => {
       dispatches.push(
         await scheduledWorkflowTick(
-          local.dependencies,
+          local.servicesFor(tickEnv),
           tickEnv,
           new Date(params.scheduledTime),
-          localSteps(new Map(), { delayScale: 0 }),
+          localCheckpointer(new Map(), { delayScale: 0 }),
         ),
       );
     },
@@ -407,17 +408,14 @@ const makeFullService = (
   });
 
   return {
-    dependencies: {
-      ...dependencies,
-      dispatchPlatformFor,
-    },
+    dependencies: { dispatchPlatformFor },
     env,
     api,
     appApi,
     json,
     dispatches,
     platform: local.platform,
-    pages: pageData(env, dependencies),
+    pages: pageData(env, local.servicesFor),
   };
 };
 
@@ -1067,9 +1065,9 @@ describe(
 
       const service = makeFullService(db, {
         dispatch: "on",
-        artifacts: FileRunArtifactsLive(rawDir),
+        artifacts: FileRunArtifactStoreLive(rawDir),
         python: HttpPythonOperationsLive({ fetch }, python.url),
-        published: FileDatasetObjectStoreLive(processedDir),
+        published: FilePublishedFileStoreLive(processedDir),
       });
 
       const outcome = await runScheduledHandlers(

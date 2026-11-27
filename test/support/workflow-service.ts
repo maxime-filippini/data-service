@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Layer } from "effect";
 
-import type { DatasetObjectStore } from "$/datasets/store";
+import type { PublishedFileStore } from "$/datasets/store";
 import { memoryRunArtifacts } from "$/local/artifacts";
 import { fixtureSourceFor, loadEodhdFixtures } from "$/local/eodhd-fixtures";
 import type { LocalPlatformOptions } from "$/local/platform";
@@ -11,7 +11,7 @@ import { localWorkflowService } from "$/local/runs";
 import { pageData } from "$/pages";
 import { createRoutes } from "$/routes";
 import type { StepType } from "$/workflows/registry";
-import type { RunPlatform } from "$/workflows/runs/contracts";
+import type { RunWorkflowBinding } from "$/workflows/runs/contracts";
 
 import { makeTestDatabase } from "./d1";
 
@@ -51,14 +51,32 @@ export const workflowService = (
   options: {
     readonly platform?: LocalPlatformOptions;
     readonly extraStepTypes?: readonly StepType[];
-    readonly published?: Layer.Layer<DatasetObjectStore>;
+    readonly published?: Layer.Layer<PublishedFileStore>;
     /** Worker vars, such as `WORKFLOW_DISPATCH`. */
     readonly env?: Readonly<Record<string, string>>;
   } = {},
 ) => {
   const { sqlite, db } = makeTestDatabase();
   const artifacts = memoryRunArtifacts();
+  /** Faults injected between the API and the Workflow binding. */
+  const faults = {
+    /** "lost": the instance is created but the response is lost. */
+    create: "none" as "none" | "lost" | "failed",
+    getUnavailable: false,
+  };
   const service = localWorkflowService({
+    wrapBinding: (binding): RunWorkflowBinding => ({
+      create: async (create) => {
+        if (faults.create === "failed") throw new Error("network error");
+        const instance = await binding.create(create);
+        if (faults.create === "lost") throw new Error("response lost");
+        return instance;
+      },
+      get: async (id) => {
+        if (faults.getUnavailable) throw new Error("platform unavailable");
+        return binding.get(id);
+      },
+    }),
     db,
     artifacts: artifacts.layer,
     sourceFor: fixtureSourceFor(fixtures),
@@ -68,34 +86,11 @@ export const workflowService = (
     ...(options.extraStepTypes === undefined
       ? {}
       : { extraStepTypes: options.extraStepTypes }),
-    platform: { steps: { delayScale: 0 }, ...options.platform },
+    platform: { checkpointer: { delayScale: 0 }, ...options.platform },
   });
   const platform = service.platform;
 
-  /** Faults injected between the API and the Workflow binding. */
-  const faults = {
-    /** "lost": the instance is created but the response is lost. */
-    create: "none" as "none" | "lost" | "failed",
-    getUnavailable: false,
-  };
-  const runPlatform: RunPlatform = {
-    create: async (create) => {
-      if (faults.create === "failed") throw new Error("network error");
-      const instance = await platform.create(create);
-      if (faults.create === "lost") throw new Error("response lost");
-      return instance;
-    },
-    get: async (id) => {
-      if (faults.getUnavailable) throw new Error("platform unavailable");
-      return platform.get(id);
-    },
-  };
-
-  const dependencies = {
-    ...service.dependencies,
-    runPlatformFor: () => runPlatform,
-  };
-  const routes = createRoutes(dependencies, {
+  const routes = createRoutes(service.servicesFor, {
     fetch: () => new Response("app"),
   });
   const env = {
@@ -148,7 +143,7 @@ export const workflowService = (
     createWorkflow,
     platform,
     faults,
-    dependencies,
-    pages: pageData(env, dependencies),
+    servicesFor: service.servicesFor,
+    pages: pageData(env, service.servicesFor),
   };
 };

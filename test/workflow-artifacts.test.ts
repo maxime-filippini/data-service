@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { Effect } from "effect";
 
-import { DatasetObjectStore } from "$/datasets/store";
-import { memoryDatasetObjectStore } from "$/local/published";
+import { PublishedFileStore } from "$/datasets/store";
+import { memoryPublishedFileStore } from "$/local/published";
 import { MAX_SNAPSHOT_HOLDINGS } from "$/portfolios/contracts";
 import type { Portfolio } from "$/portfolios/views";
 import { MAX_STEP_OUTPUT_BYTES } from "$/workflows/executor";
@@ -19,7 +19,7 @@ const DATE = "2024-01-07";
 const STORED_AT = "2024-01-08T00:00:00.000Z";
 
 const setup = async (count = 1, pause = false) => {
-  const published = memoryDatasetObjectStore();
+  const published = memoryPublishedFileStore();
   const service = workflowService({
     published: published.layer,
     platform: {
@@ -96,7 +96,7 @@ const setup = async (count = 1, pause = false) => {
     for (const { symbol } of holdings) {
       const runId = crypto.randomUUID();
       const { etag, size } = await Effect.runPromise(
-        DatasetObjectStore.use((objects) =>
+        PublishedFileStore.use((objects) =>
           objects.put(
             `dataset=prices_eod/symbol=${symbol}/data.parquet`,
             new Uint8Array([1, 2, 3]),
