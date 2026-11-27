@@ -5,8 +5,8 @@ from datetime import date
 import pytest
 
 from data_service_engine.errors import CalculationError
+from data_service_engine.operations import ex_ante_vol
 from data_service_engine.storage import SymbolReader
-from data_service_engine.types import ex_ante_vol
 
 from .conftest import BUCKET, prices_df, prices_key
 

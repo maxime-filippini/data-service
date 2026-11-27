@@ -9,7 +9,7 @@ import polars as pl
 from pydantic import Field, FiniteFloat, field_validator, model_validator
 
 from ..errors import CalculationError
-from ..types import ex_ante_vol
+from . import ex_ante_vol
 from .artifacts import PARQUET, ArtifactStore, run_artifact_id
 from .contracts import (
     ARTIFACT_ID_PATTERN,
