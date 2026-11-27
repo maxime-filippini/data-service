@@ -29,12 +29,12 @@
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
-    "effect": "4.0.0-rc.118",
+    "effect": "4.1.6",
     "hono": "^4.13.12",
     "jose": "^6.2.12"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.0-rc.118",
+    "@effect/platform-node": "4.1.6",
     "@types/node": "^26.6.3",
     "prettier": "3.9.10",
     "prettier-plugin-svelte": "4.1.1",

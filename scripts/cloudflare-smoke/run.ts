@@ -16,7 +16,8 @@
 import assert from "node:assert/strict";
 
 import { importJWK, SignJWT, type JWK } from "jose";
-import { Clock, Console, Crypto, Effect, FileSystem, Path } from "effect";
+import { Clock, Console, Effect, FileSystem, Path } from "effect";
+import { SecureRandom } from "effect/crypto";
 import { Argument, Command } from "effect/cli";
 
 import type { PublicationView } from "$/datasets/contracts";
@@ -143,7 +144,7 @@ const command = Command.make(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const crypto = yield* Crypto.Crypto;
+      const crypto = yield* SecureRandom.SecureRandom;
 
       const readJson = <T>(file: string) =>
         fs
