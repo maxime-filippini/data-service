@@ -335,12 +335,29 @@ const makeFullService = (
     { fetch: () => new Response("app") },
     () => accessKeys,
   );
+  // Stands in for the dispatch Workflow binding: runs the instance's body
+  // against this env as soon as it starts, and records its report.
+  const dispatches: TickReport[] = [];
+  const dispatchWorkflow: DispatchPlatform = {
+    create: async ({ params }: { params: WorkflowDispatchParams }) => {
+      dispatches.push(
+        await scheduledWorkflowTick(
+          local.servicesFor(env),
+          env,
+          new Date(params.scheduledTime),
+          localCheckpointer(new Map(), { delayScale: 0 }),
+        ),
+      );
+    },
+    get: async () => ({ status: async () => ({ status: "complete" }) }),
+  };
   const env = {
     MANAGEMENT_API_TOKEN: TOKEN,
     ACCESS_TEAM_DOMAIN: TEAM,
     ACCESS_AUD: AUD,
     DASHBOARD_ALLOWED_EMAILS: USER_EMAIL,
     WORKFLOW_DISPATCH: options.dispatch ?? "on",
+    WORKFLOW_DISPATCHES: dispatchWorkflow,
     MARKET_DATA_DB: db,
   } as unknown as CloudflareBindings;
 
@@ -389,26 +406,7 @@ const makeFullService = (
     return body;
   };
 
-  // Stands in for the dispatch Workflow: runs its body as soon as it starts.
-  const dispatches: TickReport[] = [];
-  const dispatchPlatformFor = (
-    tickEnv: CloudflareBindings,
-  ): DispatchPlatform => ({
-    create: async ({ params }: { params: WorkflowDispatchParams }) => {
-      dispatches.push(
-        await scheduledWorkflowTick(
-          local.servicesFor(tickEnv),
-          tickEnv,
-          new Date(params.scheduledTime),
-          localCheckpointer(new Map(), { delayScale: 0 }),
-        ),
-      );
-    },
-    get: async () => ({ status: async () => ({ status: "complete" }) }),
-  });
-
   return {
-    dependencies: { dispatchPlatformFor },
     env,
     api,
     appApi,
@@ -909,16 +907,11 @@ test("scheduled handler dispatches migrated workflows exclusively and migration 
     ...service.env,
     WORKFLOW_DISPATCH: "off",
   } as unknown as CloudflareBindings;
-  const envOn = {
-    ...service.env,
-    WORKFLOW_DISPATCH: "on",
-  } as unknown as CloudflareBindings;
 
   // 1. WORKFLOW_DISPATCH="off": hourly handler dispatches nothing.
   const offOutcome = await runScheduledHandlers(
     new Date("2024-01-10T04:00:00Z"),
     envOff,
-    service.dependencies,
   );
   assert.deepEqual(offOutcome, { status: "disabled" });
   assert.equal(
@@ -929,8 +922,7 @@ test("scheduled handler dispatches migrated workflows exclusively and migration 
   // 2. WORKFLOW_DISPATCH="on": hourly handler dispatches enabled migrated assets only.
   const workflowOutcome = await runScheduledHandlers(
     new Date("2024-01-11T04:00:00Z"),
-    envOn,
-    service.dependencies,
+    service.env,
   );
   assert.equal(workflowOutcome.status, "started");
   const [dispatched] = service.dispatches;
@@ -1073,7 +1065,6 @@ describe(
       const outcome = await runScheduledHandlers(
         new Date("2024-01-10T04:00:00Z"),
         service.env,
-        service.dependencies,
       );
       assert.equal(outcome.status, "started");
       assert.equal(service.dispatches[0]?.status, "dispatched");
