@@ -36,8 +36,11 @@ export const cloudflareCheckpointer = (
       body: Effect.Effect<A, StepFailure, R>,
       policy?: WorkflowStepConfig,
     ) =>
-      Effect.flatMap(Effect.context<R>(), (context) =>
-        Effect.tryPromise({
+      Effect.gen(function* () {
+        // The body runs inside step.do's callback, outside this fiber, so it
+        // takes the caller's services with it.
+        const context = yield* Effect.context<R>();
+        return yield* Effect.tryPromise({
           try: () => {
             const attempt = async () => {
               const exit = await Effect.runPromiseExitWith(context)(body);
@@ -58,8 +61,8 @@ export const cloudflareCheckpointer = (
             ) as Promise<A>;
           },
           catch: (error) => terminal(platformMessage(error)),
-        }),
-      ),
+        });
+      }),
     sleepUntil: (name, at) => Effect.promise(() => step.sleepUntil(name, at)),
   });
 
