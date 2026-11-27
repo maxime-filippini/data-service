@@ -254,7 +254,6 @@ test("the step catalog exposes the registered step contracts", async () => {
   assert.deepEqual(ports("calculate-portfolio-volatility"), {
     inputs: [
       "holdings:holdings",
-      "holdingsDate:date",
       "publications:published-asset-prices",
       "processingDate:date",
     ],

@@ -83,14 +83,14 @@ identity; there is no structural subtyping.
 JSON Schema and its ports, every contract with its JSON Schema, and the
 run-context fields with the contract each provides per scope.
 
-| Step type                        | Scopes           | Inputs                                                                                                                 | Outputs                                                                          |
-| -------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `download-prices`                | asset            | `asset` (`asset-subject`), `throughDate` (`date`)                                                                      | `raw` (`raw-prices-eod`)                                                         |
-| `normalize-prices`               | asset            | `raw` (`raw-prices-eod`)                                                                                               | `prices` (`prices-eod`)                                                          |
-| `publish-dataset`                | asset, portfolio | `data` (`publishable-dataset`)                                                                                         | `publication` (`dataset-publication`)                                            |
-| `portfolio-holdings`             | portfolio        | `portfolio` (`portfolio-subject`), `processingDate` (`date`)                                                           | `holdingsDate` (`date`), `holdings` (`holdings`)                                 |
-| `wait-for-asset-publications`    | portfolio        | `holdings` (`holdings`), `processingDate` (`date`)                                                                     | `publications` (`published-asset-prices`)                                        |
-| `calculate-portfolio-volatility` | portfolio        | `holdings` (`holdings`), `holdingsDate` (`date`), `publications` (`published-asset-prices`), `processingDate` (`date`) | `data` (`portfolio-volatility-data`), `summary` (`portfolio-volatility-summary`) |
+| Step type                        | Scopes           | Inputs                                                                                        | Outputs                                                                          |
+| -------------------------------- | ---------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `download-prices`                | asset            | `asset` (`asset-subject`), `throughDate` (`date`)                                             | `raw` (`raw-prices-eod`)                                                         |
+| `normalize-prices`               | asset            | `raw` (`raw-prices-eod`)                                                                      | `prices` (`prices-eod`)                                                          |
+| `publish-dataset`                | asset, portfolio | `data` (`publishable-dataset`)                                                                | `publication` (`dataset-publication`)                                            |
+| `portfolio-holdings`             | portfolio        | `portfolio` (`portfolio-subject`), `processingDate` (`date`)                                  | `holdingsDate` (`date`), `holdings` (`holdings`)                                 |
+| `wait-for-asset-publications`    | portfolio        | `holdings` (`holdings`), `processingDate` (`date`)                                            | `publications` (`published-asset-prices`)                                        |
+| `calculate-portfolio-volatility` | portfolio        | `holdings` (`holdings`), `publications` (`published-asset-prices`), `processingDate` (`date`) | `data` (`portfolio-volatility-data`), `summary` (`portfolio-volatility-summary`) |
 
 `download-prices` requests the asset's prices from its provider, from the
 asset's backfill start (or the optional `startDate` param) through

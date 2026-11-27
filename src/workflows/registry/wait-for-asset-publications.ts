@@ -14,7 +14,7 @@ import {
 } from "./contract";
 import {
   jsonArtifactReference,
-  readJsonArtifact,
+  requireJsonArtifact,
   writeJsonArtifact,
 } from "./json-artifact";
 import { defineStepType, terminal, transient } from "./step-type";
@@ -60,14 +60,11 @@ export const waitForAssetPublications = defineStepType({
       (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
     check: ({ params, inputs, context, execution }, deadline) =>
       Effect.gen(function* () {
-        const snapshot = yield* readJsonArtifact(
+        const snapshot = yield* requireJsonArtifact(
           inputs.holdings,
           PortfolioHoldingsArtifactSchema,
+          "holdings",
         );
-        if (snapshot === null)
-          return yield* terminal(
-            "The holdings artifact no longer exists; temporary run artifacts expire",
-          );
         if (
           context.subject.kind !== "portfolio" ||
           snapshot.portfolio.id !== context.subject.id ||

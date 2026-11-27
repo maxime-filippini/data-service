@@ -12,7 +12,7 @@ import {
   publishedAssetPrices,
   PublishedAssetPricesArtifactSchema,
 } from "./contract";
-import { readJsonArtifact } from "./json-artifact";
+import { requireJsonArtifact } from "./json-artifact";
 import { defineStepType, StepFailure, terminal } from "./step-type";
 
 export const calculatePortfolioVolatility = defineStepType({
@@ -26,10 +26,6 @@ export const calculatePortfolioVolatility = defineStepType({
       contract: portfolioHoldings,
       description:
         "The resolved holdings artifact with the snapshot's symbols and weights",
-    },
-    holdingsDate: {
-      contract: date,
-      description: "The effective date of the holdings snapshot",
     },
     publications: {
       contract: publishedAssetPrices,
@@ -58,30 +54,23 @@ export const calculatePortfolioVolatility = defineStepType({
       if (inputs.processingDate !== context.processingDate)
         return yield* terminal("Volatility must use the run's processing date");
       const portfolioId = context.subject.id;
-      const snapshot = yield* readJsonArtifact(
+      const snapshot = yield* requireJsonArtifact(
         inputs.holdings,
         PortfolioHoldingsArtifactSchema,
+        "holdings",
       );
-      if (snapshot === null)
-        return yield* terminal(
-          "The holdings artifact no longer exists; temporary run artifacts expire",
-        );
       if (
         snapshot.portfolio.id !== portfolioId ||
-        snapshot.processingDate !== inputs.processingDate ||
-        snapshot.holdingsDate !== inputs.holdingsDate
+        snapshot.processingDate !== inputs.processingDate
       )
         return yield* terminal(
-          "The holdings artifact does not match the portfolio, processing date and holdings date",
+          "The holdings artifact does not match the portfolio and processing date",
         );
-      const publications = yield* readJsonArtifact(
+      const publications = yield* requireJsonArtifact(
         inputs.publications,
         PublishedAssetPricesArtifactSchema,
+        "publications",
       );
-      if (publications === null)
-        return yield* terminal(
-          "The publications artifact no longer exists; temporary run artifacts expire",
-        );
       return yield* PythonOperations.use((python) =>
         python.invoke("calculate-portfolio-volatility", {
           execution: { runId: execution.runId, stepId: execution.stepId },

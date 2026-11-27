@@ -381,7 +381,6 @@ describe(
             params: { window: 3, normalise_weights: true },
             inputs: {
               holdings: { ref: "steps.holdings.outputs.holdings" },
-              holdingsDate: { ref: "steps.holdings.outputs.holdingsDate" },
               publications: { ref: "steps.dependencies.outputs.publications" },
               processingDate: { ref: "context.processingDate" },
             },

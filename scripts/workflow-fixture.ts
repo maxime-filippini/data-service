@@ -305,9 +305,6 @@ const command = Command.make(
                   params: { window: 3 },
                   inputs: {
                     holdings: { ref: "steps.holdings.outputs.holdings" },
-                    holdingsDate: {
-                      ref: "steps.holdings.outputs.holdingsDate",
-                    },
                     publications: {
                       ref: "steps.dependencies.outputs.publications",
                     },

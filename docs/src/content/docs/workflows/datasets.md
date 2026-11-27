@@ -93,8 +93,9 @@ is no exactly-once promise across HTTP; operations are written to be repeated.
 Schemas. In the Worker the service is the `CALCULATION_ENGINE` container; it
 reads and writes run artifacts in the raw bucket (`ARTIFACT_BUCKET`). Locally
 it runs with uv and reads and writes files under `ARTIFACT_ROOT`. The
-volatility operation reads published asset prices from `PROCESSED_BUCKET` in
-the container or `PROCESSED_ROOT` locally.
+volatility operation also gets a separate read-only reader for published asset
+prices, from `PROCESSED_BUCKET` in the container or `PROCESSED_ROOT` locally;
+the run artifact store itself never reaches a published dataset.
 
 ### Contracts generated from Pydantic
 
@@ -132,11 +133,11 @@ before sending it and each response before returning it.
 
 ## Steps
 
-| Step type                        | Inputs                                                                              | Outputs                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `normalize-prices`               | `raw` (`raw-prices-eod`)                                                            | `prices` (`prices-eod`)                                              |
-| `calculate-portfolio-volatility` | Effective `holdings` and `holdingsDate`, price `publications`, and `processingDate` | `data` (Parquet reference), `summary` (volatility and return window) |
-| `publish-dataset`                | `data` (`publishable-dataset`)                                                      | `publication` (`dataset-publication`)                                |
+| Step type                        | Inputs                                                           | Outputs                                                              |
+| -------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `normalize-prices`               | `raw` (`raw-prices-eod`)                                         | `prices` (`prices-eod`)                                              |
+| `calculate-portfolio-volatility` | Effective `holdings`, price `publications`, and `processingDate` | `data` (Parquet reference), `summary` (volatility and return window) |
+| `publish-dataset`                | `data` (`publishable-dataset`)                                   | `publication` (`dataset-publication`)                                |
 
 `normalize-prices` calls `normalize-prices-eod`. It validates the raw
 envelope (it must belong to the run and its rows must lie in the requested
